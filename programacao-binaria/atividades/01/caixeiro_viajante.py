@@ -38,11 +38,11 @@ def leia(fileAq):
 #************************************************************************************************
 #FUNÇÃO QUE EXECUTA O SOLVER
 #************************************************************************************************
-def modelo(distances, subTours ,useMTZ=True, writeLp=False):
+def modelo(distances, subTours ,timeExe,useMTZ=True, writeLp=False):
   n = distances.shape[0]
 
   #criando as variaveis xij
-  solver = pywraplp.Solver.CreateSolver('SAT')
+  solver = pywraplp.Solver.CreateSolver('CP-SAT')
   x = {}
   for i in range(n):
       for j in range(n):
@@ -89,9 +89,15 @@ def modelo(distances, subTours ,useMTZ=True, writeLp=False):
         mps_text = solver.ExportModelAsLpFormat(False)
         out_f.write(mps_text)
 
+  #configuração da execução
+  solver.set_time_limit(timeExe) 
+  gap = 0.05
+  solverParams = pywraplp.MPSolverParameters()
+  solverParams.SetDoubleParam(solverParams.RELATIVE_MIP_GAP, gap)
+
   #executa o solver
   init = time.time()
-  status = solver.Solve()
+  status = solver.Solve(solverParams)
   fim = time.time()
   if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
     coords = []
@@ -101,7 +107,7 @@ def modelo(distances, subTours ,useMTZ=True, writeLp=False):
           if round(x[j,i].solution_value()) == 1:
             coords.append([i,j])
     print('')
-    print('Solution: Objective value =', solver.Objective().Value(), 'AND execution in =', round(fim-init), '[s]\n')
+    print('Solution: Objective value =', solver.Objective().Value(), ' AND execution in =', round(fim-init), '[s]\n')
     return solver.Objective().Value(), coords
   else:
     print("Infeasible")
@@ -131,14 +137,14 @@ def createSubTours(coords):
 #************************************************************************************************
 #METODOS
 #************************************************************************************************
-def metodos(meth,fileArq,writeLp):
+def metodos(meth,fileArq,timeExe,writeLp):
   distances = leia(fileArq)
   match meth:
     case 'MTZ':
       print("==============================Executando MTZ - ",fileArq,"==============================")
       init = time.time()
       subTours = []
-      fo, coords = modelo(distances,subTours,True,writeLp)
+      fo, coords = modelo(distances,subTours,timeExe,True,writeLp)
       subTours = createSubTours(coords)
       fim = time.time()
       print("MTZ - tempo total",round(fim-init), '[s]')
@@ -149,7 +155,7 @@ def metodos(meth,fileArq,writeLp):
       subTours = []
       for i in range(100):
         print("Iteração: ",i)
-        fo, coords = modelo(distances,subTours,False,writeLp)
+        fo, coords = modelo(distances,subTours,timeExe,False,writeLp)
         subToursCorrent = createSubTours(coords)
 
         if(len(subToursCorrent)==1):
@@ -163,24 +169,25 @@ def metodos(meth,fileArq,writeLp):
 #FUNÇÃO MAIN
 #************************************************************************************************
 def __main__():
-  writeLp = False
+  writeLp = False #ligar ou desligar a criação do arquivo lp
+  timeExe = 1800000    #limitante do tempo de execução do solver em milisegundos 1800000 => 30 minutos
 
   fileArq='bays29.tsp'
-  fo, route = metodos('MTZ',fileArq,writeLp)
+  fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
   print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  fo, route = metodos('PATAKI',fileArq,writeLp)
+  fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
   print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
  
   fileArq='brazil58.tsp'
-  fo, route = metodos('MTZ',fileArq,writeLp)
+  fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
   print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  fo, route = metodos('PATAKI',fileArq,writeLp)
+  fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
   print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
 
   # fileArq='si535.tsp'
-  # fo, route = metodos('MTZ',fileArq,writeLp)
+  # fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
   # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  # fo, route = metodos('PATAKI',fileArq,writeLp)
+  # fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
   # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
 
 __main__()
