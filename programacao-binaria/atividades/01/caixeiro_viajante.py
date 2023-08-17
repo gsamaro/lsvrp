@@ -101,7 +101,7 @@ def modelo(distances, subTours ,useMTZ=True, writeLp=False):
           if round(x[j,i].solution_value()) == 1:
             coords.append([i,j])
     print('')
-    print('Solution: Objective value =', solver.Objective().Value(), 'AND execution in =', round(fim-init), '[s]')
+    print('Solution: Objective value =', solver.Objective().Value(), 'AND execution in =', round(fim-init), '[s]\n')
     return solver.Objective().Value(), coords
   else:
     print("Infeasible")
@@ -129,32 +129,58 @@ def createSubTours(coords):
         sub_tours.append(sub_tour)
     return sub_tours
 #************************************************************************************************
-#FUNÇÃO QUE RETORNA AS ROTAS
+#METODOS
 #************************************************************************************************
-
-def __main__():
-  # fileArq='bays29.tsp'
-  # fileArq='brazil58.tsp'
-  fileArq='si535.tsp'
+def metodos(meth,fileArq,writeLp):
   distances = leia(fileArq)
-  useMtz = False
-  #useMtz = True
+  match meth:
+    case 'MTZ':
+      print("==============================Executando MTZ - ",fileArq,"==============================")
+      init = time.time()
+      subTours = []
+      fo, coords = modelo(distances,subTours,True,writeLp)
+      subTours = createSubTours(coords)
+      fim = time.time()
+      print("MTZ - tempo total",round(fim-init), '[s]')
+      return fo,subTours
+    case 'PATAKI':
+      print("==============================Executando PATAKI - ",fileArq,"==============================")
+      init = time.time()
+      subTours = []
+      for i in range(100):
+        print("Iteração: ",i)
+        fo, coords = modelo(distances,subTours,False,writeLp)
+        subToursCorrent = createSubTours(coords)
+
+        if(len(subToursCorrent)==1):
+          fim = time.time()
+          print("PATAKI - tempo total",round(fim-init), '[s]')
+          return fo,subToursCorrent
+
+        subTours.extend(subToursCorrent)
+        
+#************************************************************************************************
+#FUNÇÃO MAIN
+#************************************************************************************************
+def __main__():
   writeLp = False
-  # writeLp = True
 
-  init = time.time()
-  subTours = []
-  for i in range(100):
-    fo, coords = modelo(distances,subTours,useMtz,writeLp)
-    subToursCorrent = createSubTours(coords)
+  fileArq='bays29.tsp'
+  fo, route = metodos('MTZ',fileArq,writeLp)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  fo, route = metodos('PATAKI',fileArq,writeLp)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+ 
+  fileArq='brazil58.tsp'
+  fo, route = metodos('MTZ',fileArq,writeLp)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  fo, route = metodos('PATAKI',fileArq,writeLp)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
 
-    if(len(subToursCorrent)==1):
-      print(subToursCorrent)
-      break
-
-    subTours.extend(subToursCorrent)
-    
-  fim = time.time()
-  print("tempoTotal",round(fim-init), '[s]')
+  # fileArq='si535.tsp'
+  # fo, route = metodos('MTZ',fileArq,writeLp)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  # fo, route = metodos('PATAKI',fileArq,writeLp)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
 
 __main__()
