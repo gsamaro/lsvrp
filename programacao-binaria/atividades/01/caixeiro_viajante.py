@@ -22,26 +22,19 @@ Original file is located at
 
 # Veja a Licença Pública Geral GNU para mais detalhes
 #################################################################################################
-
 from time import gmtime, strftime
+from ortools.linear_solver import pywraplp
+import tsplib95
+import networkx as nx
 import numpy as np
 import time
-from ortools.linear_solver import pywraplp
 #************************************************************************************************
 #FUNÇÃO DE LEITURA
 #************************************************************************************************
 def leia(fileAq):
-  arq = open(fileAq, 'r')
-  texto = arq.readlines()
-  matrix = []
-  for linha in texto :
-    v = str(linha).split()
-    line = []
-    for number in range(len(v)):
-      line.append(int(v[number]))
-    matrix.append(line)
-  arq.close()
-  return np.array(matrix)
+  problem = tsplib95.load(fileAq)
+  graph = problem.get_graph()
+  return nx.to_numpy_array(graph)
 #************************************************************************************************
 #FUNÇÃO QUE EXECUTA O SOLVER
 #************************************************************************************************
@@ -140,7 +133,10 @@ def createSubTours(coords):
 #************************************************************************************************
 
 def __main__():
-  distances = leia('bays58.txt')
+  # fileArq='bays29.tsp'
+  # fileArq='brazil58.tsp'
+  fileArq='si535.tsp'
+  distances = leia(fileArq)
   useMtz = False
   #useMtz = True
   writeLp = False
@@ -162,4 +158,3 @@ def __main__():
   print("tempoTotal",round(fim-init), '[s]')
 
 __main__()
-
