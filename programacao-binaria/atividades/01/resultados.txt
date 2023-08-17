@@ -1,0 +1,77 @@
+==============================Executando MTZ -  bays29.tsp ==============================
+
+Solution: Objective value = 2020.0  AND execution in = 1 [s]
+
+MTZ - tempo total 1 [s]
+Aquivo:  bays29.tsp Solução:  
+	FO:  2020.0 
+	Route: [[0, 27, 5, 11, 8, 4, 25, 28, 2, 1, 19, 9, 3, 14, 17, 16, 13, 21, 10, 18, 24, 6, 22, 26, 7, 23, 15, 12, 20]] 
+
+==============================Executando PATAKI -  bays29.tsp ==============================
+Iteração:  0
+
+Solution: Objective value = 1764.0  AND execution in = 0 [s]
+
+Iteração:  1
+
+Solution: Objective value = 1952.0  AND execution in = 0 [s]
+
+Iteração:  2
+
+Solution: Objective value = 1987.0  AND execution in = 0 [s]
+
+Iteração:  3
+
+Solution: Objective value = 2017.0  AND execution in = 0 [s]
+
+Iteração:  4
+
+Solution: Objective value = 2020.0  AND execution in = 0 [s]
+
+PATAKI - tempo total 1 [s]
+Aquivo:  bays29.tsp Solução:  
+	FO:  2020.0 
+	Route: [[0, 27, 5, 11, 8, 4, 25, 28, 2, 1, 19, 9, 3, 14, 17, 16, 13, 21, 10, 18, 24, 6, 22, 26, 7, 23, 15, 12, 20]] 
+
+==============================Executando MTZ -  brazil58.tsp ==============================
+
+Solution: Objective value = 25395.0  AND execution in = 1800 [s]
+
+MTZ - tempo total 1800 [s]
+Aquivo:  brazil58.tsp Solução:  
+	FO:  25395.0 
+	Route: [[0, 29, 12, 39, 24, 8, 31, 19, 52, 49, 3, 7, 21, 15, 41, 37, 6, 30, 10, 38, 20, 35, 16, 25, 18, 5, 27, 13, 36, 14, 33, 45, 55, 44, 32, 28, 2, 47, 54, 53, 1, 40, 34, 9, 51, 50, 46, 48, 42, 26, 11, 56, 22, 4, 57, 23, 43, 17]] 
+
+==============================Executando PATAKI -  brazil58.tsp ==============================
+Iteração:  0
+
+Solution: Objective value = 16565.0  AND execution in = 0 [s]
+
+Iteração:  1
+
+Solution: Objective value = 20838.0  AND execution in = 0 [s]
+
+Iteração:  2
+
+Solution: Objective value = 23620.0  AND execution in = 1 [s]
+
+Iteração:  3
+
+Solution: Objective value = 24348.0  AND execution in = 1 [s]
+
+Iteração:  4
+
+Solution: Objective value = 25010.0  AND execution in = 0 [s]
+
+Iteração:  5
+
+Solution: Objective value = 25318.0  AND execution in = 1 [s]
+
+Iteração:  6
+
+Solution: Objective value = 25395.0  AND execution in = 1 [s]
+
+PATAKI - tempo total 5 [s]
+Aquivo:  brazil58.tsp Solução:  
+	FO:  25395.0 
+	Route: [[0, 17, 43, 23, 57, 4, 22, 56, 11, 26, 42, 48, 46, 50, 51, 9, 34, 40, 1, 53, 54, 47, 2, 28, 32, 44, 55, 45, 33, 14, 36, 13, 27, 5, 18, 25, 16, 35, 20, 38, 10, 6, 30, 37, 41, 15, 21, 7, 3, 49, 52, 19, 31, 8, 24, 39, 12, 29]] 
