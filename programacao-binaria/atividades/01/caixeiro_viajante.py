@@ -42,7 +42,9 @@ def modelo(distances, subTours ,timeExe,useMTZ=True, writeLp=False):
   n = distances.shape[0]
 
   #criando as variaveis xij
-  solver = pywraplp.Solver.CreateSolver('CP-SAT')
+  # solver = pywraplp.Solver.CreateSolver('CP-SAT')
+  solver = pywraplp.Solver.CreateSolver('SAT')
+  # solver = pywraplp.Solver.CreateSolver('SCIP')
   x = {}
   for i in range(n):
       for j in range(n):
@@ -137,34 +139,40 @@ def createSubTours(coords):
 #************************************************************************************************
 #METODOS
 #************************************************************************************************
-def metodos(meth,fileArq,timeExe,writeLp):
+def mtz(fileArq,timeExe,writeLp):
   distances = leia(fileArq)
+  subTours=[]
+  fo, coords = modelo(distances,subTours,timeExe,True,writeLp)
+  subTours = createSubTours(coords)
+  return fo,subTours
+
+def pataki(fileArq,timeExe,writeLp):
+  distances = leia(fileArq)
+  subTours = []
+  for i in range(100):
+    print("Iteração: ",i)
+    fo, coords = modelo(distances,subTours,timeExe,False,writeLp)
+    subToursCorrent = createSubTours(coords)
+    if(len(subToursCorrent)==1):
+      return fo,subToursCorrent
+    subTours.extend(subToursCorrent)
+
+def metodos(meth,fileArq,timeExe,writeLp):
   match meth:
     case 'MTZ':
       print("==============================Executando MTZ - ",fileArq,"==============================")
       init = time.time()
-      subTours = []
-      fo, coords = modelo(distances,subTours,timeExe,True,writeLp)
-      subTours = createSubTours(coords)
+      fo, route = mtz(fileArq,timeExe,writeLp)
       fim = time.time()
       print("MTZ - tempo total",round(fim-init), '[s]')
-      return fo,subTours
+      return fo, route
     case 'PATAKI':
       print("==============================Executando PATAKI - ",fileArq,"==============================")
       init = time.time()
-      subTours = []
-      for i in range(100):
-        print("Iteração: ",i)
-        fo, coords = modelo(distances,subTours,timeExe,False,writeLp)
-        subToursCorrent = createSubTours(coords)
-
-        if(len(subToursCorrent)==1):
-          fim = time.time()
-          print("PATAKI - tempo total",round(fim-init), '[s]')
-          return fo,subToursCorrent
-
-        subTours.extend(subToursCorrent)
-        
+      fo, route = pataki(fileArq,timeExe,writeLp)
+      fim = time.time()
+      print("MTZ - tempo total",round(fim-init), '[s]')
+      return fo, route
 #************************************************************************************************
 #FUNÇÃO MAIN
 #************************************************************************************************
@@ -172,21 +180,21 @@ def __main__():
   writeLp = False #ligar ou desligar a criação do arquivo lp
   timeExe = 1800000    #limitante do tempo de execução do solver em milisegundos 1800000 => 30 minutos
 
-  fileArq='bays29.tsp'
-  fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
-  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
-  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
- 
-  fileArq='brazil58.tsp'
-  fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
-  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
-  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-
-  # fileArq='si535.tsp'
+  # fileArq='bays29.tsp'
   # fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
   # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  # fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+ 
+  # fileArq='brazil58.tsp'
+  # fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  # fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+
+  fileArq='si535.tsp'
+  fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
   # fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
   # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
 
