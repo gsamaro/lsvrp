@@ -180,22 +180,22 @@ def __main__():
   writeLp = False #ligar ou desligar a criação do arquivo lp
   timeExe = 1800000    #limitante do tempo de execução do solver em milisegundos 1800000 => 30 minutos
 
-  # fileArq='bays29.tsp'
-  # fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
-  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  # fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
-  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  fileArq='bays29.tsp'
+  fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
  
-  # fileArq='brazil58.tsp'
-  # fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
-  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  # fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
-  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  fileArq='brazil58.tsp'
+  fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
 
   fileArq='si535.tsp'
   fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
   print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  # fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
-  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
 
 __main__()
