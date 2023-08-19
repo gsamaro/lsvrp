@@ -24,6 +24,7 @@ Original file is located at
 #################################################################################################
 from time import gmtime, strftime
 from ortools.linear_solver import pywraplp
+from gurobipy import *
 import tsplib95
 import networkx as nx
 import numpy as np
@@ -32,15 +33,14 @@ import time
 #FUNÇÃO DE LEITURA
 #************************************************************************************************
 def leia(fileAq):
-  problem = tsplib95.load(fileAq)
+  problem = tsplib95.load('./instancias/'+fileAq+'.tsp')
   graph = problem.get_graph()
   return nx.to_numpy_array(graph)
 #************************************************************************************************
-#FUNÇÃO QUE EXECUTA O SOLVER
+#FUNÇÃO QUE EXECUTA O SOLVER - ORTOOLS
 #************************************************************************************************
-def modelo(distances, subTours ,timeExe,useMTZ=True, writeLp=False):
+def modeloOrtools(distances, subTours ,timeExe,useMTZ=True, writeLp=False):
   n = distances.shape[0]
-
   #criando as variaveis xij
   # solver = pywraplp.Solver.CreateSolver('CP-SAT')
   solver = pywraplp.Solver.CreateSolver('SAT')
@@ -92,14 +92,11 @@ def modelo(distances, subTours ,timeExe,useMTZ=True, writeLp=False):
         out_f.write(mps_text)
 
   #configuração da execução
-  solver.set_time_limit(timeExe) 
-  gap = 0.05
-  solverParams = pywraplp.MPSolverParameters()
-  solverParams.SetDoubleParam(solverParams.RELATIVE_MIP_GAP, gap)
+  solver.set_time_limit(timeExe*1000) 
 
   #executa o solver
   init = time.time()
-  status = solver.Solve(solverParams)
+  status = solver.Solve()
   fim = time.time()
   if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
     coords = []
@@ -109,10 +106,85 @@ def modelo(distances, subTours ,timeExe,useMTZ=True, writeLp=False):
           if round(x[j,i].solution_value()) == 1:
             coords.append([i,j])
     print('')
-    print('Solution: Objective value =', solver.Objective().Value(), ' AND execution in =', round(fim-init), '[s]\n')
-    return solver.Objective().Value(), coords
+    print('Solution: Objective value =', solver.Objective().Value(),' AND execution in =', round(fim-init), '[s]\n')
+    return solver.Objective().Value(), coords,0
   else:
     print("Infeasible")
+    return 0, [], 0
+#************************************************************************************************
+#FUNÇÃO QUE EXECUTA O SOLVER - GUROBI
+#************************************************************************************************
+def modeloGurobi(distances, subTours ,timeExe,useMTZ=True, writeLp=False):
+  n = distances.shape[0]
+  # Create a Gurobi model
+  model = Model()
+
+  # Create variables
+  x = {}
+  for i in range(n):
+      for j in range(n):
+          if i != j:
+              x[i, j] = model.addVar(vtype=GRB.BINARY, name=f'x_{i}_{j}')
+
+  # Set objective
+  model.setObjective(quicksum(distances[i, j] * x[i, j] for i in range(n) for j in range(n) if i != j), GRB.MINIMIZE)
+
+  # Add degree constraints para i
+  for i in range(n):
+      model.addConstr(quicksum(x[i, j] for j in range(n) if i != j) == 1, name=f'degree_{i}')
+
+  # Add degree constraints para j
+  for j in range(n):
+      model.addConstr(quicksum(x[i, j] for i in range(n) if i != j) == 1, name=f'degree_{j}')
+
+  # Add MTZ constraints
+  if(useMTZ):
+    u = {}
+    for i in range(1, n):
+        u[i] = model.addVar(lb=1, ub=n - 1, vtype=GRB.INTEGER, name=f'u_{i}')
+
+    for i in range(1, n):
+        for j in range(1, n):
+            if i != j:
+                model.addConstr(u[i] - u[j] + (n - 1) * x[i, j] <= n - 2, name=f'mtz_{i}_{j}')
+
+   # Add restrição sub rotas
+  for m in range(len(subTours)):
+        r5 = 0
+        for i in range(len(subTours[m])):
+            for j in range(len(subTours[m])):
+                if i != j:
+                    r5 += x[subTours[m][i], subTours[m][j]]
+        model.addConstr(r5 <= len(subTours[m]) - 1, name=f"sub_{m}_{i}_{j}")
+
+  model.Params.TimeLimit = timeExe
+  #executa o solver
+  init = time.time()
+  model.optimize()
+  fim = time.time()
+
+  # gera o lp do modelo
+  lp = "model-LP-"+str(strftime("%Y-%m-%dT%H:%M:%S", gmtime()))+".mps"
+  if writeLp:
+    model.write(lp)
+
+  # Print the solution
+  if model.status == GRB.OPTIMAL:
+    coords = []
+    fo= model.ObjVal
+    gap = model.MIPGap
+    for i in range(n):
+      for j in range(n):
+        if (i != j):
+          if round(x[j,i].x) == 1:
+            coords.append([i,j])
+    print('')
+    print('Solution: Objective value =', fo, 'Gap = ',gap,' AND execution in =', round(fim-init), '[s]\n')
+    return fo, coords, gap
+  else:
+    print("Infeasible")
+    return 0, [], 0
+
 #************************************************************************************************
 #FUNÇÃO QUE RETORNA OS SUB ROTAS
 #************************************************************************************************
@@ -137,65 +209,114 @@ def createSubTours(coords):
         sub_tours.append(sub_tour)
     return sub_tours
 #************************************************************************************************
-#METODOS
+# METODO MTZ
 #************************************************************************************************
-def mtz(fileArq,timeExe,writeLp):
+def mtz(fileArq,timeExe,writeLp,solver='ortools'):
   distances = leia(fileArq)
   subTours=[]
-  fo, coords = modelo(distances,subTours,timeExe,True,writeLp)
-  subTours = createSubTours(coords)
-  return fo,subTours
-
-def pataki(fileArq,timeExe,writeLp):
+  match solver:
+    case 'ortools':
+      fo, coords, gap = modeloOrtools(distances,subTours,timeExe,True,writeLp)
+      subTours = createSubTours(coords)
+      return fo,subTours,gap
+    case 'gurobi':
+      fo, coords, gap = modeloGurobi(distances,subTours,timeExe,True,writeLp)
+      subTours = createSubTours(coords)
+      return fo,subTours,gap
+#************************************************************************************************
+# PATAKI MTZ
+#************************************************************************************************
+def pataki(fileArq,timeExe,writeLp,solver):
   distances = leia(fileArq)
   subTours = []
-  for i in range(100):
-    print("Iteração: ",i)
-    fo, coords = modelo(distances,subTours,timeExe,False,writeLp)
-    subToursCorrent = createSubTours(coords)
-    if(len(subToursCorrent)==1):
-      return fo,subToursCorrent
-    subTours.extend(subToursCorrent)
-
-def metodos(meth,fileArq,timeExe,writeLp):
+  match solver:
+    case 'ortools':
+      for i in range(100):
+        print("Iteração: ",i)
+        fo, coords, gap = modeloOrtools(distances,subTours,timeExe,False,writeLp)
+        subToursCorrent = createSubTours(coords)
+        if(len(subToursCorrent)==1):
+          return fo,subToursCorrent,gap
+        subTours.extend(subToursCorrent)
+    case 'gurobi':
+      for i in range(100):
+        print("Iteração: ",i)
+        fo, coords, gap = modeloGurobi(distances,subTours,timeExe,False,writeLp)
+        subToursCorrent = createSubTours(coords)
+        if(len(subToursCorrent)==1):
+          return fo,subToursCorrent,gap
+        subTours.extend(subToursCorrent)
+#************************************************************************************************
+# FUNÇÃO QUE CHAMA OS METODOS
+#************************************************************************************************
+def metodos(meth,fileArq,timeExe,writeLp,solver):
   match meth:
     case 'MTZ':
       print("==============================Executando MTZ - ",fileArq,"==============================")
       init = time.time()
-      fo, route = mtz(fileArq,timeExe,writeLp)
+      fo, route, gap = mtz(fileArq,timeExe,writeLp,solver)
       fim = time.time()
       print("MTZ - tempo total",round(fim-init), '[s]')
-      return fo, route
+      return fo, route, round(fim-init), gap
     case 'PATAKI':
       print("==============================Executando PATAKI - ",fileArq,"==============================")
       init = time.time()
-      fo, route = pataki(fileArq,timeExe,writeLp)
+      fo, route, gap = pataki(fileArq,timeExe,writeLp,solver)
       fim = time.time()
-      print("MTZ - tempo total",round(fim-init), '[s]')
-      return fo, route
+      print("PATAKI - tempo total",round(fim-init), '[s]')
+      return fo, route, round(fim-init), gap
+#************************************************************************************************
+# FUNÇÃO DE IMPRIME
+#************************************************************************************************
+def imprime(solver,dataset,metodo,fo,time,gap,route):
+  lp = "resultados/"+str(solver)+"-"+str(dataset)+"-"+str(metodo)+"-"+str(strftime("%Y-%m-%dT%H:%M:%S", gmtime()))+".txt"
+  with open(lp, 'a') as arquivo:
+      message = 'Fo:\t'+str(fo)+'\nTempo:\t'+str(time)+'\nGap:\t'+str(gap)+'\nRoute:\t'+str(route)
+      arquivo.write(message) 
+
 #************************************************************************************************
 #FUNÇÃO MAIN
 #************************************************************************************************
 def __main__():
   writeLp = False #ligar ou desligar a criação do arquivo lp
-  timeExe = 1800000    #limitante do tempo de execução do solver em milisegundos 1800000 => 30 minutos
+  timeLimitSolver = 3600    #limitante do tempo de execução do solver em segundos 3600 => 60 minutos
 
-  fileArq='bays29.tsp'
-  fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
-  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
-  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  solver = 'gurobi'
+  fileArq='bays29'
+  fo, route, time, gap = metodos('MTZ',fileArq,timeLimitSolver,writeLp,solver)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n\tGap:',gap)
+  imprime(solver,fileArq,'MTZ',fo,time,gap,route)
+  fo, route, time, gap = metodos('PATAKI',fileArq,timeLimitSolver,writeLp,solver)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n\tGap:',gap)
+  imprime(solver,fileArq,'PATAKI',fo,time,gap,route)
+
+  # solver = 'ortools'
+  # fileArq='bays29'
+  # fo, route, time, gap = metodos('MTZ',fileArq,timeLimitSolver,writeLp,solver)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n\tGap:',gap)
+  # imprime(solver,fileArq,'MTZ',fo,time,gap)
+  # fo, route, time, gap = metodos('PATAKI',fileArq,timeLimitSolver,writeLp,solver)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n\tGap:',gap)
+  # imprime(solver,fileArq,'PATAKI',fo,time,gap)
  
-  fileArq='brazil58.tsp'
-  fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
+  fileArq='brazil58'
+  fo, route, time, gap = metodos('MTZ',fileArq,timeLimitSolver,writeLp,solver)
   print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
+  imprime(solver,fileArq,'MTZ',fo,time,gap,route)
+  fo, route, time, gap = metodos('PATAKI',fileArq,timeLimitSolver,writeLp,solver)
   print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  imprime(solver,fileArq,'MTZ',fo,time,gap,route)
 
-  fileArq='si535.tsp'
-  fo, route = metodos('MTZ',fileArq,timeExe,writeLp)
-  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  fo, route = metodos('PATAKI',fileArq,timeExe,writeLp)
-  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  # solver = 'gurobi'
+  # fileArq='brazil58'
+  # fo, route, time = metodos('MTZ',fileArq,timeLimitSolver,writeLp,solver)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  # fo, route, time = metodos('PATAKI',fileArq,timeLimitSolver,writeLp,solver)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
 
+  # fileArq='si535'
+  # fo, route, time = metodos('MTZ',fileArq,timeLimitSolver,writeLp,solver)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  # fo, route, time = metodos('PATAKI',fileArq,timeLimitSolver,writeLp,solver)
+  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
 __main__()
