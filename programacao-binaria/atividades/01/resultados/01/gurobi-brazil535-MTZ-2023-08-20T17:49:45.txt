@@ -1,0 +1,5 @@
+Fo:	-
+Tempo:	2766
+Gap:	-
+Route:	[[]]
+- Estorou a memória do pc com 2766 s, não foi encontrada solução viavel nesse periodo.

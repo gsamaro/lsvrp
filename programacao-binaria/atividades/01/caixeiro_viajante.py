@@ -209,6 +209,34 @@ def createSubTours(coords):
         sub_tours.append(sub_tour)
     return sub_tours
 #************************************************************************************************
+#FUNÇÃO QUE CRIA AS PERMUNTAÇÕES
+#************************************************************************************************
+import itertools
+import random
+def permutaciones_en_matriz(input_list, num_permutations):
+    permutations_list = []
+    input_length = len(input_list)
+    
+    # Garantir que o número de permutações não exceda o total possível
+    num_permutations = min(num_permutations, factorial(input_length))
+    
+    for _ in range(num_permutations):
+        permutation = list(input_list)  # Faz uma cópia do vetor original
+        # Aplica o algoritmo de troca de elementos para gerar a próxima permutação
+        for i in range(input_length - 1, 0, -1):
+            j = random.randint(0, i)
+            permutation[i], permutation[j] = permutation[j], permutation[i]
+        permutations_list.append(permutation)
+    
+    return permutations_list
+
+# Função auxiliar para calcular fatorial
+def factorial(n):
+    if n == 0 or n == 1:
+        return 1
+    return n * factorial(n - 1)
+
+#************************************************************************************************
 # METODO MTZ
 #************************************************************************************************
 def mtz(fileArq,timeExe,writeLp,solver='ortools'):
@@ -246,6 +274,30 @@ def pataki(fileArq,timeExe,writeLp,solver):
         if(len(subToursCorrent)==1):
           return fo,subToursCorrent,gap
         subTours.extend(subToursCorrent)
+
+def pataki2(fileArq,timeExe,writeLp,solver):
+  distances = leia(fileArq)
+  subTours = []
+  match solver:
+    case 'ortools':
+      for i in range(100):
+        print("Iteração: ",i)
+        fo, coords, gap = modeloOrtools(distances,subTours,timeExe,False,writeLp)
+        subToursCorrent = createSubTours(coords)
+        if(len(subToursCorrent)==1):
+          return fo,subToursCorrent,gap
+        subTours.extend(subToursCorrent)
+    case 'gurobi':
+      for i in range(100):
+        print("Iteração: ",i)
+        fo, coords, gap = modeloGurobi(distances,subTours,timeExe,False,writeLp)
+        subToursCorrent = createSubTours(coords)
+        if(len(subToursCorrent)==1):
+          return fo,subToursCorrent,gap
+        
+        for j in range(len(subToursCorrent)): 
+          subTours.extend(permutaciones_en_matriz(subToursCorrent[j],len(subToursCorrent[j])))
+
 #************************************************************************************************
 # FUNÇÃO QUE CHAMA OS METODOS
 #************************************************************************************************
@@ -265,6 +317,13 @@ def metodos(meth,fileArq,timeExe,writeLp,solver):
       fim = time.time()
       print("PATAKI - tempo total",round(fim-init), '[s]')
       return fo, route, round(fim-init), gap
+    case 'PATAKI-2':
+      print("==============================Executando PATAKI - ",fileArq,"==============================")
+      init = time.time()
+      fo, route, gap = pataki2(fileArq,timeExe,writeLp,solver)
+      fim = time.time()
+      print("PATAKI - tempo total",round(fim-init), '[s]')
+      return fo, route, round(fim-init), gap
 #************************************************************************************************
 # FUNÇÃO DE IMPRIME
 #************************************************************************************************
@@ -280,13 +339,15 @@ def imprime(solver,dataset,metodo,fo,time,gap,route):
 def __main__():
   writeLp = False #ligar ou desligar a criação do arquivo lp
   timeLimitSolver = 3600    #limitante do tempo de execução do solver em segundos 3600 => 60 minutos
-
   solver = 'gurobi'
+
   fileArq='bays29'
   fo, route, time, gap = metodos('MTZ',fileArq,timeLimitSolver,writeLp,solver)
   print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n\tGap:',gap)
   imprime(solver,fileArq,'MTZ',fo,time,gap,route)
   fo, route, time, gap = metodos('PATAKI',fileArq,timeLimitSolver,writeLp,solver)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n\tGap:',gap)
+  fo, route, time, gap = metodos('PATAKI-2',fileArq,timeLimitSolver,writeLp,solver)
   print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n\tGap:',gap)
   imprime(solver,fileArq,'PATAKI',fo,time,gap,route)
 
@@ -305,7 +366,7 @@ def __main__():
   imprime(solver,fileArq,'MTZ',fo,time,gap,route)
   fo, route, time, gap = metodos('PATAKI',fileArq,timeLimitSolver,writeLp,solver)
   print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  imprime(solver,fileArq,'MTZ',fo,time,gap,route)
+  imprime(solver,fileArq,'PATAKI',fo,time,gap,route)
 
   # solver = 'gurobi'
   # fileArq='brazil58'
@@ -314,9 +375,13 @@ def __main__():
   # fo, route, time = metodos('PATAKI',fileArq,timeLimitSolver,writeLp,solver)
   # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
 
-  # fileArq='si535'
-  # fo, route, time = metodos('MTZ',fileArq,timeLimitSolver,writeLp,solver)
-  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
-  # fo, route, time = metodos('PATAKI',fileArq,timeLimitSolver,writeLp,solver)
-  # print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  fileArq='si535'
+  fo, route, time, gap = metodos('MTZ',fileArq,timeLimitSolver,writeLp,solver)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  imprime(solver,fileArq,'MTZ',fo,time,gap,route)
+  fo, route, time, gap = metodos('PATAKI',fileArq,timeLimitSolver,writeLp,solver)
+  print('Aquivo: ',fileArq, 'Solução: ', '\n\tFO: ',fo,'\n\tRoute:',route,'\n')
+  imprime(solver,fileArq,'PATAKI',fo,time,gap,route)
 __main__()
+
+
