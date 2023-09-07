@@ -1,0 +1,70 @@
+Set parameter Username
+Academic license - for non-commercial use only - expires 2024-08-14
+Gurobi Optimizer version 10.0.2 build v10.0.2rc0 (linux64)
+
+CPU model: Intel(R) Core(TM) i5-8250U CPU @ 1.60GHz, instruction set [SSE2|AVX|AVX2]
+Thread count: 4 physical cores, 8 logical processors, using up to 8 threads
+
+Optimize a model with 19 rows, 20 columns and 38 nonzeros
+Model fingerprint: 0x9ea48225
+Model has 200 quadratic objective terms
+Variable types: 0 continuous, 20 integer (20 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [0e+00, 0e+00]
+  QObjective range [2e+00, 2e+01]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 1e+00]
+Found heuristic solution: objective -0.0000000
+Presolve time: 0.00s
+Presolved: 200 rows, 201 columns, 581 nonzeros
+Variable types: 0 continuous, 201 integer (201 binary)
+
+Root relaxation: objective 2.160000e+02, 26 iterations, 0.00 seconds (0.00 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0  216.00000    0   20   -0.00000  216.00000      -     -    0s
+H    0     0                      73.0000000  216.00000   196%     -    0s
+H    0     0                      94.0000000  143.50000  52.7%     -    0s
+     0     0  106.50000    0   56   94.00000  106.50000  13.3%     -    0s
+H    0     0                      98.0000000  106.50000  8.67%     -    0s
+H    0     0                     104.0000000  106.50000  2.40%     -    0s
+
+Cutting planes:
+  Gomory: 2
+  MIR: 64
+  Zero half: 34
+  RLT: 49
+  BQP: 33
+
+Explored 1 nodes (286 simplex iterations) in 0.05 seconds (0.02 work units)
+Thread count was 8 (of 8 available processors)
+
+Solution count 5: 104 98 94 ... -0
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 1.040000000000e+02, best bound 1.040000000000e+02, gap 0.0000%
+Solução ótima encontrada!
+Valor da função objetivo: 104.0
+x[0] = 1
+x[1] = 0
+x[2] = 1
+x[3] = 0
+x[4] = 1
+x[5] = 0
+x[6] = 0
+x[7] = 1
+x[8] = 0
+x[9] = 1
+x[10] = 0
+x[11] = 0
+x[12] = 1
+x[13] = 0
+x[14] = 1
+x[15] = 0
+x[16] = 1
+x[17] = 0
+x[18] = 1
+x[19] = 0
