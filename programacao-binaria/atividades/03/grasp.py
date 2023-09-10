@@ -9,7 +9,7 @@ Original file is located at
 
 #################################################################################################
 # GRASP
-#Copyright 2023 Mateus Chacon Danielle Gomes e Quézia Maia
+#Copyright 2023 Mateus Chacon, Danielle Gomes e Quézia Maia
 
 # Este programa é um software livre, você pode redistribuí-lo e/ou modificá-lo
 # sob os termos da Licença Pública Geral GNU como publicada pela Fundação do Software Livre (FSF),
@@ -29,12 +29,16 @@ class Grasp:
     ##-----------------------------
     ## CONTRUTOR DA CLASSE GRASP
     ##-----------------------------
-    def __init__(self,alpha,max_iter,time_limit_seconds, matrix):
+    def __init__(self,alpha,max_iter,time_limit_seconds, matrix, model = "QBF", crl = "ALEATORIO", improvement= "FIRST"):
         self.alpha = alpha
         self.max_iter = max_iter
         self.time_limit_seconds = time_limit_seconds
         self.matrix = matrix
         self.N = len(self.matrix)
+        self.model = model
+        self.crl = crl
+        self.improvement = improvement
+
     ##-------------------------------------------------
     ## CRIA SOLUÇÃO ALEATÓRIA COM CRL
     ##-------------------------------------------------
@@ -42,22 +46,24 @@ class Grasp:
         solucao = [0] * self.N
         candidatos = list(range(self.N))
         
+        melhor_contribuicao = float('-inf')
         while candidatos:
             # Seleciona aleatoriamente um subconjunto de candidatos com base em alfa
             tamanho_candidatos = max(1, int(self.alpha * len(candidatos)))
             subconjunto_candidatos = random.sample(candidatos, tamanho_candidatos)
             
-            melhor_contribuicao = float('-inf')
             melhor_candidato = None
-            
-            solucao_current = [0] * self.N
+            solucao_current = solucao
             for candidato in subconjunto_candidatos:
+                
                 solucao_current[candidato] = 1
                 contribuicao = self.evaluate_solution(solucao_current)
-
                 if contribuicao > 0 and contribuicao > melhor_contribuicao:
-                    melhor_contribuicao = contribuicao
-                    melhor_candidato = candidato
+                    if(self.restricoes(candidato,solucao_current)):
+                        melhor_contribuicao=contribuicao
+                        melhor_candidato=candidato
+
+                solucao_current[candidato] = 0
 
             if (melhor_candidato!=None):      
                 solucao[melhor_candidato] = 1
@@ -90,6 +96,7 @@ class Grasp:
         solucao = [0] * self.N
         candidatos = self.construir_crl()
         
+        melhor_contribuicao = float('-inf')
         while candidatos:
             # Seleciona aleatoriamente um subconjunto de candidatos com base em alfa
             tamanho_candidatos = max(1, int(self.alpha * len(candidatos)))
@@ -97,17 +104,18 @@ class Grasp:
             for i in range(tamanho_candidatos):
                 subconjunto_candidatos.append(candidatos[i])
             
-            melhor_contribuicao = float('-inf')
             melhor_candidato = None
-            
-            solucao_current = [0] * self.N
+            solucao_current = solucao
             for candidato in subconjunto_candidatos:
                 solucao_current[candidato] = 1
                 contribuicao = self.evaluate_solution(solucao_current)
 
                 if contribuicao > 0 and contribuicao > melhor_contribuicao:
-                    melhor_contribuicao = contribuicao
-                    melhor_candidato = candidato
+                    if(self.restricoes(candidato,solucao_current)):
+                        melhor_contribuicao=contribuicao
+                        melhor_candidato=candidato
+
+                solucao_current[candidato] = 0
 
             if (melhor_candidato!=None):      
                 solucao[melhor_candidato] = 1
@@ -135,24 +143,97 @@ class Grasp:
             current_solution[i] = 1 - current_solution[i]  # Flip the bit
 
             current_score = self.evaluate_solution(current_solution)
-            if current_score > best_score:
-                solution = current_solution
-                best_score = current_score
+            if(self.restricoes(i,current_solution)):
+                if current_score > best_score:
+                    solution = current_solution
+                    best_score = current_score
 
         return solution, best_score
+
+    def best_improvement(self, solution):
+        best_score = self.evaluate_solution(solution)
+
+        for i in range(self.N):
+            for j in range(i + 1, self.N):  # Evita avaliar pares repetidos
+                current_solution = list(solution)
+                current_solution[i] = 1 - current_solution[i]  # Flip o bit i
+                if(self.restricoes(i,current_solution)):
+                    current_solution[j] = 1 - current_solution[j]  # Flip o bit j
+                    if(self.restricoes(j,current_solution)):
+                        current_score = self.evaluate_solution(current_solution)  
+                        if current_score > best_score:
+                            solution = current_solution
+                            best_score = current_score
+
+        return solution, best_score
+    ##-----------------------------
+    ## FUNÇÃO RESTRIÇÃO QBF
+    ##-----------------------------
+    def restricoaQBF(self):
+        return True
+    ##-----------------------------
+    ## FUNÇÃO RESTRIÇÃO QBFAC
+    ##-----------------------------
+    def restricaoQBFAC(self,candidato,solucao_current):
+        if(solucao_current[candidato]==0):
+            return True
+
+        verify_visinho_anterior = False
+        if(candidato > 0):
+            if(solucao_current[candidato-1]==0):
+                verify_visinho_anterior = True
+        else:
+            verify_visinho_anterior = True
+
+        verify_visinho_posterior = False
+        if (candidato < len(solucao_current)-1):
+            if(solucao_current[candidato + 1]==0):
+                verify_visinho_posterior = True
+        else:
+            verify_visinho_posterior = True
+        
+        if(verify_visinho_anterior and verify_visinho_posterior):
+            return True
+        return False
+    ##-----------------------------
+    ## METODO DE RESTRIÇÕES
+    ##-----------------------------
+    def restricoes(self,candidato,solucao_current):
+        match self.model:
+            case "QBF":
+                return self.restricoaQBF()
+            case "QBFAC":
+                return self.restricaoQBFAC(candidato,solucao_current)
+    ##-----------------------------
+    ## METODO DE PERTUBACAO
+    ##-----------------------------
+    def improvement_grasp(self,solution):
+        match self.improvement:
+            case 'FIRST':
+                return self.first_improvement(solution)
+            case 'BEST':
+                return self.best_improvement(solution)
+    ##-----------------------------
+    ## METODO DE CONTRUÇÃO DA SOLUÇÃO
+    ##-----------------------------
+    def construir_solucao_crl(self):
+        match self.crl:
+            case 'ALEATORIO':
+                return self.construir_solucao_com_crl()
+            case 'GULOSA':
+                return self.construir_solucao_com_crl_gulosa()
     ##-----------------------------
     ## METODO PRINCIPAL DO GRASP
     ##-----------------------------
     def solve(self):
         random.seed(int(time.time()))
-        # best_solution = self.construir_solucao_com_crl()
-        best_solution = self.construir_solucao_com_crl_gulosa()
+        best_solution = self.construir_solucao_crl()
         best_score = self.evaluate_solution(best_solution)
         start_time = time.time()
 
         for _ in range(1, self.max_iter + 1):
-            current_solution = self.construir_solucao_com_crl_gulosa()
-            current_solution, current_score = self.first_improvement(current_solution)
+            current_solution = self.construir_solucao_crl()
+            current_solution, current_score = self.improvement_grasp(current_solution)
 
             if current_score > best_score:
                 best_solution = current_solution
@@ -260,7 +341,7 @@ class Graphic:
         plt.ylabel('Valores (FO)')
         for i in range(len(self.c)):
             plt.text(self.c[i], self.fo[i] +0.5, str(self.fo[i]), ha='center', va='bottom')
-        plt.savefig('./graficos/FO_graphic_'+self.name+'.png')
+        plt.savefig('./graficos/FOs/'+self.name+'.png')
 
     def ploatTimes(self):
         plt.figure(figsize=(20, 10)) 
@@ -268,10 +349,10 @@ class Graphic:
         plt.title('Gráfico de Tempos')
         plt.xlabel('Paramêtros (alpha|maxIter)')
         plt.ylabel('Tempo')
-        plt.savefig('./graficos/TE_graphic_'+self.name+'.png')
+        plt.savefig('./graficos/Tempos/'+self.name+'.png')
     
     def salveResultsJson(self):
-        lp = "./resultados/resultados_"+self.name+".json"
+        lp = "./resultados/"+self.name+".json"
         with open(lp, 'a') as arquivo:
             arquivo.write(json.dumps(self.results)) 
 ##===========================================
@@ -284,17 +365,23 @@ class Graphic:
 # qbf090 80     > 965           > 586
 # qbf100 100    > 1451          > 862
 def __main__():
-    files = ['qbf020','qbf040','qbf060','qbf080','qbf100']
+
+    # test=====================================
     # files = ['qbf100']
-    alpha = [0.2,0.4,0.6,0.8,1]
     # max_iter = [1,500,1000]
+    # read = Read(files[4])
+    # matrix = read.getMatriz()
+    # graps = Grasp(alpha=alpha[2],max_iter=max_iter[0],time_limit_seconds=time_limit_seconds,matrix=matrix,crl=crl,improvement=improvement,model=model)
+    # print(graps.solve())
+
+    # 1 massa =====================================
+    files = ['qbf020','qbf040','qbf060','qbf080','qbf100']
+    alpha = [0.2,0.4,0.6,0.8,1]
     max_iter = [1]
     time_limit_seconds = 1800
-
-    # read = Read(files[0])
-    # matrix = read.getMatriz()
-    # graps = Grasp(alpha=alpha[4],max_iter=max_iter[0],time_limit_seconds=time_limit_seconds,matrix=matrix)
-    # print(graps.solve())
+    crl = 'GULOSA'
+    improvement= "FIRST"
+    model = 'QBF'
 
     for file in files:
         print(" *** ")
@@ -305,12 +392,217 @@ def __main__():
         executions=[]
         for j in range(len(max_iter)):
             for i in range(len(alpha)):
-                executions.append(Grasp(alpha=alpha[i],max_iter=max_iter[j],time_limit_seconds=time_limit_seconds,matrix=matrix))
+                executions.append(Grasp(alpha=alpha[i],max_iter=max_iter[j],time_limit_seconds=time_limit_seconds,matrix=matrix,crl=crl,improvement=improvement,model=model))
 
         thread = Thread(executions=executions)
         thread.executa()
 
-        graphic = Graphic(thread.getResults(),file)
+        name = model+"/"+improvement+"/"+file+"/_crl_"+crl
+        graphic = Graphic(thread.getResults(),name)
+        graphic.ploatFOs()
+        graphic.ploatTimes()
+        graphic.salveResultsJson()
+    
+    # 2 massa =====================================
+    files = ['qbf020','qbf040','qbf060','qbf080','qbf100']
+    alpha = [0.2,0.4,0.6,0.8,1]
+    max_iter = [1]
+    time_limit_seconds = 1800
+    crl = 'GULOSA'
+    improvement= "FIRST"
+    model = 'QBFAC'
+
+    for file in files:
+        print(" *** ")
+        print("Resolvendo_Instancia_",file)
+        read = Read(file)
+        matrix = read.getMatriz()
+
+        executions=[]
+        for j in range(len(max_iter)):
+            for i in range(len(alpha)):
+                executions.append(Grasp(alpha=alpha[i],max_iter=max_iter[j],time_limit_seconds=time_limit_seconds,matrix=matrix,crl=crl,improvement=improvement,model=model))
+
+        thread = Thread(executions=executions)
+        thread.executa()
+
+        name = model+"/"+improvement+"/"+file+"/_crl_"+crl
+        graphic = Graphic(thread.getResults(),name)
+        graphic.ploatFOs()
+        graphic.ploatTimes()
+        graphic.salveResultsJson()
+
+    # 3 massa =====================================
+    files = ['qbf020','qbf040','qbf060','qbf080','qbf100']
+    alpha = [0.2,0.4,0.6,0.8,1]
+    max_iter = [1]
+    time_limit_seconds = 1800
+    crl = 'GULOSA'
+    improvement= "BEST"
+    model = 'QBF'
+
+    for file in files:
+        print(" *** ")
+        print("Resolvendo_Instancia_",file)
+        read = Read(file)
+        matrix = read.getMatriz()
+
+        executions=[]
+        for j in range(len(max_iter)):
+            for i in range(len(alpha)):
+                executions.append(Grasp(alpha=alpha[i],max_iter=max_iter[j],time_limit_seconds=time_limit_seconds,matrix=matrix,crl=crl,improvement=improvement,model=model))
+
+        thread = Thread(executions=executions)
+        thread.executa()
+
+        name = model+"/"+improvement+"/"+file+"/_crl_"+crl
+        graphic = Graphic(thread.getResults(),name)
+        graphic.ploatFOs()
+        graphic.ploatTimes()
+        graphic.salveResultsJson()
+    
+    # 4 massa =====================================
+    files = ['qbf020','qbf040','qbf060','qbf080','qbf100']
+    alpha = [0.2,0.4,0.6,0.8,1]
+    max_iter = [1]
+    time_limit_seconds = 1800
+    crl = 'GULOSA'
+    improvement= "BEST"
+    model = 'QBFAC'
+
+    for file in files:
+        print(" *** ")
+        print("Resolvendo_Instancia_",file)
+        read = Read(file)
+        matrix = read.getMatriz()
+
+        executions=[]
+        for j in range(len(max_iter)):
+            for i in range(len(alpha)):
+                executions.append(Grasp(alpha=alpha[i],max_iter=max_iter[j],time_limit_seconds=time_limit_seconds,matrix=matrix,crl=crl,improvement=improvement,model=model))
+
+        thread = Thread(executions=executions)
+        thread.executa()
+
+        name = model+"/"+improvement+"/"+file+"/_crl_"+crl
+        graphic = Graphic(thread.getResults(),name)
+        graphic.ploatFOs()
+        graphic.ploatTimes()
+        graphic.salveResultsJson()
+    
+    # 5 massa =====================================
+    files = ['qbf020','qbf040','qbf060','qbf080','qbf100']
+    alpha = [0.2,0.4,0.6,0.8,1]
+    max_iter = [1,10,50,100]
+    time_limit_seconds = 1800
+    crl = 'ALEATORIO'
+    improvement= "FIRST"
+    model = 'QBF'
+
+    for file in files:
+        print(" *** ")
+        print("Resolvendo_Instancia_",file)
+        read = Read(file)
+        matrix = read.getMatriz()
+
+        executions=[]
+        for j in range(len(max_iter)):
+            for i in range(len(alpha)):
+                executions.append(Grasp(alpha=alpha[i],max_iter=max_iter[j],time_limit_seconds=time_limit_seconds,matrix=matrix,crl=crl,improvement=improvement,model=model))
+
+        thread = Thread(executions=executions)
+        thread.executa()
+
+        name = model+"/"+improvement+"/"+file+"/_crl_"+crl
+        graphic = Graphic(thread.getResults(),name)
+        graphic.ploatFOs()
+        graphic.ploatTimes()
+        graphic.salveResultsJson()
+    
+    # 6 massa =====================================
+    files = ['qbf020','qbf040','qbf060','qbf080','qbf100']
+    alpha = [0.2,0.4,0.6,0.8,1]
+    max_iter = [1,10,50,100]
+    time_limit_seconds = 1800
+    crl = 'ALEATORIO'
+    improvement= "FIRST"
+    model = 'QBFAC'
+
+    for file in files:
+        print(" *** ")
+        print("Resolvendo_Instancia_",file)
+        read = Read(file)
+        matrix = read.getMatriz()
+
+        executions=[]
+        for j in range(len(max_iter)):
+            for i in range(len(alpha)):
+                executions.append(Grasp(alpha=alpha[i],max_iter=max_iter[j],time_limit_seconds=time_limit_seconds,matrix=matrix,crl=crl,improvement=improvement,model=model))
+
+        thread = Thread(executions=executions)
+        thread.executa()
+
+        name = model+"/"+improvement+"/"+file+"/_crl_"+crl
+        graphic = Graphic(thread.getResults(),name)
+        graphic.ploatFOs()
+        graphic.ploatTimes()
+        graphic.salveResultsJson()
+
+
+    # 7 massa =====================================
+    files = ['qbf020','qbf040','qbf060','qbf080','qbf100']
+    alpha = [0.2,0.4,0.6,0.8,1]
+    max_iter = [1,10,50,100]
+    time_limit_seconds = 1800
+    crl = 'ALEATORIO'
+    improvement= "BEST"
+    model = 'QBF'
+
+    for file in files:
+        print(" *** ")
+        print("Resolvendo_Instancia_",file)
+        read = Read(file)
+        matrix = read.getMatriz()
+
+        executions=[]
+        for j in range(len(max_iter)):
+            for i in range(len(alpha)):
+                executions.append(Grasp(alpha=alpha[i],max_iter=max_iter[j],time_limit_seconds=time_limit_seconds,matrix=matrix,crl=crl,improvement=improvement,model=model))
+
+        thread = Thread(executions=executions)
+        thread.executa()
+
+        name = model+"/"+improvement+"/"+file+"/_crl_"+crl
+        graphic = Graphic(thread.getResults(),name)
+        graphic.ploatFOs()
+        graphic.ploatTimes()
+        graphic.salveResultsJson()
+    
+    # 8 massa =====================================
+    files = ['qbf020','qbf040','qbf060','qbf080','qbf100']
+    alpha = [0.2,0.4,0.6,0.8,1]
+    max_iter = [1,10,50,100]
+    time_limit_seconds = 1800
+    crl = 'ALEATORIO'
+    improvement= "BEST"
+    model = 'QBFAC'
+
+    for file in files:
+        print(" *** ")
+        print("Resolvendo_Instancia_",file)
+        read = Read(file)
+        matrix = read.getMatriz()
+
+        executions=[]
+        for j in range(len(max_iter)):
+            for i in range(len(alpha)):
+                executions.append(Grasp(alpha=alpha[i],max_iter=max_iter[j],time_limit_seconds=time_limit_seconds,matrix=matrix,crl=crl,improvement=improvement,model=model))
+
+        thread = Thread(executions=executions)
+        thread.executa()
+
+        name = model+"/"+improvement+"/"+file+"/_crl_"+crl
+        graphic = Graphic(thread.getResults(),name)
         graphic.ploatFOs()
         graphic.ploatTimes()
         graphic.salveResultsJson()
