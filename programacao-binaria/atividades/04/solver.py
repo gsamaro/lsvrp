@@ -34,7 +34,7 @@ def circle_packing_gurobi(radii = []):
 
     # Otimizar o modelo
     model.Params.NonConvex = 2      # Aceitar termos não convexos
-    model.Params.TimeLimit = 3600   # 1 hora de execução
+    model.Params.TimeLimit = 10800   # 1 hora de execução
     # gera o lp do modelo
     lp = "model-LP.mps"
     model.write(lp)
@@ -95,20 +95,20 @@ def plot_solution(awnser={},name =""):
 # 4 - 50 - 1, 2, 3, 4 e 5 (10× cada)
 # 5 - 100 - 1,2,. . . ,10 (10× cada)
 def __main__():
-    radii = [1,1]
-    awnser = circle_packing_gurobi(radii=radii)
-    print(awnser)
-    plot_solution(awnser,"test")
+    # radii = [1,1]
+    # awnser = circle_packing_gurobi(radii=radii)
+    # print(awnser)
+    # plot_solution(awnser,"test")
 
-    radii = [1,2,3,4,5,6,7]
-    awnser = circle_packing_gurobi(radii=radii)
-    print(awnser)
-    plot_solution(awnser,"instancia_1")
+    # radii = [1,2,3,4,5,6,7]
+    # awnser = circle_packing_gurobi(radii=radii)
+    # print(awnser)
+    # plot_solution(awnser,"instancia_1")
 
-    radii = [1]*5 + [2]*5 + [3]*5
-    awnser = circle_packing_gurobi(radii=radii)
-    print(awnser)
-    plot_solution(awnser,"instancia_2")
+    # radii = [1]*5 + [2]*5 + [3]*5
+    # awnser = circle_packing_gurobi(radii=radii)
+    # print(awnser)
+    # plot_solution(awnser,"instancia_2")
 
     radii = [1]*10 + [2]*10 + [3]*10
     awnser = circle_packing_gurobi(radii=radii)
