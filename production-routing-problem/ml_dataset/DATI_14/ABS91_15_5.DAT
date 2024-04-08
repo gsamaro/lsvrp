@@ -1,0 +1,29 @@
+  TYPE:	ORDER-UP-TO-LEVEL-TSP          91
+  COMMENT: NODE 1 REPRESENTS THE SUPPLIER
+  COMMENT: THE QUANTITY ABSORBED BY RETAILER AND THE
+           QUANTITY MADE AVAILABLE AT THE SUPPLIER
+           ARE CONSTANT OVER TIME
+  TRANSPORTATION-COST-TYPE: EUC_2 (T(i,j)=
+  T(J,I)=INT((SQRT((X(I)-X(J))**2+(Y(I)-Y(J))**2))+.5)
+  NAME: claudia
+  DIMENSION:         15
+  HORIZON:          6
+  VEHICLE CAPACITY:        288
+  FIXED TRANSPORTATION COST:  999999.000000
+  SUPPLIER_COORD_COORD_START._LEVEL_INV._COST_VAR. PROD. COST_SET-UP PROD._COST
+    0     436.0     998.0         0       3.0     300.0   30000.0
+  RETAILER_COORD_COORD_START._LEVEL_MAX LEVEL_MIN LEVEL_QUANTITY ABS._INV._COST
+    1     891.0     596.0   13   26    0   13        .0
+    2     768.0     146.0   36   54    0   18        .0
+    3     858.0     633.0   80   96    0   16        .0
+    4      12.0     256.0   75   90    0   15        .0
+    5     165.0     108.0   12   18    0    6        .0
+    6     672.0      15.0   44   66    0   22        .0
+    7     492.0     239.0   48   60    0   12        .0
+    8     776.0     382.0   18   27    0    9        .0
+    9     741.0     946.0   68   85    0   17        .0
+   10     772.0      16.0   44   55    0   11        .0
+   11     453.0     141.0   64   80    0   16        .0
+   12     124.0     508.0   20   25    0    5        .0
+   13     210.0     132.0   75   90    0   15        .0
+   14     798.0     710.0   38   57    0   19        .0
