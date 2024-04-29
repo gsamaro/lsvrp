@@ -1,0 +1,13 @@
+production capacity : 120000
+storage capacity : 240000
+
+setup cost : 70000
+holding cost : 1
+
+vehicle capacity : 8000
+number of vehicle : 9
+
+customers storage capacity :
+from 1 to 26 : storage capacity = 600
+from 27 to 63 : storage capacity = 900
+from 64 to 100 : stotage capacity = 950
