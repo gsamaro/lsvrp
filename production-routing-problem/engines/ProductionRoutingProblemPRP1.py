@@ -13,8 +13,8 @@
 #################################################################################################
 
 import gurobipy as gp
-import dtos.Data as Data
 from gurobipy import GRB
+from engines.dtos.Data import Data
 
 class ProductionRoutingProblemPRP1:
     def __init__(self, data = Data):
@@ -74,31 +74,31 @@ class ProductionRoutingProblemPRP1:
 
     def createRestrictionBalanceStockFlowFactoryAndCustomers(self):
         for i in range(self.CONST_CUSTOMER_I):
-            self.model.Add(self.I[i, 0] == self.data.I0, name=f"rest_1_{i}")
+            self.model.addConstr(self.I[i, 0] == self.data.I0, name=f"rest_1_{i}")
         
         for t in range(1,self.CONST_PERIOD_T):
             r2 = 0
             for i in range(self.CONST_CUSTOMER_I):
                 r2+=self.q[i,t] + self.I[0,t]
-                self.model.Add(  self.I[i, t-1] + self.q[i,t] == self.data.d[i][t]+self.I[i,t], name=f"rest_3_{t}_{i}")
-            self.model.Add(  self.I[0, t-1] + self.p[t] == r2, name=f"rest_2_{t}_{i}")
+                self.model.addConstr(  self.I[i, t-1] + self.q[i,t] == self.data.d[i][t]+self.I[i,t], name=f"rest_3_{t}_{i}")
+            self.model.addConstr(  self.I[0, t-1] + self.p[t] == r2, name=f"rest_2_{t}_{i}")
 
     def createRestrictionProductionCapactiy(self):
         for t in range(self.CONST_PERIOD_T): 
-            self.model.Add( self.p[t] <= self.M[t]*self.y[t], name=f"rest_4_{t}")
+            self.model.addConstr( self.p[t] <= self.M[t]*self.y[t], name=f"rest_4_{t}")
 
     def createRestrictionLimitMaximumInventory(self):
         for t in range(self.CONST_PERIOD_T): 
-            self.model.Add( self.I[0,t] <= self.data.L[0], name=f"rest_5_{t}")
+            self.model.addConstr( self.I[0,t] <= self.data.L[0], name=f"rest_5_{t}")
         
         for t in range(1,self.CONST_PERIOD_T): 
             for i in range(self.CONST_CUSTOMER_I):
-                self.model.Add( self.I[i,t-1] + self.q[i,t] <= self.data.L[i], name=f"rest_6_{t}")
+                self.model.addConstr( self.I[i,t-1] + self.q[i,t] <= self.data.L[i], name=f"rest_6_{t}")
 
     def createRestrictionAllowPositiveDeliveryQuantityOnly(self):
         for t in range(1,self.CONST_PERIOD_T): 
             for i in range(self.CONST_CUSTOMER_I):
-                self.model.Add( self.q[i,t]<=self.MT[i][t]*self.z[i,t], name=f"rest_7_{t}_{i}")
+                self.model.addConstr( self.q[i,t]<=self.MT[i][t]*self.z[i,t], name=f"rest_7_{t}_{i}")
 
     def createRestrictionEachCustomerCanBeVistitedByMostOneVehicle(self):
         for t in range(self.CONST_PERIOD_T):
@@ -106,7 +106,7 @@ class ProductionRoutingProblemPRP1:
                 r8=0
                 for j in range(self.CONST_CUSTOMER_J):
                     r8+=self.x[i,j,t]
-                self.model.Add(r8==self.z[i,t], name=f"rest_8_{t}_{i}")
+                self.model.addConstr(r8==self.z[i,t], name=f"rest_8_{t}_{i}")
 
     def createRestrictionVehicleFlowConservation(self):
         for t in range(self.CONST_PERIOD_T):
@@ -119,21 +119,21 @@ class ProductionRoutingProblemPRP1:
                 for j in range(self.CONST_CUSTOMER_J):
                     r8+=self.x[j,i,t]
 
-                self.model.Add(r9_1+r9_2 == 2*self.z[i,t], name=f"rest_9_{t}_{i}")
+                self.model.addConstr(r9_1+r9_2 == 2*self.z[i,t], name=f"rest_9_{t}_{i}")
 
     def createRestrictionLimitNumberTrucks(self):
         for t in range(self.CONST_PERIOD_T):
-            self.model.Add(self.z[0,t]<self.data.m, name=f"rest_10_{t}")
+            self.model.addConstr(self.z[0,t]<self.data.m, name=f"rest_10_{t}")
 
     def createRestrictionVehicleLoadingAndSubTourElimination(self):  
         for i in range(self.CONST_CUSTOMER_I):
             for j in range(self.CONST_CUSTOMER_J):
                 for t in range(self.CONST_PERIOD_T):
-                    self.model.Add(self.w[i,t] - self.w[j,t] >= self.q[i,t] - self.MT[i][j]*(1 - self.x[i,j,t]), name=f"rest_11_{t}")
+                    self.model.addConstr(self.w[i,t] - self.w[j,t] >= self.q[i,t] - self.MT[i][j]*(1 - self.x[i,j,t]), name=f"rest_11_{t}")
 
         for t in range(self.CONST_PERIOD_T):
             for i in range(self.CONST_CUSTOMER_I):
-                self.model.Add(self.w[i,t] <= self.data.Q*self.z[i,t], name=f"rest_11_{t}")
+                self.model.addConstr(self.w[i,t] <= self.data.Q*self.z[i,t], name=f"rest_11_{t}")
 
 
     def solve(self):
