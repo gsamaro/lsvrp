@@ -1,0 +1,12 @@
+ Le nombre total de clients est : 6
+
+ Le nombre total de p�riodes est : 5
+
+ Le cout kilom�trique est : 1
+
+  1 :     61      1    212  364  280  264  301
+  2 :     43     27    200  299  160  339  218
+  3 :     89     76    144  290  380  354  197
+  4 :     13     10    152  344  364  105  131
+  5 :     25     49    301  199  218  268  168
+  6 :     28     49    301  199  218  268  168
