@@ -15,13 +15,11 @@ def __main__():
     
     read = ReadingFunction(info['clients'],info['instance'])
     data = read.oultsp()
-    prp = PRP1(data).solve()
-
-
     if(info['validete']=="SIM"):
         writeDto(data,info['clients'],info['instance'])
         data.toString()
 
+    prp = PRP1(data).solve()
     return 0
 
 __main__()
