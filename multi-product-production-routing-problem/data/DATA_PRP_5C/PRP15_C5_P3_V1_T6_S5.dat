@@ -1,0 +1,74 @@
+***** PARAMETERS PRP *****
+
+Number of Customers = 5
+Number of Products = 3
+Number of Vehicles = 1
+Number of Periods = 6
+
+B = Production capacity
+	2445
+
+b_p = Time required to produce item p
+ 	1	1	1
+
+c_p = Production cost of item p
+ 	300	300	800
+
+s_p = Setup cost of item p
+ 	300	300	800
+
+M = Big number
+	4889
+
+U_pi = Maximum inventory upper bound of item p at site i
+ 	4889	135	206	264	244	180
+	4889	104	227	177	157	233
+	4889	293	249	278	200	309
+
+I_pi0 = Initial inventory of item p at site i
+ 	0	103	55	124	207	172
+	0	67	127	137	139	96
+	0	93	154	243	60	191
+
+h_pi = Inventory cost of item p at site i
+ 	3	1	8	7	6	8
+	3	1	2	1	7	4
+	8	9	9	5	4	6
+
+C = Vehicle capacity
+	927
+
+f = Fixed transportation cost
+	4230
+
+a_ik = Transportation cost for traveling from node i to node k
+ 	0	455	456	254	607	505
+	455	0	26	336	542	164
+	456	26	0	323	517	189
+	254	336	323	0	364	461
+	607	542	517	364	0	705
+	505	164	189	461	705	0
+
+coordXY = Coordinates (x,y): line zero => x line one => y column => customers
+ 	498	55	49	287	80	68
+	415	314	339	556	855	151
+
+d_pit = Demand of item p at customer i in period t
+ 	75	28	63	77	12	15
+	55	46	93	28	24	63
+	39	52	33	29	94	70
+	30	77	54	46	74	12
+	89	83	74	24	27	62
+
+	67	47	66	38	15	79
+	15	41	71	97	62	55
+	14	28	66	29	59	70
+	72	67	84	72	81	95
+	45	51	20	46	21	97
+
+	93	79	17	13	51	99
+	72	48	34	95	93	32
+	74	35	47	87	24	67
+	18	42	15	22	79	64
+	26	81	84	57	40	83
+
