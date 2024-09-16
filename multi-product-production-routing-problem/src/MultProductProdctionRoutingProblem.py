@@ -96,21 +96,35 @@ class MultProductProdctionRoutingProblem:
     
     def createEstablishInvetoryBalanceAtPlant(self):
         for p in range(self.p):
-            for t in range(1,self.t):
+            for t in range(self.t):
                 r1=0
-                for v in range(self.v):
-                    for i in range(1,self.i):
-                        r1+=self.Q_p_v_i_t[p,v,i,t]
-                self.model.addConstr(r1-self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1] == self.I_p_i_t[p,0,t], name=f"rest_{p}_{t}")
+                if(t==0):
+                    for v in range(self.v):
+                        for i in range(1,self.i):
+                            r1+=self.Q_p_v_i_t[p,v,i,t]
+                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_0[p][0]-r1 == self.I_p_i_t[p,0,t], name=f"rest_{p}_{t}")
+                else:
+                    for v in range(self.v):
+                        for i in range(1,self.i):
+                            r1+=self.Q_p_v_i_t[p,v,i,t]
+                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1]-r1 == self.I_p_i_t[p,0,t], name=f"rest_{p}_{t}")
 
     def creteInventoryBalancingInventoryCustomers(self):  
+        
+        print(self.d_p_i_t[0])
         for p in range(self.p):
-            for i in range(1,self.i):
-                for t in range(1,self.t):
-                    r2=0
-                    for v in range(self.v):
-                        r2+=self.Q_p_v_i_t[p,v,i,t]
-                    self.model.addConstr(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"rest_{p}_{i}_{t}")
+            for i in range(self.i-1):
+                for t in range(self.t):
+                    if(t==0):
+                        r2=0
+                        for v in range(self.v):
+                            r2+=self.Q_p_v_i_t[p,v,i,t]
+                        self.model.addConstr(r2+self.I_p_i_0[p][i]-self.d_p_i_t[p][i][t]==self.I_p_i_t[p,i,t], name=f"rest_{p}_{i}_{t}")
+                    else:
+                        r2=0
+                        for v in range(self.v):
+                            r2+=self.Q_p_v_i_t[p,v,i,t]
+                        self.model.addConstr(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i][t]==self.I_p_i_t[p,i,t], name=f"rest_{p}_{i}_{t}")
 
     def createPlantsMaximum(self):
         for t in range(self.t):
