@@ -78,7 +78,7 @@ class MultProductProdctionRoutingProblem:
 
         objExpr_3 = gp.LinExpr()
         for v in range(self.v):
-            for k in range(self.k):
+            for k in range(1,self.k):
                 for t in range(self.t):
                     objExpr_3+=self.f*self.Z_v_i_k_t[v,0,k,t]
 
@@ -86,14 +86,122 @@ class MultProductProdctionRoutingProblem:
         for v in range(self.v):
             for i in range(self.i):
                 for k in range(self.k):
-                    if(i!=k):
-                        for t in range(self.t):
-                            objExpr_4+=self.a_i_k[i][k]*self.Z_v_i_k_t[v,i,k,t]
+                    # if(i!=k):
+                    for t in range(self.t):
+                        objExpr_4+=self.a_i_k[i][k]*self.Z_v_i_k_t[v,i,k,t]
 
         objExpr = gp.LinExpr()
         objExpr = objExpr_1 + objExpr_2 + objExpr_3 + objExpr_4
         self.model.setObjective(objExpr, GRB.MINIMIZE)
+    
+    def createEstablishInvetoryBalanceAtPlant(self):
+        for p in range(self.p):
+            for t in range(1,self.t):
+                r1=0
+                for v in range(self.v):
+                    for i in range(1,self.i):
+                        r1+=self.Q_p_v_i_t[p,v,i,t]
+                self.model.addConstr(r1-self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1] == self.I_p_i_t[p,0,t], name=f"rest_{p}_{t}")
+
+    def creteInventoryBalancingInventoryCustomers(self):  
+        for p in range(self.p):
+            for i in range(1,self.i):
+                for t in range(1,self.t):
+                    r2=0
+                    for v in range(self.v):
+                        r2+=self.Q_p_v_i_t[p,v,i,t]
+                    self.model.addConstr(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"rest_{p}_{i}_{t}")
+
+    def createPlantsMaximum(self):
+        for t in range(self.t):
+            r3 = 0
+            for p in range(self.p): 
+                r3+=self.b_p[p]*self.X_p_t[p,t]  
+            self.model.addConstr(r3<=self.B, name=f"rest_{p}")
+
+    def createRelationshipBetweenProduction(self):
+        for p in range(self.p):
+            for t in range(self.t):
+                self.model.addConstr(self.X_p_t[p,t]<=self.M*self.Y_p_t[p,t], name=f"rest_{p}_{t}")
+
+    def createDelimitMaximumCapacityItemsAtPlant(self):
+        for p in range(self.p):
+            for i in range(self.i):
+                for t in range(self.t):
+                    self.model.addConstr(self.I_p_i_t[p,i,t]<=self.U_p_i[p][i], name=f"rest_{p}_{i}_{t}")
+
+    def createVehiclePreventTransshipmentIntermediateNodes(self):
+        for p in range(self.p):
+            for v in range(self.v):
+                for k in range(1,self.k): 
+                    for t in range(self.t):
+                        r7_a=0
+                        r7_b=0
+                        for i in range(self.i): 
+                            # if(k!=i):
+                            r7_a+=self.R_p_v_i_k_t[p,v,i,k,t]
+                        for l in range(self.i):
+                            # if(k!=l):
+                            r7_b+=self.R_p_v_i_k_t[p,v,k,l,t]
+                        self.model.addConstr(r7_a-r7_b==self.Q_p_v_i_t[p,v,k,t], name=f"rest_{p}_{v}_{k}_{t}")
         
+    def createEliminationSubroutes(self):
+        for p in range(self.p):
+            for t in range(self.t):
+                r8_a=0
+                r8_b=0
+                r8_c=0
+                for v in range(self.v):
+                    for k in range(1,self.k): 
+                        r8_a+=self.R_p_v_i_k_t[p,v,0,k,t]
+                    for i in range(1,self.i): 
+                        r8_b+=self.R_p_v_i_k_t[p,v,i,0,t]
+                    for l in range(1,self.i):
+                        r8_c+=self.Q_p_v_i_t[p,v,l,t]
+                self.model.addConstr(r8_a-r8_b==r8_c, name=f"rest_{p}_{t}")
+
+    def createVehicleLoadCapacityDelimited(self):
+        for v in range(self.v):
+            for i in range(self.i):
+                for k in range(self.k):
+                    for t in range(self.t):
+                        r9=0
+                        for p in range(self.p):
+                            r9+=self.R_p_v_i_k_t[p,v,i,k,t]
+                        self.model.addConstr(r9<=self.C*self.Z_v_i_k_t[v,i,k,t], name=f"rest_{v}_{i}_{k}_{t}")
+
+    def createImposeMostOneRouteEachVehicle(self):
+        for v in range(self.v):
+            for t in range(self.t):
+                r10=0
+                for k in range(self.k):
+                    r10+=self.Z_v_i_k_t[v,0,k,t]
+                self.model.addConstr(r10<=1, name=f"rest_{v}_{t}")        
+
+    def createEnsureRoutesOnlyPlant(self):
+        for v in range(self.v):
+            for k in range(self.k):
+                for t in range(self.t):
+                    r11_a=0
+                    r11_b=0
+                    for i in range(self.i): 
+                        # if(k!=i):
+                        r11_a+=self.Z_v_i_k_t[v,i,k,t]
+                    for l in range(self.i):
+                        # if(k!=l):
+                        r11_b+=self.Z_v_i_k_t[v,k,l,t]
+                    self.model.addConstr(r11_a-r11_a==0, name=f"rest_{v}_{k}_{t}")  
+
+    def createVehicleMostVisitCustomerEachPeriod(self):
+        for k in range(1,self.k):
+            for t in range(self.t):
+                r12=0
+                for v in range(self.v):
+                    for i in range(self.i): 
+                        # if(k!=i):
+                        r12+=self.Z_v_i_k_t[v,i,k,t]
+                self.model.addConstr(r12<=1, name=f"rest_{k}_{t}")  
+
     def outModel(self):
         self.model.Params.OutputFlag = 1
         self.model.write("./out/modelo.lp")
@@ -101,4 +209,35 @@ class MultProductProdctionRoutingProblem:
     def solver(self):
         self.createDecisionVariables()
         self.crateObjectiveFunction()
+        self.createEstablishInvetoryBalanceAtPlant()
+        self.creteInventoryBalancingInventoryCustomers()
+        self.createPlantsMaximum()
+        self.createRelationshipBetweenProduction()
+        self.createDelimitMaximumCapacityItemsAtPlant()
+        self.createVehiclePreventTransshipmentIntermediateNodes()
+        self.createEliminationSubroutes()
+        self.createVehicleLoadCapacityDelimited()
+        self.createImposeMostOneRouteEachVehicle()
+        self.createEnsureRoutesOnlyPlant()
+        self.createVehicleMostVisitCustomerEachPeriod()
         self.outModel()
+
+        self.model.optimize()
+
+        for t in range(self.t):
+            print("Periodo t = ",t,"\n")
+            for v in range(self.v):
+                print("Veículo v = ",v,"\n")
+                for i in range(self.i):
+                    customer = []
+                    for k in range(self.k):
+                        customer.append(self.Z_v_i_k_t[v,i,k,t].x)
+                    print(customer)
+                    
+        print("\nQuantidade de Produtos produzidos")
+        for p in range(self.p):
+            print("Periodo p =",p,"\n")
+            x=[]
+            for t in range(self.t):
+                x.append(self.X_p_t[p,t].x)
+            print(x)

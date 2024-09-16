@@ -95,9 +95,28 @@ class ReadPrpFile:
                 elif line.startswith("d_pit ="):
                     section = "d_pit"
                     data['d_pit'] = []
-                    for j in range(num_products * num_periods):
-                        data['d_pit'].append(list(map(int, lines[i + 1].strip().split())))
-                        i += 1
-
+                    for j in range(num_products):
+                        b=[]
+                        cont = 0
+                        while(cont!=num_customers):
+                            a=list(map(int, lines[i + 1].strip().split()))
+                            if(len(a)>0):
+                                b.append(a)
+                                cont=cont+1
+                            i += 1
+                        if(len(b)>0):        
+                            data['d_pit'].append(b)
                 i += 1
+
+        
+        numero_grande = 10**12
+        for i in range(len(data['a_ik'])):
+            data['a_ik'][i][i] = numero_grande
+
+        print("======================================")
+        print("Iniciando otimização do arquivo, ", self.file_path) 
+        print("Number of Customers = ", num_customers) 
+        print("Number of Products = ", num_products) 
+        print("Number of Periods = ", num_periods) 
+        print("======================================")
         return data
