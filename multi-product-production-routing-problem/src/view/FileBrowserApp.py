@@ -8,7 +8,7 @@ import sys
 class FileBrowserApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Dynamic Directory File List with Line Graphs")
+        self.root.title("Optimization screen")
 
         # Capture the screen width and height
         screen_width = self.root.winfo_screenwidth()
