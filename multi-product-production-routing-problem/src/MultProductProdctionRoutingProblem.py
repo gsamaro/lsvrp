@@ -110,8 +110,6 @@ class MultProductProdctionRoutingProblem:
                     self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1]-r1 == self.I_p_i_t[p,0,t], name=f"rest_{p}_{t}")
 
     def creteInventoryBalancingInventoryCustomers(self):  
-        
-        print(self.d_p_i_t[0])
         for p in range(self.p):
             for i in range(self.i-1):
                 for t in range(self.t):
