@@ -25,12 +25,16 @@ class FileBrowser:
         self.search_entry.pack(pady=10)
         self.search_entry.bind("<KeyRelease>", self.filter_files)
 
-        # Create a scrollbar for the listbox
-        self.scrollbar = Scrollbar(parent)
+        # Create a frame to hold the Listbox and Scrollbar
+        self.list_frame = tk.Frame(parent)
+        self.list_frame.pack(pady=10, fill=tk.BOTH, expand=True)
+
+        # Create a scrollbar for the listbox and place it to the right of the Listbox
+        self.scrollbar = Scrollbar(self.list_frame)
 
         # Listbox to display the files in the directory
-        self.listbox = Listbox(parent, width=50, height=15, yscrollcommand=self.scrollbar.set)
-        self.listbox.pack(pady=10)
+        self.listbox = Listbox(self.list_frame, width=50, height=15, yscrollcommand=self.scrollbar.set)
+        self.listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self.scrollbar.config(command=self.listbox.yview)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -87,7 +91,6 @@ class FileBrowser:
             thread = threading.Thread(target=self.call_process, args=(file_path,))
             thread.start()
 
-    # Function that executes the process (opens the file)
     def call_process(self, file_path):
         read = RD(file_path)
         dataSet = read.getDataSet()
