@@ -13,6 +13,7 @@
 #################################################################################################
 import gurobipy as gp
 from gurobipy import GRB
+import time
 
 class MultProductProdctionRoutingProblem:
 
@@ -96,33 +97,25 @@ class MultProductProdctionRoutingProblem:
     
     def createEstablishInvetoryBalanceAtPlant(self):
         for p in range(self.p):
-            for t in range(self.t):
-                r1=0
-                if(t==0):
-                    for v in range(self.v):
-                        for i in range(1,self.i):
-                            r1+=self.Q_p_v_i_t[p,v,i,t]
-                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_0[p][0]-r1 == self.I_p_i_t[p,0,t], name=f"rest_{p}_{t}")
-                else:
-                    for v in range(self.v):
-                        for i in range(1,self.i):
-                            r1+=self.Q_p_v_i_t[p,v,i,t]
-                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1]-r1 == self.I_p_i_t[p,0,t], name=f"rest_{p}_{t}")
+            for i in range(self.i):
+                self.model.addConstr(self.I_p_i_t[p,i,0]==self.I_p_i_0[p][i], name=f"rest_{p}_{i}")
+
+        for p in range(self.p):
+            for t in range(1,self.t):
+                for v in range(self.v):
+                    r1=0
+                    for i in range(1,self.i):
+                        r1+=self.Q_p_v_i_t[p,v,i,t]
+                self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1]-r1 == self.I_p_i_t[p,0,t], name=f"rest_{p}_{t}")
 
     def creteInventoryBalancingInventoryCustomers(self):  
         for p in range(self.p):
-            for i in range(self.i-1):
-                for t in range(self.t):
-                    if(t==0):
-                        r2=0
-                        for v in range(self.v):
-                            r2+=self.Q_p_v_i_t[p,v,i,t]
-                        self.model.addConstr(r2+self.I_p_i_0[p][i]-self.d_p_i_t[p][i][t]==self.I_p_i_t[p,i,t], name=f"rest_{p}_{i}_{t}")
-                    else:
-                        r2=0
-                        for v in range(self.v):
-                            r2+=self.Q_p_v_i_t[p,v,i,t]
-                        self.model.addConstr(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i][t]==self.I_p_i_t[p,i,t], name=f"rest_{p}_{i}_{t}")
+            for i in range(1,self.i):
+                for t in range(1,self.t):
+                    r2=0
+                    for v in range(self.v):
+                        r2+=self.Q_p_v_i_t[p,v,i,t]
+                    self.model.addConstr(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"rest_{p}_{i}_{t}")
 
     def createPlantsMaximum(self):
         for t in range(self.t):
@@ -218,6 +211,74 @@ class MultProductProdctionRoutingProblem:
         self.model.Params.OutputFlag = 1
         self.model.write("./out/modelo.lp")
 
+    def getResults(self):
+        Z=[]
+        for t in range(self.t):
+            t_list=[]
+            for v in range(self.v):
+                v_list =[]
+                for i in range(self.i):
+                    i_list =[]
+                    for k in range(self.k):
+                        i_list.append(abs(self.Z_v_i_k_t[v,i,k,t].x))
+                    v_list.append(i_list)
+                t_list.append(v_list)
+            Z.append(t_list)
+        X = []
+        Y = []
+        for p in range(self.p):
+            p_list_x=[]
+            p_list_y=[]
+            for t in range(self.t):
+                p_list_x.append(self.X_p_t[p,t].x)
+                p_list_y.append(self.Y_p_t[p,t].x)
+            X.append(p_list_x)
+            Y.append(p_list_y)
+        I=[]
+        for p in range(self.p):
+            p_list_i=[]
+            for i in range(self.i):
+                i_list_i=[]
+                for t in range(self.t):
+                    i_list_i.append(self.I_p_i_t[p,i,t].x)
+                p_list_i.append(i_list_i)
+            I.append(p_list_i)
+        
+        R=[]
+        for p in range(self.p):
+            p_list=[]
+            for v in range(self.v):
+                v_list=[]
+                for i in range(self.i):
+                    i_list=[]
+                    for k in range(1,self.k):
+                        k_list=[]
+                        for t in range(self.t):
+                            k_list.append(self.R_p_v_i_k_t[p,v,i,k,t].x)
+                        i_list.append(k_list)
+                    v_list.append(i_list)
+                p_list.append(v_list)
+            R.append(p_list)
+        Q=[]
+        for p in range(self.p):
+            p_list=[]
+            for v in range(self.v):
+                v_list=[]
+                for i in range(self.i):
+                    i_list=[]
+                    for t in range(self.t):
+                        i_list.append(self.Q_p_v_i_t[p,v,i,t].x)
+                    v_list.append(i_list)
+                p_list.append(v_list)
+            Q.append(p_list)
+
+        
+
+        return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap
+
+    def terminate(self):
+        self.model.terminate()
+
     def solver(self):
         self.createDecisionVariables()
         self.crateObjectiveFunction()
@@ -235,21 +296,3 @@ class MultProductProdctionRoutingProblem:
         self.outModel()
 
         self.model.optimize()
-
-        for t in range(self.t):
-            print("Periodo t = ",t,"\n")
-            for v in range(self.v):
-                print("Veículo v = ",v,"\n")
-                for i in range(self.i):
-                    customer = []
-                    for k in range(self.k):
-                        customer.append(self.Z_v_i_k_t[v,i,k,t].x)
-                    print(customer)
-                    
-        print("\nQuantidade de Produtos produzidos")
-        for p in range(self.p):
-            print("Periodo p =",p,"\n")
-            x=[]
-            for t in range(self.t):
-                x.append(self.X_p_t[p,t].x)
-            print(x)
