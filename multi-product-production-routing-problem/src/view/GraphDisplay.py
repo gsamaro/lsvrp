@@ -4,15 +4,22 @@ from tkinter import ttk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 class GraphDisplay:
-    def __init__(self, parent):
+    def __init__(self, parent,results):
         self.ploat = True
         self.num_graphs_per_page = 10  # Limite de gráficos por página
-        self.num_tabs = 3  # Número de abas
-        self.num_graphs = 12  # Total de gráficos a serem distribuídos nas abas
+        self.num_tabs = len(results['periods'])  # Número de abas
+        self.num_graphs = len(results['periods'][0])  # Total de gráficos a serem distribuídos nas abas
         self.tabs = ttk.Notebook(parent)
         self.tabs.pack(expand=1, fill="both")
         self.graph_widgets = []
+        self.routes = results['periods']
+        self.x=results['data']['coordXY']['x']
+        self.y=results['data']['coordXY']['y']
 
+        print(self.routes)
+        
+        self.period = 0
+        self.veicle = 0
         # Armazena dados de cada aba para a paginação
         self.tabs_data = {}
 
@@ -27,6 +34,8 @@ class GraphDisplay:
 
             # Adiciona paginação de gráficos dentro da aba
             self.create_graph_pagination(tab_frame, i)
+            self.period=1+self.period
+            self.veicle = 0
 
     def create_graph_pagination(self, parent, tab_index):
         """Cria a paginação de gráficos dentro de cada aba."""
@@ -81,8 +90,12 @@ class GraphDisplay:
 
     def create_line_chart(self, parent, graph_number):
         """Cria um gráfico de linha usando matplotlib."""
-        x_data = [1, 2, 3, 4, 5]
-        y_data = [2 * graph_number, 4 * graph_number, 6 * graph_number, 8 * graph_number, 10 * graph_number]
+
+
+        print(self.routes[self.period][self.veicle])
+        
+        x_data = self.x
+        y_data = self.y
 
         fig, ax = plt.subplots(figsize=(5, 3))
         ax.plot(x_data, y_data, label=f"Line Plot {graph_number}", marker="o")
@@ -98,6 +111,7 @@ class GraphDisplay:
 
         self.graph_widgets.append(canvas_widget)
         self.ploat = False
+        self.veicle=self.veicle+1
 
     def destroy_graphs(self):
         """Destroy all the graph widgets from the tabs."""

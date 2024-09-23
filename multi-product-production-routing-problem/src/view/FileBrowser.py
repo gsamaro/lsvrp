@@ -123,11 +123,14 @@ class FileBrowser:
             for v in range(len(Z[t])):
                 veicule.append(toStopPoint(Z[t][v]))
             periods.append(veicule)
+
+        print(periods)
         fim = time.time()
         self.display_file_resutl(FO,GAP,round(fim-init))
         self.results = {
             'end': True,
-            'periods': periods
+            'periods': periods,
+            'data':dataSet
         }
 
     # Function to display file information

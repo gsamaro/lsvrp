@@ -76,7 +76,7 @@ class FileBrowserApp:
      
     def ploatGr(self):
         if(self.ploatGW==True):
-            self.graph_display = GraphDisplay(self.right_frame)
+            self.graph_display = GraphDisplay(self.right_frame,self.file_browser.getResults())
             self.button=True
 
     def call_process(self,string):
