@@ -20,3 +20,9 @@ Copiar código
     pip install gurobipy
     
 Executar o código dentro do ambiente virtual: Agora você pode executar seu código Python com o gurobipy instalado dentro do ambiente virtual.
+
+
+
+1- Validação do modelo. 
+2- Buscar outros modelos para comparação
+3- Pensar em metodos de solução.

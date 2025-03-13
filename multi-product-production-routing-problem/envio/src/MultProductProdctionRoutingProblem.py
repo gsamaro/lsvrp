@@ -45,24 +45,24 @@ class MultProductProdctionRoutingProblem:
     def createDecisionVariables(self):
         for p in range(self.p):
             for t in range(self.t):
-                self.X_p_t[p,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"X[{p+1},{t+1}]")
-                self.Y_p_t[p,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Y[{p+1},{t+1}]")
+                self.X_p_t[p,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"X[{p},{t}]")
+                self.Y_p_t[p,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Y[{p},{t}]")
             for i in range(self.i):
                 for t in range(self.t):
-                    self.I_p_i_t[p,i,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"I[{p+1},{i},{t+1}]")
+                    self.I_p_i_t[p,i,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"I[{p},{i},{t}]")
             for v in range(self.v):
                 for i in range(self.i):
                     for k in range(self.k):
                         for t in range(self.t):
-                            self.R_p_v_i_k_t[p,v,i,k,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"R[{p+1},{v+1},{i},{k},{t+1}]")
+                            self.R_p_v_i_k_t[p,v,i,k,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"R[{p},{v},{i},{k},{t}]")
                 for i in range(self.i):
                     for t in range(self.t):
-                        self.Q_p_v_i_t[p,v,i,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"Q[{p+1},{v+1},{i},{t+1}]")
+                        self.Q_p_v_i_t[p,v,i,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"Q[{p},{v},{i},{t}]")
         for v in range(self.v):
             for i in range(self.i):
                 for k in range(self.k):
                     for t in range(self.t):
-                        self.Z_v_i_k_t[v,i,k,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Z[{v+1},{i},{k},{t+1}]")
+                        self.Z_v_i_k_t[v,i,k,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Z[{v},{i},{k},{t}]")
 
     def crateObjectiveFunction(self):
         objExpr_1 = gp.LinExpr()
@@ -86,9 +86,9 @@ class MultProductProdctionRoutingProblem:
         for v in range(self.v):
             for i in range(self.i):
                 for k in range(self.k):
-                    if(i!=k):
-                        for t in range(self.t):
-                            objExpr_4+=self.a_i_k[i][k]*self.Z_v_i_k_t[v,i,k,t]
+                    # if(i!=k):
+                    for t in range(self.t):
+                        objExpr_4+=self.a_i_k[i][k]*self.Z_v_i_k_t[v,i,k,t]
 
         objExpr = gp.LinExpr()
         objExpr = objExpr_1 + objExpr_2 + objExpr_3 + objExpr_4
@@ -96,45 +96,43 @@ class MultProductProdctionRoutingProblem:
     
     def createEstablishInvetoryBalanceAtPlant(self):
         for p in range(self.p):
-            for t in range(self.t):
+            for i in range(self.i):
+                self.model.addConstr(self.I_p_i_t[p,i,0]==self.I_p_i_0[p][i], name=f"[0] rest_{p}_{i}")
+
+        for p in range(self.p):
+            for t in range(1,self.t):
                 for v in range(self.v):
                     r1=0
                     for i in range(1,self.i):
                         r1+=self.Q_p_v_i_t[p,v,i,t]
-                if(t == 0 ):
-                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_0[p][0] - r1 == self.I_p_i_t[p,0,t], name=f"EQ (2) p={p+1}_t={t+1}")
-                else:
-                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1]-r1 == self.I_p_i_t[p,0,t], name=f"EQ (2) p={p+1}_t={t+1}")
-                         
+                self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1]-r1 == self.I_p_i_t[p,0,t], name=f"[1] rest_{p}_{t}")
+
     def creteInventoryBalancingInventoryCustomers(self):  
         for p in range(self.p):
             for i in range(1,self.i):
-                for t in range(self.t):
+                for t in range(1,self.t):
                     r2=0
                     for v in range(self.v):
                         r2+=self.Q_p_v_i_t[p,v,i,t]
-                    if(t == 0 ):
-                        self.model.addConstr(r2+self.I_p_i_0[p][i] - self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"EQ (3) p={p+1}_i={i}_t={t+1}")
-                    else:
-                        self.model.addConstr(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"EQ (3) p={p+1}_i={i}_t={t+1}")
+                    self.model.addConstr(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"[2] rest_{p}_{i}_{t}")
 
     def createPlantsMaximum(self):
         for t in range(self.t):
             r3 = 0
             for p in range(self.p): 
                 r3+=self.b_p[p]*self.X_p_t[p,t]  
-            self.model.addConstr(r3<=self.B, name=f"EQ (4) t={t+1}")
+            self.model.addConstr(r3<=self.B, name=f"[3] rest_{p}")
 
     def createRelationshipBetweenProduction(self):
         for p in range(self.p):
             for t in range(self.t):
-                self.model.addConstr(self.X_p_t[p,t]<=self.M*self.Y_p_t[p,t], name=f"EQ (5) p={p+1}_t={t+1}")
+                self.model.addConstr(self.X_p_t[p,t]<=self.M*self.Y_p_t[p,t], name=f"[4] rest_{p}_{t}")
 
     def createDelimitMaximumCapacityItemsAtPlant(self):
         for p in range(self.p):
             for i in range(self.i):
                 for t in range(self.t):
-                    self.model.addConstr(self.I_p_i_t[p,i,t]<=self.U_p_i[p][i], name=f"EQ (6) p={p+1}_i={i}_t={t+1}")
+                    self.model.addConstr(self.I_p_i_t[p,i,t]<=self.U_p_i[p][i], name=f"[5] rest_{p}_{i}_{t}")
 
     def createVehiclePreventTransshipmentIntermediateNodes(self):
         for p in range(self.p):
@@ -144,12 +142,12 @@ class MultProductProdctionRoutingProblem:
                         r7_a=0
                         r7_b=0
                         for i in range(self.i): 
-                            if(k!=i):
-                                r7_a+=self.R_p_v_i_k_t[p,v,i,k,t]
+                            # if(k!=i):
+                            r7_a+=self.R_p_v_i_k_t[p,v,i,k,t]
                         for l in range(self.i):
-                            if(k!=l):
-                                r7_b+=self.R_p_v_i_k_t[p,v,k,l,t]
-                        self.model.addConstr(r7_a-r7_b==self.Q_p_v_i_t[p,v,k,t], name=f"EQ (7) p={p+1}_v={v+1}_k={k}_t={t+1}")
+                            # if(k!=l):
+                            r7_b+=self.R_p_v_i_k_t[p,v,k,l,t]
+                        self.model.addConstr(r7_a-r7_b==self.Q_p_v_i_t[p,v,k,t], name=f"[6] rest_{p}_{v}_{k}_{t}")
         
     def createEliminationSubroutes(self):
         for p in range(self.p):
@@ -164,7 +162,7 @@ class MultProductProdctionRoutingProblem:
                         r8_b+=self.R_p_v_i_k_t[p,v,i,0,t]
                     for l in range(1,self.i):
                         r8_c+=self.Q_p_v_i_t[p,v,l,t]
-                self.model.addConstr(r8_a-r8_b==r8_c, name=f"EQ (8) p={p+1}_t={t+1}")
+                self.model.addConstr(r8_a-r8_b==r8_c, name=f"[7] rest_{p}_{t}")
 
     def createVehicleLoadCapacityDelimited(self):
         for v in range(self.v):
@@ -174,16 +172,15 @@ class MultProductProdctionRoutingProblem:
                         r9=0
                         for p in range(self.p):
                             r9+=self.R_p_v_i_k_t[p,v,i,k,t]
-                        if(i!=k):
-                            self.model.addConstr(r9<=self.C*self.Z_v_i_k_t[v,i,k,t], name=f"EQ (9) v={v+1}_i={i}_k={k}_t={t+1}")
+                        self.model.addConstr(r9<=self.C*self.Z_v_i_k_t[v,i,k,t], name=f"[8] rest_{v}_{i}_{k}_{t}")
 
     def createImposeMostOneRouteEachVehicle(self):
         for v in range(self.v):
             for t in range(self.t):
                 r10=0
-                for k in range(1,self.k):
+                for k in range(self.k):
                     r10+=self.Z_v_i_k_t[v,0,k,t]
-                self.model.addConstr(r10<=1, name=f"EQ (10) v={v+1}_t={t+1}")        
+                self.model.addConstr(r10<=1, name=f"[9] rest_{v}_{t}")        
 
     def createEnsureRoutesOnlyPlant(self):
         for v in range(self.v):
@@ -192,12 +189,12 @@ class MultProductProdctionRoutingProblem:
                     r11_a=0
                     r11_b=0
                     for i in range(self.i): 
-                        if(k!=i):
-                            r11_a+=self.Z_v_i_k_t[v,i,k,t]
+                        # if(k!=i):
+                        r11_a+=self.Z_v_i_k_t[v,i,k,t]
                     for l in range(self.i):
-                        if(k!=l):
-                            r11_b+=self.Z_v_i_k_t[v,k,l,t]
-                    self.model.addConstr(r11_a-r11_b==0, name=f"EQ (11) v={v+1}_k={k}_t={t+1}")  
+                        # if(k!=l):
+                        r11_b+=self.Z_v_i_k_t[v,k,l,t]
+                    self.model.addConstr(r11_a-r11_a==0, name=f"[10] rest_{v}_{k}_{t}")  
 
     def createVehicleMostVisitCustomerEachPeriod(self):
         for k in range(1,self.k):
@@ -205,9 +202,9 @@ class MultProductProdctionRoutingProblem:
                 r12=0
                 for v in range(self.v):
                     for i in range(self.i): 
-                        if(k!=i):
-                            r12+=self.Z_v_i_k_t[v,i,k,t]
-                self.model.addConstr(r12<=1, name=f"EQ (12) k={k}_t={t+1}")  
+                        # if(k!=i):
+                        r12+=self.Z_v_i_k_t[v,i,k,t]
+                self.model.addConstr(r12<=1, name=f"[11] rest_{k}_{t}")  
 
     def outModel(self):
         self.model.Params.OutputFlag = 1

@@ -1,0 +1,1865 @@
+File selected: Nova otimizaçao
+======================================
+Iniciando otimização do arquivo,  /home/chacon/Working/github/mestrado/multi-product-production-routing-problem/data/DATA_PRP_5C/PRP1_C5_P3_V1_T6_S1.dat
+Number of Customers =  5
+Number of Products =  3
+Number of Periods =  6
+======================================
+Set parameter Username
+Academic license - for non-commercial use only - expires 2025-09-12
+Warning: constraint name "EQ (2) p=1_t=1" has a space
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 24.04.2 LTS")
+
+CPU model: Intel(R) Core(TM) i5-8250U CPU @ 1.60GHz, instruction set [SSE2|AVX|AVX2]
+Thread count: 4 physical cores, 8 logical processors, using up to 8 threads
+
+Optimize a model with 600 rows, 1116 columns and 3078 nonzeros
+Model fingerprint: 0x791a9360
+Variable types: 0 continuous, 1116 integer (234 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 5e+03]
+  Objective range  [1e+00, 6e+03]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 5e+03]
+Presolve removed 123 rows and 177 columns
+Presolve time: 0.01s
+Presolved: 477 rows, 939 columns, 2940 nonzeros
+Variable types: 0 continuous, 939 integer (198 binary)
+
+Root relaxation: objective 1.826462e+05, 658 iterations, 0.01 seconds (0.00 work units)
+
+    Nodes    |    Current Node    |     Objective Bounds      |     Work
+ Expl Unexpl |  Obj  Depth IntInf | Incumbent    BestBd   Gap | It/Node Time
+
+     0     0 182646.229    0   60          - 182646.229      -     -    0s
+     0     0 192032.582    0  223          - 192032.582      -     -    0s
+     0     0 193085.462    0  225          - 193085.462      -     -    0s
+     0     0 193205.906    0  222          - 193205.906      -     -    0s
+     0     0 193223.577    0  249          - 193223.577      -     -    0s
+     0     0 193223.577    0  251          - 193223.577      -     -    0s
+H    0     0                    205930.00000 194406.526  5.60%     -    0s
+     0     0 194406.526    0  285 205930.000 194406.526  5.60%     -    0s
+     0     0 194722.000    0  282 205930.000 194722.000  5.44%     -    0s
+     0     0 195246.019    0  293 205930.000 195246.019  5.19%     -    0s
+     0     0 195487.821    0  293 205930.000 195487.821  5.07%     -    0s
+     0     0 195734.570    0  317 205930.000 195734.570  4.95%     -    0s
+     0     0 195890.148    0  314 205930.000 195890.148  4.88%     -    0s
+     0     0 195902.312    0  318 205930.000 195902.312  4.87%     -    0s
+     0     0 196045.709    0  306 205930.000 196045.709  4.80%     -    0s
+     0     0 196167.142    0  317 205930.000 196167.142  4.74%     -    0s
+     0     0 196198.490    0  324 205930.000 196198.490  4.73%     -    0s
+     0     0 196214.275    0  325 205930.000 196214.275  4.72%     -    0s
+     0     0 196227.282    0  330 205930.000 196227.282  4.71%     -    0s
+     0     0 196229.543    0  333 205930.000 196229.543  4.71%     -    0s
+     0     0 196377.951    0  334 205930.000 196377.951  4.64%     -    0s
+     0     0 196574.589    0  312 205930.000 196574.589  4.54%     -    0s
+     0     0 196599.967    0  332 205930.000 196599.967  4.53%     -    0s
+     0     0 196612.305    0  343 205930.000 196612.305  4.52%     -    0s
+     0     0 196617.559    0  345 205930.000 196617.559  4.52%     -    0s
+     0     0 196708.631    0  303 205930.000 196708.631  4.48%     -    0s
+     0     0 196710.538    0  309 205930.000 196710.538  4.48%     -    0s
+     0     0 196786.209    0  334 205930.000 196786.209  4.44%     -    0s
+     0     0 196795.056    0  329 205930.000 196795.056  4.44%     -    0s
+H    0     0                    202565.00000 196795.056  2.85%     -    0s
+     0     2 196795.056    0  329 202565.000 196795.056  2.85%     -    0s
+H   75    88                    201727.00000 196916.844  2.38%  50.7    0s
+H   83    88                    201386.00000 196916.844  2.22%  50.4    0s
+H  115   132                    201262.00000 196916.844  2.16%  44.1    0s
+H  159   187                    201231.00000 196916.844  2.14%  39.4    0s
+H  233   244                    201124.00000 196916.844  2.09%  34.9    0s
+H  290   276                    201013.00000 196945.533  2.02%  34.0    0s
+H  363   342                    201012.00000 196945.533  2.02%  32.6    0s
+H  478   403                    200905.00000 196959.775  1.96%  31.2    0s
+H 1515   920                    200898.00000 198280.274  1.30%  30.8    2s
+  1549   947 198412.704   23  303 200898.000 198412.704  1.24%  38.0    5s
+H 1980  1050                    200754.00000 198412.704  1.17%  38.9    5s
+H 2005  1003                    200744.00000 198412.704  1.16%  38.9    5s
+  7253  1194 200517.381   41   69 200744.000 200190.036  0.28%  39.5   10s
+
+Cutting planes:
+  Gomory: 8
+  Cover: 6
+  Implied bound: 48
+  MIR: 74
+  Flow cover: 253
+  Flow path: 15
+  Inf proof: 1
+  Zero half: 3
+  Network: 3
+  Relax-and-lift: 1
+
+Explored 12913 nodes (483066 simplex iterations) in 13.20 seconds (8.53 work units)
+Thread count was 8 (of 8 available processors)
+
+Solution count 10: 200744 200754 200898 ... 201386
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 2.007440000000e+05, best bound 2.007440000000e+05, gap 0.0000%
+*******************************
+============ Z ================
+*******************************
+
+
+============ periodo  0  ============
+
+============ veiculo  0  ============
+ origem:  0  destino:  0  ==  0.0
+ origem:  0  destino:  1  ==  0.0
+ origem:  0  destino:  2  ==  0.0
+ origem:  0  destino:  3  ==  0.0
+ origem:  0  destino:  4  ==  0.0
+ origem:  0  destino:  5  ==  0.0
+ origem:  1  destino:  0  ==  0.0
+ origem:  1  destino:  1  ==  0.0
+ origem:  1  destino:  2  ==  0.0
+ origem:  1  destino:  3  ==  0.0
+ origem:  1  destino:  4  ==  0.0
+ origem:  1  destino:  5  ==  0.0
+ origem:  2  destino:  0  ==  0.0
+ origem:  2  destino:  1  ==  0.0
+ origem:  2  destino:  2  ==  0.0
+ origem:  2  destino:  3  ==  0.0
+ origem:  2  destino:  4  ==  0.0
+ origem:  2  destino:  5  ==  0.0
+ origem:  3  destino:  0  ==  0.0
+ origem:  3  destino:  1  ==  0.0
+ origem:  3  destino:  2  ==  0.0
+ origem:  3  destino:  3  ==  0.0
+ origem:  3  destino:  4  ==  0.0
+ origem:  3  destino:  5  ==  0.0
+ origem:  4  destino:  0  ==  0.0
+ origem:  4  destino:  1  ==  0.0
+ origem:  4  destino:  2  ==  0.0
+ origem:  4  destino:  3  ==  0.0
+ origem:  4  destino:  4  ==  0.0
+ origem:  4  destino:  5  ==  0.0
+ origem:  5  destino:  0  ==  0.0
+ origem:  5  destino:  1  ==  0.0
+ origem:  5  destino:  2  ==  0.0
+ origem:  5  destino:  3  ==  0.0
+ origem:  5  destino:  4  ==  0.0
+ origem:  5  destino:  5  ==  0.0
+
+
+============ periodo  1  ============
+
+============ veiculo  0  ============
+ origem:  0  destino:  0  ==  0.0
+ origem:  0  destino:  1  ==  0.0
+ origem:  0  destino:  2  ==  0.0
+ origem:  0  destino:  3  ==  0.0
+ origem:  0  destino:  4  ==  0.0
+ origem:  0  destino:  5  ==  1.0
+ origem:  1  destino:  0  ==  0.0
+ origem:  1  destino:  1  ==  0.0
+ origem:  1  destino:  2  ==  0.0
+ origem:  1  destino:  3  ==  0.0
+ origem:  1  destino:  4  ==  0.0
+ origem:  1  destino:  5  ==  0.0
+ origem:  2  destino:  0  ==  1.0
+ origem:  2  destino:  1  ==  0.0
+ origem:  2  destino:  2  ==  0.0
+ origem:  2  destino:  3  ==  0.0
+ origem:  2  destino:  4  ==  0.0
+ origem:  2  destino:  5  ==  0.0
+ origem:  3  destino:  0  ==  0.0
+ origem:  3  destino:  1  ==  0.0
+ origem:  3  destino:  2  ==  1.0
+ origem:  3  destino:  3  ==  0.0
+ origem:  3  destino:  4  ==  0.0
+ origem:  3  destino:  5  ==  0.0
+ origem:  4  destino:  0  ==  0.0
+ origem:  4  destino:  1  ==  0.0
+ origem:  4  destino:  2  ==  0.0
+ origem:  4  destino:  3  ==  1.0
+ origem:  4  destino:  4  ==  0.0
+ origem:  4  destino:  5  ==  0.0
+ origem:  5  destino:  0  ==  0.0
+ origem:  5  destino:  1  ==  0.0
+ origem:  5  destino:  2  ==  0.0
+ origem:  5  destino:  3  ==  0.0
+ origem:  5  destino:  4  ==  1.0
+ origem:  5  destino:  5  ==  0.0
+
+
+============ periodo  2  ============
+
+============ veiculo  0  ============
+ origem:  0  destino:  0  ==  0.0
+ origem:  0  destino:  1  ==  1.0
+ origem:  0  destino:  2  ==  0.0
+ origem:  0  destino:  3  ==  0.0
+ origem:  0  destino:  4  ==  0.0
+ origem:  0  destino:  5  ==  0.0
+ origem:  1  destino:  0  ==  0.0
+ origem:  1  destino:  1  ==  0.0
+ origem:  1  destino:  2  ==  1.0
+ origem:  1  destino:  3  ==  0.0
+ origem:  1  destino:  4  ==  0.0
+ origem:  1  destino:  5  ==  0.0
+ origem:  2  destino:  0  ==  0.0
+ origem:  2  destino:  1  ==  0.0
+ origem:  2  destino:  2  ==  0.0
+ origem:  2  destino:  3  ==  1.0
+ origem:  2  destino:  4  ==  0.0
+ origem:  2  destino:  5  ==  0.0
+ origem:  3  destino:  0  ==  0.0
+ origem:  3  destino:  1  ==  0.0
+ origem:  3  destino:  2  ==  0.0
+ origem:  3  destino:  3  ==  0.0
+ origem:  3  destino:  4  ==  1.0
+ origem:  3  destino:  5  ==  0.0
+ origem:  4  destino:  0  ==  0.0
+ origem:  4  destino:  1  ==  0.0
+ origem:  4  destino:  2  ==  0.0
+ origem:  4  destino:  3  ==  0.0
+ origem:  4  destino:  4  ==  0.0
+ origem:  4  destino:  5  ==  1.0
+ origem:  5  destino:  0  ==  1.0
+ origem:  5  destino:  1  ==  0.0
+ origem:  5  destino:  2  ==  0.0
+ origem:  5  destino:  3  ==  0.0
+ origem:  5  destino:  4  ==  0.0
+ origem:  5  destino:  5  ==  0.0
+
+
+============ periodo  3  ============
+
+============ veiculo  0  ============
+ origem:  0  destino:  0  ==  0.0
+ origem:  0  destino:  1  ==  0.0
+ origem:  0  destino:  2  ==  1.0
+ origem:  0  destino:  3  ==  0.0
+ origem:  0  destino:  4  ==  0.0
+ origem:  0  destino:  5  ==  0.0
+ origem:  1  destino:  0  ==  0.0
+ origem:  1  destino:  1  ==  0.0
+ origem:  1  destino:  2  ==  0.0
+ origem:  1  destino:  3  ==  0.0
+ origem:  1  destino:  4  ==  0.0
+ origem:  1  destino:  5  ==  0.0
+ origem:  2  destino:  0  ==  0.0
+ origem:  2  destino:  1  ==  0.0
+ origem:  2  destino:  2  ==  0.0
+ origem:  2  destino:  3  ==  1.0
+ origem:  2  destino:  4  ==  0.0
+ origem:  2  destino:  5  ==  0.0
+ origem:  3  destino:  0  ==  0.0
+ origem:  3  destino:  1  ==  0.0
+ origem:  3  destino:  2  ==  0.0
+ origem:  3  destino:  3  ==  0.0
+ origem:  3  destino:  4  ==  1.0
+ origem:  3  destino:  5  ==  0.0
+ origem:  4  destino:  0  ==  0.0
+ origem:  4  destino:  1  ==  0.0
+ origem:  4  destino:  2  ==  0.0
+ origem:  4  destino:  3  ==  0.0
+ origem:  4  destino:  4  ==  0.0
+ origem:  4  destino:  5  ==  1.0
+ origem:  5  destino:  0  ==  1.0
+ origem:  5  destino:  1  ==  0.0
+ origem:  5  destino:  2  ==  0.0
+ origem:  5  destino:  3  ==  0.0
+ origem:  5  destino:  4  ==  0.0
+ origem:  5  destino:  5  ==  0.0
+
+
+============ periodo  4  ============
+
+============ veiculo  0  ============
+ origem:  0  destino:  0  ==  0.0
+ origem:  0  destino:  1  ==  0.0
+ origem:  0  destino:  2  ==  0.0
+ origem:  0  destino:  3  ==  0.0
+ origem:  0  destino:  4  ==  0.0
+ origem:  0  destino:  5  ==  1.0
+ origem:  1  destino:  0  ==  1.0
+ origem:  1  destino:  1  ==  0.0
+ origem:  1  destino:  2  ==  0.0
+ origem:  1  destino:  3  ==  0.0
+ origem:  1  destino:  4  ==  0.0
+ origem:  1  destino:  5  ==  0.0
+ origem:  2  destino:  0  ==  0.0
+ origem:  2  destino:  1  ==  1.0
+ origem:  2  destino:  2  ==  0.0
+ origem:  2  destino:  3  ==  0.0
+ origem:  2  destino:  4  ==  0.0
+ origem:  2  destino:  5  ==  0.0
+ origem:  3  destino:  0  ==  0.0
+ origem:  3  destino:  1  ==  0.0
+ origem:  3  destino:  2  ==  1.0
+ origem:  3  destino:  3  ==  0.0
+ origem:  3  destino:  4  ==  0.0
+ origem:  3  destino:  5  ==  0.0
+ origem:  4  destino:  0  ==  0.0
+ origem:  4  destino:  1  ==  0.0
+ origem:  4  destino:  2  ==  0.0
+ origem:  4  destino:  3  ==  1.0
+ origem:  4  destino:  4  ==  0.0
+ origem:  4  destino:  5  ==  0.0
+ origem:  5  destino:  0  ==  0.0
+ origem:  5  destino:  1  ==  0.0
+ origem:  5  destino:  2  ==  0.0
+ origem:  5  destino:  3  ==  0.0
+ origem:  5  destino:  4  ==  1.0
+ origem:  5  destino:  5  ==  0.0
+
+
+============ periodo  5  ============
+
+============ veiculo  0  ============
+ origem:  0  destino:  0  ==  0.0
+ origem:  0  destino:  1  ==  0.0
+ origem:  0  destino:  2  ==  0.0
+ origem:  0  destino:  3  ==  0.0
+ origem:  0  destino:  4  ==  0.0
+ origem:  0  destino:  5  ==  0.0
+ origem:  1  destino:  0  ==  0.0
+ origem:  1  destino:  1  ==  0.0
+ origem:  1  destino:  2  ==  0.0
+ origem:  1  destino:  3  ==  0.0
+ origem:  1  destino:  4  ==  0.0
+ origem:  1  destino:  5  ==  0.0
+ origem:  2  destino:  0  ==  0.0
+ origem:  2  destino:  1  ==  0.0
+ origem:  2  destino:  2  ==  0.0
+ origem:  2  destino:  3  ==  0.0
+ origem:  2  destino:  4  ==  0.0
+ origem:  2  destino:  5  ==  0.0
+ origem:  3  destino:  0  ==  0.0
+ origem:  3  destino:  1  ==  0.0
+ origem:  3  destino:  2  ==  0.0
+ origem:  3  destino:  3  ==  0.0
+ origem:  3  destino:  4  ==  0.0
+ origem:  3  destino:  5  ==  0.0
+ origem:  4  destino:  0  ==  0.0
+ origem:  4  destino:  1  ==  0.0
+ origem:  4  destino:  2  ==  0.0
+ origem:  4  destino:  3  ==  0.0
+ origem:  4  destino:  4  ==  0.0
+ origem:  4  destino:  5  ==  0.0
+ origem:  5  destino:  0  ==  0.0
+ origem:  5  destino:  1  ==  0.0
+ origem:  5  destino:  2  ==  0.0
+ origem:  5  destino:  3  ==  0.0
+ origem:  5  destino:  4  ==  0.0
+ origem:  5  destino:  5  ==  0.0
+
+
+===============================
+
+
+
+
+============ periodo  0  ============
+
+============ veiculo  0  ============
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+
+
+============ periodo  1  ============
+
+============ veiculo  0  ============
+0.0	0.0	0.0	0.0	0.0	1.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+1.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	1.0	0.0	0.0	0.0	
+0.0	0.0	0.0	1.0	0.0	0.0	
+0.0	0.0	0.0	0.0	1.0	0.0	
+
+
+============ periodo  2  ============
+
+============ veiculo  0  ============
+0.0	1.0	0.0	0.0	0.0	0.0	
+0.0	0.0	1.0	0.0	0.0	0.0	
+0.0	0.0	0.0	1.0	0.0	0.0	
+0.0	0.0	0.0	0.0	1.0	0.0	
+0.0	0.0	0.0	0.0	0.0	1.0	
+1.0	0.0	0.0	0.0	0.0	0.0	
+
+
+============ periodo  3  ============
+
+============ veiculo  0  ============
+0.0	0.0	1.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	1.0	0.0	0.0	
+0.0	0.0	0.0	0.0	1.0	0.0	
+0.0	0.0	0.0	0.0	0.0	1.0	
+1.0	0.0	0.0	0.0	0.0	0.0	
+
+
+============ periodo  4  ============
+
+============ veiculo  0  ============
+0.0	0.0	0.0	0.0	0.0	1.0	
+1.0	0.0	0.0	0.0	0.0	0.0	
+0.0	1.0	0.0	0.0	0.0	0.0	
+0.0	0.0	1.0	0.0	0.0	0.0	
+0.0	0.0	0.0	1.0	0.0	0.0	
+0.0	0.0	0.0	0.0	1.0	0.0	
+
+
+============ periodo  5  ============
+
+============ veiculo  0  ============
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+0.0	0.0	0.0	0.0	0.0	0.0	
+*******************************
+============ Y ================
+*******************************
+
+
+============ periodo  0  ============
+produto:  0  ==  0.0
+produto:  1  ==  0.0
+produto:  2  ==  0.0
+
+
+============ periodo  1  ============
+produto:  0  ==  0.0
+produto:  1  ==  1.0
+produto:  2  ==  1.0
+
+
+============ periodo  2  ============
+produto:  0  ==  1.0
+produto:  1  ==  1.0
+produto:  2  ==  1.0
+
+
+============ periodo  3  ============
+produto:  0  ==  1.0
+produto:  1  ==  1.0
+produto:  2  ==  1.0
+
+
+============ periodo  4  ============
+produto:  0  ==  1.0
+produto:  1  ==  1.0
+produto:  2  ==  1.0
+
+
+============ periodo  5  ============
+produto:  0  ==  0.0
+produto:  1  ==  0.0
+produto:  2  ==  0.0
+
+
+===============================
+
+
+*******************************
+============ X ================
+*******************************
+
+
+============ periodo  0  ============
+produto:  0  ==  0.0
+produto:  1  ==  0.0
+produto:  2  ==  0.0
+
+
+============ periodo  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  191.0
+produto:  2  ==  407.0
+
+
+============ periodo  2  ============
+produto:  0  ==  322.0
+produto:  1  ==  267.0
+produto:  2  ==  326.0
+
+
+============ periodo  3  ============
+produto:  0  ==  385.0
+produto:  1  ==  242.0
+produto:  2  ==  288.0
+
+
+============ periodo  4  ============
+produto:  0  ==  268.0
+produto:  1  ==  388.0
+produto:  2  ==  259.0
+
+
+============ periodo  5  ============
+produto:  0  ==  0.0
+produto:  1  ==  0.0
+produto:  2  ==  0.0
+
+
+===============================
+
+
+*******************************
+============ I ================
+*******************************
+
+
+============ periodo  0  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  123.0
+produto:  1  ==  37.0
+produto:  2  ==  88.0
+
+============ cliente  2  ============
+produto:  0  ==  90.0
+produto:  1  ==  18.0
+produto:  2  ==  -0.0
+
+============ cliente  3  ============
+produto:  0  ==  61.0
+produto:  1  ==  111.0
+produto:  2  ==  93.0
+
+============ cliente  4  ============
+produto:  0  ==  69.0
+produto:  1  ==  110.0
+produto:  2  ==  -0.0
+
+============ cliente  5  ============
+produto:  0  ==  42.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+============ periodo  1  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  81.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  ============
+produto:  0  ==  22.0
+produto:  1  ==  0.0
+produto:  2  ==  0.0
+
+============ cliente  3  ============
+produto:  0  ==  0.0
+produto:  1  ==  71.0
+produto:  2  ==  243.0
+
+============ cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  165.0
+produto:  2  ==  0.0
+
+============ cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  0.0
+produto:  2  ==  0.0
+
+
+============ periodo  2  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  148.0
+produto:  1  ==  31.0
+produto:  2  ==  96.0
+
+============ cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  38.0
+
+============ cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  184.0
+
+============ cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  175.0
+produto:  2  ==  0.0
+
+============ cliente  5  ============
+produto:  0  ==  0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+============ periodo  3  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  129.0
+produto:  1  ==  -0.0
+produto:  2  ==  49.0
+
+============ cliente  2  ============
+produto:  0  ==  67.0
+produto:  1  ==  -0.0
+produto:  2  ==  138.0
+
+============ cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  105.0
+
+============ cliente  4  ============
+produto:  0  ==  7.0
+produto:  1  ==  97.0
+produto:  2  ==  -0.0
+
+============ cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+============ periodo  4  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  57.0
+produto:  1  ==  27.0
+produto:  2  ==  33.0
+
+============ cliente  2  ============
+produto:  0  ==  48.0
+produto:  1  ==  26.0
+produto:  2  ==  97.0
+
+============ cliente  3  ============
+produto:  0  ==  83.0
+produto:  1  ==  42.0
+produto:  2  ==  16.0
+
+============ cliente  4  ============
+produto:  0  ==  14.0
+produto:  1  ==  39.0
+produto:  2  ==  83.0
+
+============ cliente  5  ============
+produto:  0  ==  30.0
+produto:  1  ==  47.0
+produto:  2  ==  14.0
+
+
+============ periodo  5  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+===============================
+
+
+*******************************
+============ R ================
+*******************************
+
+
+============ periodo  0  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+============ periodo  1  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  5  ============
+produto:  0  ==  0.0
+produto:  1  ==  191.0
+produto:  2  ==  407.0
+
+============ cliente  1  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  0.0
+
+============ cliente  2  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  97.0
+
+============ cliente  3  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  0.0
+produto:  2  ==  340.0
+
+============ cliente  4  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  4  ============
+produto:  0  ==  0.0
+produto:  1  ==  128.0
+produto:  2  ==  393.0
+
+============ cliente  5  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+============ periodo  2  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  -> cliente  1  ============
+produto:  0  ==  322.0
+produto:  1  ==  267.0
+produto:  2  ==  326.0
+
+============ cliente  0  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  2  ============
+produto:  0  ==  193.0
+produto:  1  ==  214.0
+produto:  2  ==  200.0
+
+============ cliente  1  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  3  ============
+produto:  0  ==  193.0
+produto:  1  ==  131.0
+produto:  2  ==  96.0
+
+============ cliente  2  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  4  ============
+produto:  0  ==  105.0
+produto:  1  ==  131.0
+produto:  2  ==  96.0
+
+============ cliente  3  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  5  ============
+produto:  0  ==  85.0
+produto:  1  ==  84.0
+produto:  2  ==  84.0
+
+============ cliente  5  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+============ periodo  3  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  2  ============
+produto:  0  ==  385.0
+produto:  1  ==  242.0
+produto:  2  ==  288.0
+
+============ cliente  0  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  0.0
+
+============ cliente  2  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  3  ============
+produto:  0  ==  240.0
+produto:  1  ==  175.0
+produto:  2  ==  119.0
+
+============ cliente  2  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  4  ============
+produto:  0  ==  204.0
+produto:  1  ==  81.0
+produto:  2  ==  119.0
+
+============ cliente  3  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  5  ============
+produto:  0  ==  97.0
+produto:  1  ==  81.0
+produto:  2  ==  98.0
+
+============ cliente  5  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+============ periodo  4  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  0.0
+
+============ cliente  0  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  5  ============
+produto:  0  ==  268.0
+produto:  1  ==  388.0
+produto:  2  ==  259.0
+
+============ cliente  1  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  0.0
+
+============ cliente  1  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  1  ============
+produto:  0  ==  0.0
+produto:  1  ==  87.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  198.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  3  ============
+produto:  0  ==  135.0
+produto:  1  ==  283.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  4  ============
+produto:  0  ==  195.0
+produto:  1  ==  283.0
+produto:  2  ==  159.0
+
+============ cliente  5  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+============ periodo  5  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  0  -> cliente  5  ============
+produto:  0  ==  0.0
+produto:  1  ==  0.0
+produto:  2  ==  0.0
+
+============ cliente  1  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  1  ============
+produto:  0  ==  0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  2  ============
+produto:  0  ==  0.0
+produto:  1  ==  0.0
+produto:  2  ==  0.0
+
+============ cliente  3  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  3  ============
+produto:  0  ==  0.0
+produto:  1  ==  0.0
+produto:  2  ==  0.0
+
+============ cliente  4  -> cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  4  ============
+produto:  0  ==  0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  -> cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+===============================
+
+
+*******************************
+============ Q ================
+*******************************
+
+
+============ periodo  0  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+============ periodo  1  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  0.0
+produto:  2  ==  97.0
+
+============ cliente  3  ============
+produto:  0  ==  0.0
+produto:  1  ==  -0.0
+produto:  2  ==  243.0
+
+============ cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  128.0
+produto:  2  ==  53.0
+
+============ cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  63.0
+produto:  2  ==  14.0
+
+
+============ periodo  2  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  129.0
+produto:  1  ==  53.0
+produto:  2  ==  126.0
+
+============ cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  83.0
+produto:  2  ==  104.0
+
+============ cliente  3  ============
+produto:  0  ==  88.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  ============
+produto:  0  ==  20.0
+produto:  1  ==  47.0
+produto:  2  ==  12.0
+
+============ cliente  5  ============
+produto:  0  ==  85.0
+produto:  1  ==  84.0
+produto:  2  ==  84.0
+
+
+============ periodo  3  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  ============
+produto:  0  ==  145.0
+produto:  1  ==  67.0
+produto:  2  ==  169.0
+
+============ cliente  3  ============
+produto:  0  ==  36.0
+produto:  1  ==  94.0
+produto:  2  ==  -0.0
+
+============ cliente  4  ============
+produto:  0  ==  107.0
+produto:  1  ==  0.0
+produto:  2  ==  21.0
+
+============ cliente  5  ============
+produto:  0  ==  97.0
+produto:  1  ==  81.0
+produto:  2  ==  98.0
+
+
+============ periodo  4  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  87.0
+produto:  2  ==  -0.0
+
+============ cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  111.0
+produto:  2  ==  -0.0
+
+============ cliente  3  ============
+produto:  0  ==  135.0
+produto:  1  ==  85.0
+produto:  2  ==  -0.0
+
+============ cliente  4  ============
+produto:  0  ==  60.0
+produto:  1  ==  -0.0
+produto:  2  ==  159.0
+
+============ cliente  5  ============
+produto:  0  ==  73.0
+produto:  1  ==  105.0
+produto:  2  ==  100.0
+
+
+============ periodo  5  ============
+
+============ veiculo  0  ============
+
+============ cliente  0  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  1  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  2  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  3  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  4  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+============ cliente  5  ============
+produto:  0  ==  -0.0
+produto:  1  ==  -0.0
+produto:  2  ==  -0.0
+
+
+===============================

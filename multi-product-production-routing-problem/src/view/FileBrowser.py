@@ -5,11 +5,18 @@ import tkinter as tk
 from tkinter import filedialog, Listbox, Scrollbar
 from src.ReadPrpFile import ReadPrpFile as RD
 from src.MultProductProdctionRoutingProblem import MultProductProdctionRoutingProblem as MPPRP
-
+from src.Converter import toStopPoint, inveterMatrix
+import time
 
 class FileBrowser:
-    def __init__(self, parent, on_file_selected):
+    def __init__(self, parent, on_file_selected, on_plot_results):
+
+        self.threads = []
+        self.results = {
+            'end': False,
+        }
         self.parent = parent
+        self.on_plot_results = on_plot_results
         self.on_file_selected = on_file_selected  # Callback to notify when a file is selected
         self.full_files_list = []
         self.initial_directory = "./data"  # Replace with your desired path
@@ -46,14 +53,15 @@ class FileBrowser:
         # Fields for displaying file information
         self.file = tk.Label(parent, text="Data set: ")
         self.file.pack(pady=5)
-        self.file_name_number_customer = tk.Label(parent, text="Number of Customers: ")
-        self.file_name_number_customer.pack(pady=5)
-        self.file_name_number_products = tk.Label(parent, text="Number of Products: ")
-        self.file_name_number_products.pack(pady=5)
-        self.file_name_number_vehicles = tk.Label(parent, text="Number of Vehicles: ")
-        self.file_name_number_vehicles.pack(pady=5)
-        self.file_name_number_preriods = tk.Label(parent, text="Number of Periods: ")
-        self.file_name_number_preriods.pack(pady=5)
+        self.file_info = tk.Label(parent, text="Customers: , Products: , \nVehicles: , Periods: ")
+        self.file_info.pack(pady=5)
+        self.file_rest = tk.Label(parent, text="==")
+        self.file_rest.pack(pady=5)
+
+
+        # Button to execute the process with the selected file
+        self.open_button = tk.Button(parent, text="Ploat Results", command=self.on_plot_results)
+        self.open_button.pack(pady=10)
 
         # Label for showing the status
         self.status_label = tk.Label(parent, text="", wraplength=300, justify="left")
@@ -92,13 +100,38 @@ class FileBrowser:
             thread.start()
 
     def call_process(self, file_path):
+        self.on_file_selected("Nova otimizaçao")
+        self.results = {
+            'end': False,
+        }
+
         read = RD(file_path)
         dataSet = read.getDataSet()
 
         # Update file information fields
         self.display_file_info(dataSet,file_path)
 
-        mpprp = MPPRP(dataSet).solver()
+        init = time.time()
+        mpprp = MPPRP(dataSet)
+        self.threads.append(mpprp)
+        mpprp.solver()
+        Z,X,Y,I,R,Q,FO,GAP = mpprp.getResults()
+
+        periods = []
+        for t in range(len(Z)):
+            veicule = []
+            for v in range(len(Z[t])):
+                veicule.append(toStopPoint(Z[t][v]))
+            periods.append(veicule)
+
+        print(periods)
+        fim = time.time()
+        self.display_file_resutl(FO,GAP,round(fim-init))
+        self.results = {
+            'end': True,
+            'periods': periods,
+            'data':dataSet
+        }
 
     # Function to display file information
     def display_file_info(self, dataSet, file_path):
@@ -106,8 +139,15 @@ class FileBrowser:
 
         # Update the labels with file information
         self.file['text'] = f"Data set:  {file_name}"
-        self.file_name_number_customer['text'] = f"Number of Customers: {dataSet['num_customers']}"
-        self.file_name_number_products['text'] = f"Number of Products:  {dataSet['num_products']}"
-        self.file_name_number_vehicles['text'] = f"Number of Vehicles: {dataSet['num_vehicles']}"
-        self.file_name_number_preriods['text'] = f"Number of Periods: {dataSet['num_periods']}"
+        self.file_info['text'] = f"Customers: {dataSet['num_customers']}, Products:{dataSet['num_products']}, \nVehicles:{dataSet['num_vehicles']}, Periods:{dataSet['num_periods']}."
+        self.file_rest['text'] = "=="
 
+    def display_file_resutl(self,fo,gap,time):
+        self.file_rest['text'] = f"FO: {fo}, GAP:{gap}, time:{time}"
+
+    def endProcess(self):
+        for i in range(len(self.threads)):
+            self.threads[i].terminate()
+
+    def getResults(self):
+        return self.results
