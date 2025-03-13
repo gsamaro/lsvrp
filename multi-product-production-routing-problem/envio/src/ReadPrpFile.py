@@ -1,19 +1,9 @@
-import json
-
-
+    
 class ReadPrpFile:
     def __init__(self,file_path):
         self.file_path=file_path
-        self.dataSet = {}
-        self.read()
 
     def getDataSet(self):
-        return self.dataSet
-
-    def toString(self):
-        print(json.dumps(self.dataSet, indent=4))
-
-    def read(self):
         data = {}
         with open(self.file_path, 'r') as file:
             lines = file.readlines()
@@ -118,11 +108,15 @@ class ReadPrpFile:
                             data['d_pit'].append(b)
                 i += 1
 
+        
+        numero_grande = 10**12
+        for i in range(len(data['a_ik'])):
+            data['a_ik'][i][i] = numero_grande
+
         print("======================================")
         print("Iniciando otimização do arquivo, ", self.file_path) 
         print("Number of Customers = ", num_customers) 
         print("Number of Products = ", num_products) 
         print("Number of Periods = ", num_periods) 
         print("======================================")
-
-        self.dataSet = data
+        return data
