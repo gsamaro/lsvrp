@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import filedialog, Listbox, Scrollbar
 from src.ReadPrpFile import ReadPrpFile as RD
 from src.MultProductProdctionRoutingProblem import MultProductProdctionRoutingProblem as MPPRP
-from src.Converter import toStopPoint, inveterMatrix
+from src.Converter import toStopPoint
 import time
 
 class FileBrowser:
