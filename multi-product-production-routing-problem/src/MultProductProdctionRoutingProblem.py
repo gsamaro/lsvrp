@@ -215,125 +215,125 @@ class MultProductProdctionRoutingProblem:
 
     def getResults(self):
 
-        print("*******************************")
-        print("============ Z ================")
-        print("*******************************")
+        # print("*******************************")
+        # print("============ Z ================")
+        # print("*******************************")
         Z=[]
         for t in range(self.t):
-            print("\n\n============ periodo ",t," ============")
+            # print("\n\n============ periodo ",t," ============")
             v_list =[]
             for v in range(self.v):
-                print("\n============ veiculo ",v," ============")
+                # print("\n============ veiculo ",v," ============")
                 i_list =[]
                 for i in range(self.i):
                     k_list=[]
                     for k in range(self.k):
                         variable = abs(self.Z_v_i_k_t[v,i,k,t].x)
-                        print(" origem: ",i," destino: ",k," == ",variable)
+                        # print(" origem: ",i," destino: ",k," == ",variable)
                         k_list.append(variable)
                     i_list.append(k_list)
                 v_list.append(i_list)
             Z.append(v_list)
-        print("\n\n===============================\n\n")
+        # print("\n\n===============================\n\n")
 
         for t in range(len(Z)):
-            print("\n\n============ periodo ",t," ============")
+            # print("\n\n============ periodo ",t," ============")
             for v in range(len(Z[t])):
-                print("\n============ veiculo ",v," ============")
+                # print("\n============ veiculo ",v," ============")
                 for i in range(len(Z[t][v])):
                     string = ""
                     for k in range(len(Z[t][v][i])):
                         string+= str(Z[t][v][i][k]) + "\t"
-                    print(string)
+                    # print(string)
 
-        print("*******************************")
-        print("============ Y ================")
-        print("*******************************")
+        # print("*******************************")
+        # print("============ Y ================")
+        # print("*******************************")
         Y = []
         for t in range(self.t):
-            print("\n\n============ periodo ",t," ============")
+            # print("\n\n============ periodo ",t," ============")
             p_list_y=[]
             for p in range(self.p):
                 variable = abs(self.Y_p_t[p,t].x)
                 p_list_y.append(variable)
-                print("produto: ",p," == ", variable)
+                # print("produto: ",p," == ", variable)
             Y.append(p_list_y)
-        print("\n\n===============================\n\n")
+        # print("\n\n===============================\n\n")
 
-        print("*******************************")
-        print("============ X ================")
-        print("*******************************")
+        # print("*******************************")
+        # print("============ X ================")
+        # print("*******************************")
         X = []
         for t in range(self.t):
-            print("\n\n============ periodo ",t," ============")
+            # print("\n\n============ periodo ",t," ============")
             p_list_x=[]
             for p in range(self.p):
                 p_list_x.append(self.X_p_t[p,t].x)
-                print("produto: ",p," == ", self.X_p_t[p,t].x)
+                # print("produto: ",p," == ", self.X_p_t[p,t].x)
             X.append(p_list_x)
-        print("\n\n===============================\n\n")
+        # print("\n\n===============================\n\n")
 
-        print("*******************************")
-        print("============ I ================")
-        print("*******************************")
+        # print("*******************************")
+        # print("============ I ================")
+        # print("*******************************")
         I=[]
         for t in range(self.t):
-            print("\n\n============ periodo ",t," ============")
+            # print("\n\n============ periodo ",t," ============")
             p_list_i=[]
             for i in range(self.i):
                 i_list_i=[]
-                print("\n============ cliente ",i," ============")
+                # print("\n============ cliente ",i," ============")
                 for p in range(self.p):
-                    print("produto: ",p," == ", self.I_p_i_t[p,i,t].x)
+                    # print("produto: ",p," == ", self.I_p_i_t[p,i,t].x)
                     i_list_i.append(self.I_p_i_t[p,i,t].x)
                 p_list_i.append(i_list_i)
             I.append(p_list_i)
-        print("\n\n===============================\n\n")
+        # print("\n\n===============================\n\n")
 
-        print("*******************************")
-        print("============ R ================")
-        print("*******************************")
+        # print("*******************************")
+        # print("============ R ================")
+        # print("*******************************")
         R=[]
         for t in range(self.t):
-            print("\n\n============ periodo ",t," ============")
+            # print("\n\n============ periodo ",t," ============")
             p_list=[]
             for v in range(self.v):
-                print("\n============ veiculo ",v," ============")
+                # print("\n============ veiculo ",v," ============")
                 v_list=[]
                 for i in range(self.i):
                     i_list=[]
                     for k in range(1,self.k):
                         k_list=[]
-                        print("\n============ cliente ",i," -> cliente ",k," ============")
+                        # print("\n============ cliente ",i," -> cliente ",k," ============")
                         for p in range(self.p):
                             k_list.append(self.R_p_v_i_k_t[p,v,i,k,t].x)
-                            print("produto: ",p," == ", self.R_p_v_i_k_t[p,v,i,k,t].x)
+                            # print("produto: ",p," == ", self.R_p_v_i_k_t[p,v,i,k,t].x)
                         i_list.append(k_list)
                     v_list.append(i_list)
                 p_list.append(v_list)
             R.append(p_list)
-        print("\n\n===============================\n\n")
+        # print("\n\n===============================\n\n")
 
-        print("*******************************")
-        print("============ Q ================")
-        print("*******************************")
+        # print("*******************************")
+        # print("============ Q ================")
+        # print("*******************************")
         Q=[]
         for t in range(self.t):
-            print("\n\n============ periodo ",t," ============")
+            # print("\n\n============ periodo ",t," ============")
             p_list=[]
             for v in range(self.v):
-                print("\n============ veiculo ",v," ============")
+                # print("\n============ veiculo ",v," ============")
                 v_list=[]
                 for i in range(self.i):
-                    print("\n============ cliente ",i," ============")
+                    # print("\n============ cliente ",i," ============")
                     i_list=[]
                     for p in range(self.p):
-                        print("produto: ",p," == ",self.Q_p_v_i_t[p,v,i,t].x)
+                        # print("produto: ",p," == ",self.Q_p_v_i_t[p,v,i,t].x)
                         i_list.append(self.Q_p_v_i_t[p,v,i,t].x)
                     v_list.append(i_list)
                 p_list.append(v_list)
             Q.append(p_list)
-        print("\n\n===============================\n\n")
+        # print("\n\n===============================\n\n")
     
         return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap
 

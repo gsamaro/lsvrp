@@ -1,21 +1,31 @@
-from src.view.FileBrowserApp import FileBrowserApp as FBA
-import tkinter as tk
+import sys
+from src.ReadPrpFile import ReadPrpFile as RD
+from src.MultProductProdctionRoutingProblem import MultProductProdctionRoutingProblem as MPPRP
+from src.Converter import toStopPoint
+from src.GraphDisplay import plotar_linha
 
-# Initialize the GUI
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = FBA(root)
-    app.listenter()
-    root.mainloop()
 
+    data = sys.argv[1]
+    file = sys.argv[2]
 
-# from src.ReadPrpFile import ReadPrpFile as RD
-# from src.MultProductProdctionRoutingProblem import MultProductProdctionRoutingProblem as MPPRP
+    data = RD("./data/"+data+"/"+file+".dat").getDataSet()
 
-# if __name__ == "__main__":
-#     data = RD("./data/DATA_PRP_5C/PRP1_C5_P3_V1_T6_S1.dat")
+    mpprp = MPPRP(data)
+    mpprp.solver()
+    Z,X,Y,I,R,Q,FO,GAP = mpprp.getResults()
 
-#     mpp = MPPRP(data.getDataSet())
-#     data.toString()
-#     mpp.solver()
+    periods = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]
+
+    print(periods)
+
+    for p in range(len(periods)):
+        x=[]
+        y=[]
+        for v in range(len(periods[p])):
+            for i in range(len(periods[p][v])):
+                x.append(data['coordXY']['x'][periods[p][v][i]])
+                y.append(data['coordXY']['y'][periods[p][v][i]])
+            plotar_linha(x,y,titulo=f"Periodo:{p+1}, Veiculo:{v+1}")
+
     
