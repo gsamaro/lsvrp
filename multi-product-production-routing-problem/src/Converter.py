@@ -1,23 +1,24 @@
+import numpy as np
+
+def matriz_to_route(matriz):
+    n = matriz.shape[0]
+    rota = []
+    visitado = set()
+    atual = 0  # Começa no nó 0
+    
+    while atual not in visitado:
+        rota.append(int(atual))
+        visitado.add(atual)
+        prox = np.where(matriz[atual] == 1)[0]  # Agora verifica corretamente na matriz original
+        if len(prox) == 0:
+            break  # Se não houver próximo, encerra
+        atual = prox[0]  # Pega o primeiro próximo disponível
+    
+    rota.append(0)  # Volta ao início
+    return rota
+
+def inverter_matriz(matriz):
+    return  np.array(matriz).T  # Transposta da matriz
+
 def toStopPoint(matriz):
-    n = len(matriz)  # número de pontos (dimensão da matriz)
-    visitado = [False] * n  # Para marcar quais pontos já visitamos
-    lista_paradas = []  # Lista onde vamos construir o caminho
-    atual = 0  # Começamos no ponto 0 (ou qualquer outro ponto arbitrário)
-
-    while len(lista_paradas) < n:
-        lista_paradas.append(atual)
-        visitado[atual] = True
-        for prox in range(n):
-            if matriz[atual][prox] == 1 and not visitado[prox]:
-                atual = prox
-                break
-    return lista_paradas
-
-def inveterMatrix(matriz):
-    n = len(matriz)
-    matriz_invertida = [[0] * n for _ in range(n)]
-
-    for i in range(n):
-        for j in range(n):
-            matriz_invertida[i][j] = abs(matriz[i][j])
-    return matriz_invertida
+    return matriz_to_route(inverter_matriz(matriz))

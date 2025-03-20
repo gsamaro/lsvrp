@@ -1,21 +1,25 @@
-from src.view.FileBrowserApp import FileBrowserApp as FBA
-import tkinter as tk
+import sys
+import os
+from src.ReadPrpFile import ReadPrpFile as RD
+from src.MultProductProdctionRoutingProblem import MultProductProdctionRoutingProblem as MPPRP
+from src.ProcessResults import getResults
+from src.GraphDisplay import graphResults
 
-# Initialize the GUI
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = FBA(root)
-    app.listenter()
-    root.mainloop()
 
+    past = sys.argv[1]
+    file = sys.argv[2]
+    isPlot = sys.argv[3]
+    dir = f'./out/{past}/{file}/'
+    os.makedirs(dir, exist_ok=True)
 
-# from src.ReadPrpFile import ReadPrpFile as RD
-# from src.MultProductProdctionRoutingProblem import MultProductProdctionRoutingProblem as MPPRP
+    data = RD("./data/"+past+"/"+file+".dat").getDataSet()
 
-# if __name__ == "__main__":
-#     data = RD("./data/DATA_PRP_5C/PRP1_C5_P3_V1_T6_S1.dat")
+    mpprp = MPPRP(data,dir)
+    mpprp.solver()
+    Z,X,Y,I,R,Q,FO,GAP = mpprp.getResults()
 
-#     mpp = MPPRP(data.getDataSet())
-#     data.toString()
-#     mpp.solver()
-    
+    results = getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP)
+
+    if(isPlot=='true'):
+        graphResults(results['periods'],{'coordsX':data['coordXY']['x'],'coordsY':data['coordXY']['y']},dir)
