@@ -93,23 +93,7 @@ def ploat(coords,veicle,period):
 
 def graphResults(periods = [], coords={}):
     for t in range(len(periods)):
-        # print(f"Periodo = {period['t']}")
-        # print(f"Periodo = {period['productions']}")
-        # print(f"Periodo = {period['estq']}")
         for veicle in periods[t]['veicles']:
-            # for point in veicle['points']:
-            #     # print(f"x={point['x']} -> y={point['y']}")
-            #     x.append(point['x'])
-            #     y.append(point['y'])
-            #     q_p = []
-            #     r_p = []
-            #     for product in point['products']:
-            #         # print(f"{product['p']} => qtd{product['qtd']} => r {product['r']}")
-            #         q_p.append(product['qtd'])
-            #         r_p.append(product['r'])
-            #     q.append(q_p)
-            #     r.append(r_p)
-
             ploat(coords,veicle,periods[t])
 
 
