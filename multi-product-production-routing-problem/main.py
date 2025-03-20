@@ -19,4 +19,4 @@ if __name__ == "__main__":
     results = getResults(data,file,dir,Z,X,Y,I,R,Q,FO,GAP)
 
     if(isPlot=='true'):
-        graphResults(results['periods'])
+        graphResults(results['periods'],{'coordsX':data['coordXY']['x'],'coordsY':data['coordXY']['y']})
