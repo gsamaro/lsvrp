@@ -48,11 +48,13 @@ def ploat(coords,veicle,period):
     x_bar = []
     y_est_bar = []
     y_dem_bar = [] 
+    y_est_I_b = []
     for i in range(len(period['estq'])):
         point = period['estq'][i]['point']
         for p in range(len(period['estq'][i]['products'])):
             x_bar.append(f" x_{point}_p{period['estq'][i]['products'][p]['p']}")
             y_est_bar.append(period['estq'][i]['products'][p]['qtd'])
+            y_est_I_b.append(period['estq_i'][i]['products'][p]['qtd'])
             if(i==0):
                 y_dem_bar.append(0)
             else:
@@ -64,9 +66,10 @@ def ploat(coords,veicle,period):
 
     largura = 0.4
     x_d = np.arange(len(x_bar)) 
-    ax2.bar(x_d - largura/2, y_est_bar, largura, label="Estoque", color="blue", align='edge')
+    ax2.bar(x_d - largura/2, y_est_bar, largura, label="Estoque Final", color="blue", align='edge')
     ax2.bar(x_d, y_dem_bar, largura, label="Demanda", color="orange", align='edge')
-
+    ax2.bar(x_d + largura, y_est_I_b, largura, label="Estoque Inicial", color="green")
+ 
     # ax2.set_xlabel(xlabel)
     ax2.set_title(titulo_barra)
     ax2.grid(True)
@@ -75,6 +78,8 @@ def ploat(coords,veicle,period):
     for i in range(len(x_bar)):
         ax2.text(x_d[i] - largura/2, y_est_bar[i] + 0.5, str(y_est_bar[i]), ha='center', color='black', fontsize=12, fontweight='bold')
         ax2.text(x_d[i], y_dem_bar[i] - 10, str(y_dem_bar[i]), ha='center', color='black', fontsize=12, fontweight='bold')
+        ax2.text(x_d[i] + largura, y_est_I_b[i] - 20, str(y_est_I_b[i]), ha='center', color='black', fontsize=12, fontweight='bold')
+
   
     # Ajustar os rótulos no eixo X
     plt.xticks(x_d, x_bar)
@@ -87,11 +92,11 @@ def ploat(coords,veicle,period):
     plt.show()
 
 def graphResults(periods = [], coords={}):
-    for period in periods:
+    for t in range(len(periods)):
         # print(f"Periodo = {period['t']}")
         # print(f"Periodo = {period['productions']}")
         # print(f"Periodo = {period['estq']}")
-        for veicle in period['veicles']:
+        for veicle in periods[t]['veicles']:
             # for point in veicle['points']:
             #     # print(f"x={point['x']} -> y={point['y']}")
             #     x.append(point['x'])
@@ -104,5 +109,7 @@ def graphResults(periods = [], coords={}):
             #         r_p.append(product['r'])
             #     q.append(q_p)
             #     r.append(r_p)
-            ploat(coords,veicle,period)
+
+            ploat(coords,veicle,periods[t])
+
 
