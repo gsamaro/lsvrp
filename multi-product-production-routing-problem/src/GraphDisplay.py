@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 
 def ponto_medio(x1, y1, x2, y2):
     # Calculando as coordenadas do ponto médio
@@ -6,7 +7,7 @@ def ponto_medio(x1, y1, x2, y2):
     ym = (y1 + y2) / 2
     return (xm, ym)
 
-def ploat(x,y,q,r,veicle):
+def ploat(x,y,q,r,veicle,period):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 10))  # 1 linha, 2 colunas
     
     ax1.plot(x, y, marker='o', linestyle='-', color='b', label="Linha")
@@ -27,20 +28,45 @@ def ploat(x,y,q,r,veicle):
     ax1.set_title(f"Rota Veiculo: {veicle['v']}, Qtd Tranp: {veicle['v_qtd_max']}")
     ax1.grid(True)
     ax1.legend()
+# =================================== grafico de bara ==============================================
+
+    x_bar = []
+    y_est_bar = []
+    y_dem_bar = [] 
+    for i in range(len(period['estq'])):
+        point = period['estq'][i]['point']
+        for p in range(len(period['estq'][i]['products'])):
+            x_bar.append(f" x_{point}_p{period['estq'][i]['products'][p]['p']}")
+            y_est_bar.append(period['estq'][i]['products'][p]['qtd'])
+            if(i==0):
+                y_dem_bar.append(0)
+            else:
+                y_dem_bar.append(period['dem'][i-1]['products'][p]['qtd'])
 
     # Gráfico de Barra
-    ylabel_barra="Eixo Y (Barra)" 
-    titulo_barra="Gráfico de Barra"
-    bars = ax2.bar(x, y, color='g', alpha=0.6, width=0.4)
+
+    titulo_barra=f"Estoque Vs Clinte_Produto: Periodo = {period['t']}"
+
+    largura = 0.4
+    x_d = np.arange(len(x_bar)) 
+    ax2.bar(x_d - largura/2, y_est_bar, largura, label="Estoque", color="blue", align='edge')
+    ax2.bar(x_d, y_dem_bar, largura, label="Demanda", color="orange", align='edge')
+
     # ax2.set_xlabel(xlabel)
-    ax2.set_ylabel(ylabel_barra, color='g')
     ax2.set_title(titulo_barra)
     ax2.grid(True)
 
-    for bar in bars:
-        height = bar.get_height()  # Altura de cada barra
-        ax2.text(bar.get_x() + bar.get_width() / 2, height, f'{height}', 
-                 ha='center', va='bottom', fontsize=10, color='black')
+    # Adicionar os valores nas barras
+    for i in range(len(x_bar)):
+        ax2.text(x_d[i] - largura/2, y_est_bar[i] + 0.5, str(y_est_bar[i]), ha='center', color='black', fontsize=12, fontweight='bold')
+        ax2.text(x_d[i], y_dem_bar[i] - 10, str(y_dem_bar[i]), ha='center', color='black', fontsize=12, fontweight='bold')
+  
+    # Ajustar os rótulos no eixo X
+    plt.xticks(x_d, x_bar)
+
+    # Melhorar a legenda
+    ax2.legend(title="Métricas", loc="upper right", fontsize=12, title_fontsize=14, edgecolor="black")
+
         
     plt.tight_layout()
     plt.show()
@@ -48,6 +74,8 @@ def ploat(x,y,q,r,veicle):
 def graphResults(periods = []):
     for period in periods:
         # print(f"Periodo = {period['t']}")
+        # print(f"Periodo = {period['productions']}")
+        # print(f"Periodo = {period['estq']}")
         for veicle in period['veicles']:
             # print(f"Veiculo = {veicle['v']}")
             x=[]
@@ -66,5 +94,5 @@ def graphResults(periods = []):
                     r_p.append(product['r'])
                 q.append(q_p)
                 r.append(r_p)
-            ploat(x,y,q,r,veicle)
+            ploat(x,y,q,r,veicle,period)
 

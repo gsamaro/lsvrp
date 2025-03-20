@@ -45,27 +45,43 @@ def getResults(data,file,dir,Z,X,Y,I,R,Q,FO,GAP):
             })
 
         est = []
+        dem = []
         for i in range (len(I[t])):
             e_p_current = []
+            d_p_current = []
             e_current = 0
+            d_current = 0
             for p in range(len(I[t][i])):
                 if(t==0):
                     e_current = data['I_pi0'][p][i]
                 else:
                     e_current = I[t][i][p]
+
+                if(i!=len(I[t])-1):
+                    d_current = data['d_pit'][p][i][t]
+
                 e_p_current.append({
                     'p':p+1,
                     'qtd':e_current
                 })
+                d_p_current.append({
+                    'p':p+1,
+                    'qtd':d_current
+                })
             est.append({
                 'point':i,
                 'products': e_p_current
+            })
+            dem.append({
+                'point':i+1,
+                'products': d_p_current
             })
 
         periods.append({
             't':t+1,
             'veicles':veicles,
             'productions':productions,
+            'dem':dem,
             'estq':est
         })
 
