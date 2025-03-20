@@ -16,7 +16,7 @@ from gurobipy import GRB
 
 class MultProductProdctionRoutingProblem:
 
-    def __init__(self,map):
+    def __init__(self,map,dir):
         self.model = gp.Model("Multi_Product_Prodction_Routing_Problem") 
         self.p=map['num_products']            ##Products  
         self.i=map['num_customers'] + 1       ##Customers
@@ -41,6 +41,7 @@ class MultProductProdctionRoutingProblem:
         self.Z_v_i_k_t={}                     ##1, if vehicle v travels along edge (i,k) in period t; or 0, atherwise.
         self.R_p_v_i_k_t={}                   ##Quantity of item 𝑝 transported by vehicle 𝑣 on edge (𝑖, 𝑘) in period 𝑡;
         self.Q_p_v_i_t={}                     ##Quantity of item 𝑝 delivered by vehicle 𝑣 to customer 𝑖 in period 𝑡.
+        self.dir = dir
 
     def createDecisionVariables(self):
         for p in range(self.p):
@@ -211,7 +212,7 @@ class MultProductProdctionRoutingProblem:
 
     def outModel(self):
         self.model.Params.OutputFlag = 1
-        self.model.write("./out/modelo.lp")
+        self.model.write(f"{self.dir}modelo.lp")
 
     def getResults(self):
 

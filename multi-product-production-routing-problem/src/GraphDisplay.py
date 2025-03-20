@@ -7,8 +7,8 @@ def ponto_medio(x1, y1, x2, y2):
     ym = (y1 + y2) / 2
     return (xm, ym)
 
-def ploat(coords,veicle,period):
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 10))  # 1 linha, 2 colunas
+def ploat(coords,veicle,period,dir):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(32, 20))  # 1 linha, 2 colunas
     
     ax1.scatter(coords['coordsX'], coords['coordsY'],  color='red', marker='o', linestyle='-', label="Pontos")
 
@@ -37,7 +37,7 @@ def ploat(coords,veicle,period):
 
                 txt=txt + f"p{prd}: {q}\n"
                 txt2=txt2 + f"p{prd}: {r}\n"
-            ax1.text(x, y, f"{txt}\nPointo:{point}", fontsize=10, ha='right', va='bottom')
+            ax1.text(x, y, f"{txt}\nPonto:{point}", fontsize=10, ha='right', va='bottom')
             ax1.text(xm, ym, f"{txt2}", fontsize=10, ha='right', va='bottom')
 
     ax1.set_title(f"Rota Veiculo: {veicle['v']}, Qtd Tranp: {veicle['v_qtd_max']}")
@@ -87,13 +87,13 @@ def ploat(coords,veicle,period):
     # Melhorar a legenda
     ax2.legend(title="Métricas", loc="upper right", fontsize=12, title_fontsize=14, edgecolor="black")
 
-        
+    plt.savefig(f"{dir}/periodo-{period['t']}-veiculo-{veicle['v']}", dpi=300, bbox_inches='tight')  # Salva como PNG com alta qualidade
     plt.tight_layout()
-    plt.show()
+    # plt.show()
 
-def graphResults(periods = [], coords={}):
+def graphResults(periods = [], coords={}, dir=""):
     for t in range(len(periods)):
         for veicle in periods[t]['veicles']:
-            ploat(coords,veicle,periods[t])
+            ploat(coords,veicle,periods[t],dir)
 
 

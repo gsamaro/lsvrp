@@ -2,7 +2,7 @@ import json
 import os
 from src.Converter import toStopPoint
 
-def getResults(data,file,dir,Z,X,Y,I,R,Q,FO,GAP):
+def getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP):
     routes = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]
     periods = []
     for t in range(len(routes)):
@@ -105,8 +105,7 @@ def getResults(data,file,dir,Z,X,Y,I,R,Q,FO,GAP):
         'gap':GAP
     }
 
-    os.makedirs(f'./out/{dir}', exist_ok=True)
-    caminho_arquivo = os.path.join(f'./out/{dir}', f"{file}.json")
+    caminho_arquivo = os.path.join(dir, "result.json")
     with open(caminho_arquivo, "w", encoding="utf-8") as arquivo:
         json.dump(results, arquivo, indent=4, ensure_ascii=False)
     
