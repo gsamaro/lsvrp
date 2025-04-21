@@ -1,26 +1,52 @@
-import sys
+from src.WorkerProcess import WorkerProcess
+
+import json
+import shutil
 import os
-from src.ReadPrpFile import ReadPrpFile as RD
-from src.MultProductProdctionRoutingProblem import MultProductProdctionRoutingProblem as MPPRP
-from src.ProcessResults import getResults
-from src.GraphDisplay import graphResults
 
 if __name__ == "__main__":
 
-    past = sys.argv[1]
-    file = sys.argv[2]
-    isPlot = sys.argv[3]
-    dir = f'./out/{past}/{file}/'
-    os.makedirs(dir, exist_ok=True)
+    with open('config.json', 'r') as f:
+        config = json.load(f)
 
-    data = RD("./data/"+past+"/"+file+".dat").getDataSet()
+    threadsLimitSolver = config['solver']['threadsLimit']
+    timeLimitSolver = config['solver']['timeLimit']
+    timeSupervisor = config['workers']['timeSupervisor']
+    workers = config['workers']['num']
+    output = config['instance']['output']
+    isPloat = config['instance']['is_plot']
+    dir = config['instance']['dir']
+    files = config['instance']['files']
 
-    mpprp = MPPRP(data,dir)
-    mpprp.solver(timeLimit=10,numThreads=1)
-    Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT = mpprp.getResults()
+    datas = []
+    for file in files:
+        if ".dat" in file:
+            partes = file.split("/")
+            datas.append({
+                'data': partes[0],
+                'files': [partes[1]]
+            })
+        else:
+            datas.append({
+                'data': file,
+                'files': [f for f in os.listdir(dir+file) if os.path.isfile(os.path.join(dir+file, f))]
+            })
 
-    results = getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT)
-    print(results)
+    instancies = []
+    for data in datas:
+        for file in data['files']:
 
-    if(isPlot=='true'):
-        graphResults(results['periods'],{'coordsX':data['coordXY']['x'],'coordsY':data['coordXY']['y']},dir)
+            outFile = f"{output}{data['data']}/{file[:-4]}/"
+            if os.path.exists(outFile):
+                shutil.rmtree(outFile)
+            os.makedirs(outFile, exist_ok=True) 
+
+            instancies.append({
+                'file': f"{dir}{data['data']}/{file}",
+                'output': outFile,
+                'isPloat':isPloat,
+                'numThreads':threadsLimitSolver,
+                'timeLimit':timeLimitSolver
+            })
+
+    WorkerProcess(workers,timeSupervisor,dirLogs=f'{output}logs').process(instancies = instancies)
