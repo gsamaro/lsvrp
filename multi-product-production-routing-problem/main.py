@@ -17,9 +17,10 @@ if __name__ == "__main__":
 
     mpprp = MPPRP(data,dir)
     mpprp.solver(timeLimit=10,numThreads=1)
-    Z,X,Y,I,R,Q,FO,GAP,TIME = mpprp.getResults()
+    Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT = mpprp.getResults()
 
-    results = getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP,TIME)
+    results = getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT)
+    print(results)
 
     if(isPlot=='true'):
         graphResults(results['periods'],{'coordsX':data['coordXY']['x'],'coordsY':data['coordXY']['y']},dir)

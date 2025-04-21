@@ -219,7 +219,7 @@ class MultProductProdctionRoutingProblem:
 
     def getResults(self):
         if(self.solCount==0):
-            return [],[],[],[],[],[],self.model.ObjVal,self.model.MIPGap,self.time
+            return [],[],[],[],[],[],0,0,self.time,self.solCount
         
         # print("*******************************")
         # print("============ Z ================")
@@ -341,7 +341,7 @@ class MultProductProdctionRoutingProblem:
             Q.append(t_list)
         # print("\n\n===============================\n\n")
     
-        return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap,self.time
+        return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap,self.time,self.solCount
 
     def terminate(self):
         self.model.terminate()
