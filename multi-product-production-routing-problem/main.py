@@ -16,10 +16,10 @@ if __name__ == "__main__":
     data = RD("./data/"+past+"/"+file+".dat").getDataSet()
 
     mpprp = MPPRP(data,dir)
-    mpprp.solver()
-    Z,X,Y,I,R,Q,FO,GAP = mpprp.getResults()
+    mpprp.solver(timeLimit=10,numThreads=1)
+    Z,X,Y,I,R,Q,FO,GAP,TIME = mpprp.getResults()
 
-    results = getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP)
+    results = getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP,TIME)
 
     if(isPlot=='true'):
         graphResults(results['periods'],{'coordsX':data['coordXY']['x'],'coordsY':data['coordXY']['y']},dir)

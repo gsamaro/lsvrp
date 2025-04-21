@@ -26,3 +26,32 @@ Executar o código dentro do ambiente virtual: Agora você pode executar seu có
 1- Validação do modelo. 
 2- Buscar outros modelos para comparação
 3- Pensar em metodos de solução.
+
+
+
+
+Construir os desenhos
+Periodo = 3
+Veiculo = 2
+Cliente = 6
+Produto = 2
+
+Testes:
+
+- Mandar as descrição das instancias
+- Testes com 1 hora ou 30 minutos.
+- Descrever os testes computacionais.
+-
+-
+-
+-
+
+
+
+
+
+
+
+
+
+
