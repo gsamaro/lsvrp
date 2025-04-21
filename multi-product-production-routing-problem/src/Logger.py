@@ -1,12 +1,9 @@
 import os
-import shutil
 from datetime import datetime
 
 class Logger:
     def __init__(self, log_dir="logs", log_file="app.log"):
 
-        if os.path.exists(log_dir):
-            shutil.rmtree(log_dir)
         os.makedirs(log_dir, exist_ok=True) 
         self.log_path = os.path.join(log_dir, log_file)
 

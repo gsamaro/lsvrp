@@ -18,6 +18,10 @@ if __name__ == "__main__":
     dir = config['instance']['dir']
     files = config['instance']['files']
 
+    logs = f"{output}/logs"
+    if os.path.exists(logs):
+        shutil.rmtree(logs)
+
     datas = []
     for file in files:
         if ".dat" in file:
