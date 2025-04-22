@@ -22,6 +22,13 @@ Copiar código
 Executar o código dentro do ambiente virtual: Agora você pode executar seu código Python com o gurobipy instalado dentro do ambiente virtual.
 
 
+Para Executar sem travar o terminal atual:
+	
+	gnome-terminal -- bash -c "python3 main.py"
+
+
+
+
 Exemplos de congig.json
 
 Para Executar todas as instancias de uma pasta
@@ -61,12 +68,3 @@ Para uma instancia expecifica
             "files": ["DATA_PRP_5C/PRP1_C5_P2_V1_T2_S1.dat","DATA_PRP_5C/PRP1_C5_P3_V1_T6_S1.dat"]
         }
     }
-
-
-
-
-
-
-
-
-
