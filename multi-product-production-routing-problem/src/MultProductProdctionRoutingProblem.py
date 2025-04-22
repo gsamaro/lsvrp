@@ -13,6 +13,7 @@
 #################################################################################################
 import gurobipy as gp
 from gurobipy import GRB
+import time
 
 class MultProductProdctionRoutingProblem:
 
@@ -42,6 +43,8 @@ class MultProductProdctionRoutingProblem:
         self.R_p_v_i_k_t={}                   ##Quantity of item 𝑝 transported by vehicle 𝑣 on edge (𝑖, 𝑘) in period 𝑡;
         self.Q_p_v_i_t={}                     ##Quantity of item 𝑝 delivered by vehicle 𝑣 to customer 𝑖 in period 𝑡.
         self.dir = dir
+        self.time = 0
+        self.solCount = 0
 
     def createDecisionVariables(self):
         for p in range(self.p):
@@ -215,7 +218,9 @@ class MultProductProdctionRoutingProblem:
         self.model.write(f"{self.dir}modelo.lp")
 
     def getResults(self):
-
+        if(self.solCount==0):
+            return [],[],[],[],[],[],0,0,self.time,self.solCount
+        
         # print("*******************************")
         # print("============ Z ================")
         # print("*******************************")
@@ -336,12 +341,12 @@ class MultProductProdctionRoutingProblem:
             Q.append(t_list)
         # print("\n\n===============================\n\n")
     
-        return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap
+        return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap,self.time,self.solCount
 
     def terminate(self):
         self.model.terminate()
 
-    def solver(self):
+    def solver(self,numThreads=None,timeLimit=None):
         self.createDecisionVariables()
         self.crateObjectiveFunction()
         self.createEstablishInvetoryBalanceAtPlant()
@@ -357,4 +362,13 @@ class MultProductProdctionRoutingProblem:
         self.createVehicleMostVisitCustomerEachPeriod()
         self.outModel()
 
+        if numThreads is not None:
+            self.model.setParam("Threads", numThreads)
+        if timeLimit is not None:
+            self.model.setParam("TimeLimit", timeLimit)
+
+        start_time = time.time()
         self.model.optimize()
+        end_time = time.time()
+        self.time = end_time - start_time
+        self.solCount = self.model.SolCount
