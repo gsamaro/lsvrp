@@ -25,8 +25,8 @@ U_pi = Maximum inventory upper bound of item p at site i
 	5115	175	104	153	288	256
 
 I_pi0 = Initial inventory of item p at site i
- 	0	193	0	0	0	108
-	0	0	52	0	171	0
+ 	0	70	0	0	50	0
+	0	0	10	0	50	0
 
 h_pi = Inventory cost of item p at site i
  	3	3	3	8	4	6
