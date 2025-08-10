@@ -1,4 +1,5 @@
-from src.WorkerProcess import WorkerProcess
+from src.process.WorkerProcess import WorkerProcess
+from src.log.Logger import Logger
 
 import json
 import shutil
@@ -18,9 +19,10 @@ if __name__ == "__main__":
     dir = config['instance']['dir']
     files = config['instance']['files']
 
-    logs = f"{output}/logs"
-    if os.path.exists(logs):
-        shutil.rmtree(logs)
+    if os.path.exists(f"{output}/logs"):
+        shutil.rmtree(f"{output}/logs")
+
+    log = Logger(log_dir=f'{output}logs', log_file=f"Worker_0.log", worker_id=0, task = 0) 
 
     datas = []
     for file in files:
@@ -53,4 +55,4 @@ if __name__ == "__main__":
                 'timeLimit':timeLimitSolver
             })
 
-    WorkerProcess(workers,timeSupervisor,dirLogs=f'{output}logs').process(instancies = instancies)
+    WorkerProcess(workers,timeSupervisor,{'instancia': log,'dirLogs': f'{output}logs'}).process(instancies = instancies, solver= "GRASP")

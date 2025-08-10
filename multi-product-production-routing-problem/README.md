@@ -14,12 +14,15 @@ bash
 Copiar código
 
     source path/to/venv/bin/activate
+    source path/to/venv/Scripts/activate
 
 
 bash
 Copiar código
 
     pip install gurobipy
+    pip install numpy
+    pip install matplotlib
     
 Executar o código dentro do ambiente virtual: Agora você pode executar seu código Python com o gurobipy instalado dentro do ambiente virtual.
 

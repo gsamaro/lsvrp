@@ -4,13 +4,13 @@
     "timeLimit":1800
   },
   "workers":{
-    "num":7,
+    "num":1,
     "timeSupervisor":10
   },
   "instance":{
     "is_plot": "true",
     "dir": "./data/",
     "output": "./out/",
-    "files": ["DATA_PRP_30C/PRP40_C30_P10_V5_T12_S5.dat"]
+    "files": ["DATA_PRP_5C/PRP1_C5_P2_V1_T2_S1.dat"]
   }
 }

@@ -13,11 +13,12 @@
 #################################################################################################
 import gurobipy as gp
 from gurobipy import GRB
+from src.log.Logger import Logger
 import time
 
 class MultProductProdctionRoutingProblem:
 
-    def __init__(self,map,dir):
+    def __init__(self,map,dir,log:Logger):
         self.model = gp.Model("Multi_Product_Prodction_Routing_Problem") 
         self.p=map['num_products']            ##Products  
         self.i=map['num_customers'] + 1       ##Customers
@@ -45,6 +46,7 @@ class MultProductProdctionRoutingProblem:
         self.dir = dir
         self.time = 0
         self.solCount = 0
+        self.log:Logger = log
 
     def createDecisionVariables(self):
         for p in range(self.p):

@@ -1,17 +1,18 @@
 import threading
 import queue
 import time
-from src.Logger import Logger
-from src.InstanceProcess import InstanceProcess
+from src.log.Logger import Logger
+from src.process.InstanceProcess import InstanceProcess
+import traceback
 
 class WorkerProcess:
 
-    def __init__(self, numWorkers = 1, timeSupervisor = 1, dirLogs = "logs"):
+    def __init__(self, numWorkers = 1, timeSupervisor = 1, log:Logger = None):
         self.taskQueue = queue.Queue()
         self.numWorkers = numWorkers
         self.timeSupervisor = timeSupervisor
-        self.dirLogs = dirLogs
-        self.log = Logger(log_dir=dirLogs, log_file=f"Worker_0.log")
+        self.dirLogs = log['dirLogs']
+        self.log:Logger = log['instancia'] 
 
     def supervisor(self):
         while True:
@@ -22,37 +23,45 @@ class WorkerProcess:
                 self.log.info("[Supervisor] Fila vazia. Aguardando workers terminarem.")
                 break
 
-    def worker(self,worker_id):
-        log = Logger(log_dir=self.dirLogs, log_file=f"Worker_{worker_id}.log")
+    def worker(self,worker_id,solver):
+        log = None 
 
         while True:
             try:
                 task = self.taskQueue.get(timeout=2)
+                log = Logger(log_dir=self.dirLogs, log_file=f"Worker_{worker_id}.log", worker_id=worker_id, task = task)
+
             except queue.Empty:
-                log.info(f"[Worker {worker_id}] Fila vazia, encerrando.")
+                log.info(f" Fila vazia, encerrando.")
                 break
 
-            log.info(f"[Worker {worker_id}] Processando: {task['task']}")
+            log.info(f" Processando nova Instância ")
             
-            InstanceProcess(
+            try:
+                InstanceProcess(
                 task['instancie']['file'],
                 task['instancie']['output'],
                 isPloat=task['instancie']['isPloat'],
                 timeLimit=task['instancie']['timeLimit'],
-                numThreads=task['instancie']['numThreads']).process()
+                numThreads=task['instancie']['numThreads'],
+                log=log,
+                solver=solver).process()
 
-            log.info(f"[Worker {worker_id}] Finalizou: {task}")
+            except Exception as e:
+                log.error(f"Ocorreu um erro inesperado: {e}: stack: {traceback.format_exc()}")
+            
+            log.info(f"Instância Finalizada")
             
             self.taskQueue.task_done()
 
-    def process(self, instancies=[]):
+    def process(self, instancies=[], solver="DEFAULT"):
 
         for i in range(len(instancies)):
             self.taskQueue.put({'task': {i+1},'instancie':instancies[i]})
 
         workers = []
         for i in range(self.numWorkers):
-            t = threading.Thread(target=self.worker, args=(i+1,))
+            t = threading.Thread(target=self.worker, args=(i+1, solver))
             t.start()
             workers.append(t)
 

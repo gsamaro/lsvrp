@@ -1,6 +1,6 @@
 import json
 import os
-from src.Converter import toStopPoint
+from src.helpers.Converter import toStopPoint
 
 def getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT):
     routes = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]

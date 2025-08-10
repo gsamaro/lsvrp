@@ -1,17 +1,20 @@
 import json
+from src.log.Logger import Logger
 
 
 class ReadPrpFile:
-    def __init__(self,file_path):
+    def __init__(self,file_path,log:Logger):
         self.file_path=file_path
         self.dataSet = {}
+        self.log:Logger = log
         self.read()
+        
 
     def getDataSet(self):
         return self.dataSet
 
     def toString(self):
-        print(json.dumps(self.dataSet, indent=4))
+        self.log.info(json.dumps(self.dataSet, indent=4))
 
     def read(self):
         data = {}
@@ -118,11 +121,6 @@ class ReadPrpFile:
                             data['d_pit'].append(b)
                 i += 1
 
-        print("======================================")
-        print("Iniciando otimização do arquivo, ", self.file_path) 
-        print("Number of Customers = ", num_customers) 
-        print("Number of Products = ", num_products) 
-        print("Number of Periods = ", num_periods) 
-        print("======================================")
+        self.log.info(f"Number of Customers = {num_customers}, Number of Products = {num_products}, Number of Periods = {num_periods}")
 
         self.dataSet = data
