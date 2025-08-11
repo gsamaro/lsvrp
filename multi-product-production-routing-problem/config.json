@@ -5,7 +5,7 @@
   },
   "workers":{
     "num":1,
-    "timeSupervisor":10
+    "timeSupervisor":1
   },
   "instance":{
     "is_plot": "true",

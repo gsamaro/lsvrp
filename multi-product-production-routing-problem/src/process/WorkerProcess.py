@@ -24,8 +24,6 @@ class WorkerProcess:
                 break
 
     def worker(self,worker_id,solver):
-        log = None 
-
         while True:
             try:
                 task = self.taskQueue.get(timeout=2)
