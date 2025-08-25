@@ -13,11 +13,12 @@
 #################################################################################################
 from src.log.Logger import Logger
 import random
-import math
-import time
-from typing import List, Tuple
-
+from typing import List
+from src.solvers.GreedyRandomizedConstructionRoute import GreedyRandomizedConstructionRoute as GR
+import pdb
 import numpy as np
+import math
+import json
 
 class MultProductProdctionRoutingProblemGrasp:
 
@@ -52,8 +53,7 @@ class MultProductProdctionRoutingProblemGrasp:
         self.max_inter = 100
         self.alfa = 0.2
         self.seed = 123
-
-
+        self.greedyRoute = GR(log=log)
 
     def setMaxInter(self,max_inter):
         self.max_inter = max_inter
@@ -64,200 +64,198 @@ class MultProductProdctionRoutingProblemGrasp:
     def setSeed(self,seed):
         self.seed = seed
 
-
-    def getStockInicial(self,t,p,i,estT):
-        if(t==0):
-            return int(self.I_p_i_0[p][i])
-        return int(estT)
-
-    def getDistancesInPeriod(self,candidates_t):
-        D = np.zeros((len(candidates_t), len(candidates_t)), dtype=float)
-        for i in range(len(candidates_t)):
-            for k in range(len(candidates_t)):
-                d = self.a_i_k[candidates_t[i]][candidates_t[k]]
+    def getDistancesInPeriod(self,candidates):
+        D = np.zeros((len(candidates), len(candidates)), dtype=float)
+        for i in range(len(candidates)):
+            for k in range(len(candidates)):
+                d = self.a_i_k[candidates[i]][candidates[k]]
                 D[i, k] = d
                 D[k, i] = d
         return D
     
-    def getDemandInPeriod(self,t,candidates_t):
-        _i = [[0,0]]
-        for i in range(1,len(candidates_t)):
-            _p = []
-            for p in range(self.p):
-                _p.append(self.d_p_i_t[p][candidates_t[i]-1][t])
-            _i.append(_p)
-        return _i
 
-    def calStockClientInPeriod(self,estT,t):
-        candidates_t = [0]
-        for i in range(self.i-1):
-            for p in range (self.p):
-                est_I = self.getStockInicial(t,p,i+1,estT)
-                dem = int(self.d_p_i_t[p][i][t])
-                calStock = est_I - dem
-                #self.log.info(f"{est_I} - {dem} = {calStock}, {i}->{p}")
-                if(calStock<0):
-                    candidates_t.append(i+1)
-                    break
-        return candidates_t
-
-    def addDemand(self, load: List[float], demand: List[float]) -> List[float]:
-        return [l + d for l, d in zip(load, demand)]
-
-    def canInsertCustomer(self,load: List[float], demand: List[float], capacity: List[float]) -> bool:
-        #self.log.info(f"{load} = {sum(load)}")
-        for l, d, c in zip(load, demand, capacity):
-            #self.log.info(f"{l}+{d} > {c + 1e-9}")
-            if sum(load) + d > c + 1e-9:
-                return False
-        return True
-
-
-    def routeCost(self,route: List[int], D: np.ndarray) -> float:
-        if not route:
-            return 0.0
-        cost = 0.0
-        # assume depot is 0 and included at beginning/end implicitly; route contains customer indices (not depot)
-        prev = 0  # depot
-        for v in route:
-            cost += D[prev, v]
-            prev = v
-        cost += D[prev, 0]
-        return cost
-
-    def twoOptOnRoute(self, route: List[int], D: np.ndarray) -> Tuple[List[int], float]:
-
-        if len(route) <= 2:
-            return route, self.routeCost(route, D)
-        best = route[:]
-        improved = True
-        best_cost = self.routeCost(best, D)
-        n = len(route)
-        while improved:
-            improved = False
-            for i in range(0, n - 1):
-                for j in range(i + 1, n):
-                    new_route = best[:i] + best[i:j + 1][::-1] + best[j + 1:]
-                    new_cost = self.routeCost(new_route, D)
-                    if new_cost + 1e-12 < best_cost:
-                        best = new_route
-                        best_cost = new_cost
-                        improved = True
-                        break
-                if improved:
-                    break
-        return best, best_cost
-
-    def greedyRandomizedConstruction(
-        self,
-        candidates_t,
-        demands: List[List[float]],
-        capacities: List[List[float]],
-        D: np.ndarray,
-        n_vehicles: int,
-        alpha: float = 0.3,
-        rng: random.Random = None,
-    ) -> List[List[int]]:
+    def construirSolucao(self):
         """
-        Constrói uma solução factível (se possível) usando RCL:
-        - começa com todas as rotas vazias e cargas zero
-        - escolhe clientes não visitados e insere em alguma rota na posição final se couber
-        - custo de inserir um cliente c em veículo k = aumento de distância ao colocar c no final
-        - RCL com parâmetro alpha
+        procedimento construirSolucao():
+        inicializar matriz solucao_t_i_p com células {cliente, produto, periodo, estoque, demanda, producao=0}
+        inicializar estoque_i_p[i][p] com estoques iniciais
+        inicializar capacities para veículos
+        routes ← []
+        para cada período t:
+            capacidade_producao_restante ← B
+            capacidade_veiculo_total ← C * v
+            candidatos ← []
+            # 1. Satisfazer demanda imediata
+            para cada cliente i (exceto depósito):
+                para cada produto p:
+                    demanda_t ← demanda do cliente i, produto p, no período t
+                    se estoque atual < demanda_t:
+                        produto_faltante ← demanda_t - estoque atual
+                        disponibilidade ← estoque máximo permitido - estoque atual
+                        qte ← mínimo(produto_faltante, capacidade_producao_restante, disponibilidade)
+                        atualizar capacidade_producao_restante -= qte
+                        atualizar capacidade_veiculo_total -= qte
+                        se capacidades < 0: parar (inviável)
+                        atualizar estoque_i_p[i][p] += qte
+                        registrar no solucao_t_i_p[t][i][p]
+                    # 2. Produzir a mais para demanda futura
+                    se estoque atual < estoque máximo e capacidades disponíveis:
+                        demanda_futura ← soma da demanda de i,p nos períodos t+1...T
+                        custo_unitario ← custo_setup + custo_producao + custo_estoque * demanda_futura
+                        adicionar (i,p, prioridade=1/custo_unitario) em candidatos
+            # 3. Construção Gulosa Aleatorizada
+            ordenar candidatos por prioridade (desc)
+            iter ← 0
+            enquanto houver capacidade e candidatos:
+                top_k ← ceil(alfa * |candidatos|)
+                RCL ← top_k primeiros candidatos
+                (i,p) ← escolher aleatoriamente de RCL
+                demanda_futura ← soma demandas futuras(i,p)
+                disponibilidade ← estoque máximo - estoque atual
+                faltante ← max(demanda_futura - estoque atual, 0)
+                qte ← mínimo(capacidade_restante, demanda_futura, disponibilidade, faltante, capacidade_veiculo_total)
+                atualizar capacidades -= qte
+                se capacidades < 0:
+                    desfazer qte
+                    iter += 1
+                senão:
+                    atualizar estoque_i_p[i][p] += qte
+                    registrar em solucao_t_i_p[t][i][p]
+                    remover (i,p) dos candidatos
+            # 4. Atualizar demandas e preparar roteamento
+            candidates_t ← {clientes atendidos no período t}
+            dem_t ← demandas correspondentes de produção
+            D ← matriz de distâncias entre candidates_t
+            rota ← geraRota(candidates_t, dem_t, capacities, D, v, alfa, seed)
+            adicionar rota em routes
+
+        final_solution ← { "production": solucao_t_i_p, "routes": routes }
+        retornar final_solution
         """
-        if rng is None:
-            rng = random
+        solucao_t_i_p = [[[{'cliente': 0,'produto': 0,'periodo': 0,'estoque': 0,'demanda': 0,'producaco': 0} for p in range(self.p)] for i in range(self.i)] for i in range(self.t)]
+        estoque_i_p = [[self.I_p_i_0[p][i] for p in range(self.p)] for i in range(self.i)]
+        capacities = [[self.C for p in range(self.p)] for v in range(self.v)]
+        routes = []
 
-        customers = list(range(1, len(demands)))
-        unserved = set(customers)
-
-        # inicia cargas e rotas
-        loads = [[0.0] * len(capacities[0]) for _ in range(n_vehicles)]
-        routes: List[List[int]] = [[] for _ in range(n_vehicles)]
-
-        for v in range(n_vehicles):
-            routes[v].append(0)
-
-        # tentativa simples: enquanto houver não-atendidos, escolhe cliente + veículo via RCL
-        while unserved:
-            candidate_list = []  # tuples (cliente, veiculo, custo_increase)
-            for c in list(unserved):
-                for k in range(n_vehicles):
-                    if self.canInsertCustomer(loads[k], demands[c], capacities[k]):
-                        # custo de inserir no final da rota
-                        prev = 0 if not routes[k] else routes[k][-1]
-                        inc = D[prev, c] + D[c, 0] - D[prev, 0]
-                        candidate_list.append((c, k, inc))
-
-            if not candidate_list:
-                # não há inserção possível -> tentativa falha (solução inviável)
-                # retornamos rotas incompletas para que o GRASP considere a iteração inválida
-                return None
-
-            costs = [t[2] for t in candidate_list]
-            c_min = min(costs)
-            c_max = max(costs)
-            threshold = c_min + alpha * (c_max - c_min)
-            rcl = [t for t in candidate_list if t[2] <= threshold]
-            chosen = rng.choice(rcl)
-            cliente, veiculo, _ = chosen
-
-            # insere no final
-            routes[veiculo].append(cliente)
-            loads[veiculo] = self.addDemand(loads[veiculo], demands[cliente])
-            unserved.remove(cliente)
-
-        _v=[]
-        for v in range(len(routes)):
-            _i = []
-            for i in range(len(routes[v])):
-                _i.append(candidates_t[routes[v][i]])
-            _v.append(_i)
-        return _v
-
-    def randomGreedySolution(self):
-        
-    
         for t in range(self.t):
-        
-            candidates_t = self.calStockClientInPeriod(0, t)
-            
-            dem_t = self.getDemandInPeriod(t,candidates_t)
+            capacidade_producao_restante = int(self.B)
+            capacidade_veiculo_total = int(self.C) * int(self.v)
+            candidatos = []
+            for i in range(1, self.i):
+                for p in range(self.p):
+                    demanda_t = self.d_p_i_t[p][i-1][t]
+                    if(estoque_i_p[i][p] < demanda_t): 
+                        produto_faltante = demanda_t - estoque_i_p[i][p]
+                        disponibilidade_estoque = self.U_p_i[p][i] - estoque_i_p[i][p]
+                        qte = min(produto_faltante, capacidade_producao_restante, disponibilidade_estoque)
+
+                        capacidade_producao_restante -=qte
+                        capacidade_veiculo_total -= qte
+
+                        if(capacidade_producao_restante<0 or capacidade_veiculo_total< 0 ):
+                            self.log.error("modelo Inviavel pelas restrições de capacidade do veiculo ou produção")
+                            break
+
+
+                        estoque_i_p[i][p] += qte
+                        solucao_t_i_p[t][i][p]['producaco']+= qte
+                        solucao_t_i_p[t][i][p]['cliente'] = i
+                        solucao_t_i_p[t][i][p]['produto'] = p
+                        solucao_t_i_p[t][i][p]['periodo'] = t
+                        solucao_t_i_p[t][i][p]['estoque'] = estoque_i_p[i][p]
+                        solucao_t_i_p[t][i][p]['demanda'] = demanda_t
+                        
+
+                    if(estoque_i_p[i][p]<self.U_p_i[p][i] and capacidade_producao_restante > 0 and capacidade_veiculo_total > 0):
+                        demanda_futura = sum(self.d_p_i_t[p][i-1][t+1:self.t])
+                        custo_unitario = self.s_p[p] + self.c_p[p] + self.h_p_i[p][i]*demanda_futura
+                        candidatos.append((i,p,'barato',1/custo_unitario))
+
+            candidatos.sort(key=lambda x: x[3], reverse=True)
+
+            iter=0
+            while ( (capacidade_producao_restante > 0 and len(candidatos)!=0 and capacidade_veiculo_total > 0) and iter<=len(candidatos)):
+                top_k = math.ceil(self.alfa * len(candidatos))
+                RCL = candidatos[:top_k]
+                i,p,_,_ = random.choice(RCL)
+
+                demanda_futura = sum(self.d_p_i_t[p][i-1][t+1:self.t])
+                disponibilidade_estoque = self.U_p_i[p][i] - estoque_i_p[i][p]
+               
+                faltante = demanda_futura - estoque_i_p[i][p]
+                if(faltante<0):
+                    faltante = 0
+
+                qte = min(capacidade_producao_restante, demanda_futura, disponibilidade_estoque, faltante, capacidade_veiculo_total)
+                capacidade_producao_restante -=qte
+                capacidade_veiculo_total -= qte
+
+                if(capacidade_producao_restante<0 or capacidade_veiculo_total< 0 ):
+                    self.log.warning(f"Produção está negátiva: {capacidade_producao_restante} ou capcidade_veiculo negativo:{capacidade_veiculo_total}")
+                    capacidade_producao_restante += qte
+                    capacidade_veiculo_total += qte
+                    iter+=1
+                else:
+                    estoque_i_p[i][p] += qte
+                    solucao_t_i_p[t][i][p]['producaco']+= qte
+                    solucao_t_i_p[t][i][p]['cliente'] = i
+                    solucao_t_i_p[t][i][p]['produto'] = p
+                    solucao_t_i_p[t][i][p]['periodo'] = t
+                    solucao_t_i_p[t][i][p]['estoque'] = estoque_i_p[i][p]
+                    solucao_t_i_p[t][i][p]['demanda'] = self.d_p_i_t[p][i-1][t]
+                    candidatos = [c for c in candidatos if not (c[0]==i and c[1]==p)]
+
+            candidates_t = [0]
+            dem_t = [[0.0,0.0]]
+            for i, linha in enumerate(solucao_t_i_p[t]):
+                prod = []
+                for p, celula in enumerate(linha):
+                    estoque_i_p[i][p] = celula['estoque'] - celula['demanda']
+                    p_current = solucao_t_i_p[t][i][p]['producaco']
+                    if(p_current!=0):
+                        prod.append(solucao_t_i_p[t][i][p]['producaco'])
+                        candidates_t.append(solucao_t_i_p[t][i][p]['cliente'])
+                dem_t.append(prod)
+
+            candidates_t = list(dict.fromkeys(candidates_t))
+            dem_t = [v for v in dem_t if v]
             D = self.getDistancesInPeriod(candidates_t)
 
-            capacities = []
-            for _ in range(self.v):
-                _p = []
-                for p in range(self.p):
-                    _p.append(float(self.C))
-                capacities.append(_p)
+            routes.append(self.greedyRoute.greedyRandomizedConstruction(candidates_t, dem_t, capacities, D, int(self.v), self.alfa, random.Random(self.seed)))
+
+            print(routes)
 
 
+
+        final_solution = {
+            "production": solucao_t_i_p,
+            "routes": routes
+        }
+
+        self.log.info(json.dumps(final_solution, indent=4))
+
+        
+
+        return final_solution
     
 
-            rng = random.Random(self.seed)
+    def grasp(self):
+
+        melhor_solucao = {}
+        solucao = self.construirSolucao()
+
+        #for ite in range(self.max_inter):
+
+
+
             
-            routes = self.greedyRandomizedConstruction(candidates_t, dem_t, capacities, D, self.v, self.alfa, rng)
-
-            self.log.info(f"{routes}")
-
-                   
-
-
-
-
-
-
 
         return 0
 
 
-
-
     def solver(self,numThreads=None,timeLimit=None):
 
-        
-        self.randomGreedySolution()
+        self.grasp()
         return []
     
     def getResults(self):
