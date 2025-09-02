@@ -35,6 +35,50 @@ class GreedyRandomizedConstructionRoute:
             if total_load + d > c + 1e-9:
                 return False
         return True
+    
+    def total_demanda(self, solution: List[List[int]], demands: List[List[float]], c:List[int]) -> float:
+        p_size = len(demands[0])
+        vehicles = []
+
+        for v in range(len(solution)):
+            d = []
+            d_t = [0.0 for _ in range(p_size)]
+            # Somar demandas atendidas por veículo
+            for i in range(len(solution[v])):
+                client = solution[v][i]
+                d_p_i = []
+                for p in range(len(demands[client])):
+                    d_t[p] += demands[client][p]
+                    d_p_i.append(demands[client][p])
+                d.append(d_p_i)
+            
+            # Atualizar demandas restantes
+            d_e = []
+            for d_i in range(len(d)):
+                d_e_p = []
+                for p in range(len(d[d_i])):
+                    d_t[p] -= d[d_i][p]
+                    d_e_p.append({'produto':p,'restante_veiculo':d_t[p], 'qte_entregue': d[d_i][p]})
+                d_e.append({'cliente': c[v][d_i], 'produtos': d_e_p})
+
+            vehicles.append({'veiculo':v, 'entregas': d_e})
+
+        return vehicles
+    
+    def total_cost(self, solution: List[List[int]], D: np.ndarray) -> float:
+        return sum(self.route_cost(r, D) for r in solution)
+    
+    def route_cost(self, route: List[int], D: np.ndarray) -> float:
+        if not route:
+            return 0.0
+        cost = 0.0
+        # assume depot is 0 and included at beginning/end implicitly; route contains customer indices (not depot)
+        prev = 0  # depot
+        for v in route:
+            cost += D[prev, v]
+            prev = v
+        cost += D[prev, 0]
+        return cost
 
     def greedyRandomizedConstruction(
         self,
@@ -58,8 +102,6 @@ class GreedyRandomizedConstructionRoute:
 
         customers = list(range(1, len(demands)))
         unserved = set(customers)
-
-        print(n_vehicles)
 
         # inicia cargas e rotas
         loads = [[0.0] * len(capacities[0]) for _ in range(n_vehicles)]
@@ -98,4 +140,6 @@ class GreedyRandomizedConstructionRoute:
             loads[veiculo] = self.addDemand(loads[veiculo], demands[cliente])
             unserved.remove(cliente)
 
-        return [[clients[i] for i in route] for route in routes]
+        c = [[clients[i] for i in route] for route in routes]
+
+        return c, self.total_cost(routes,D), self.total_demanda(routes,demands,c)

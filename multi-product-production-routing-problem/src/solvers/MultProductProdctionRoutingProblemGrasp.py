@@ -72,7 +72,7 @@ class MultProductProdctionRoutingProblemGrasp:
                 D[i, k] = d
                 D[k, i] = d
         return D
-    
+
 
     def construirSolucao(self):
         """
@@ -132,7 +132,7 @@ class MultProductProdctionRoutingProblemGrasp:
         final_solution ← { "production": solucao_t_i_p, "routes": routes }
         retornar final_solution
         """
-        solucao_t_i_p = [[[{'cliente': 0,'produto': 0,'periodo': 0,'estoque': 0,'demanda': 0,'producaco': 0} for p in range(self.p)] for i in range(self.i)] for i in range(self.t)]
+        solucao_t_i_p = [[[{'cliente': i,'produto': p,'periodo': t,'estoque': 0,'demanda': 0,'producaco': 0} for p in range(self.p)] for i in range(self.i)] for t in range(self.t)]
         estoque_i_p = [[self.I_p_i_0[p][i] for p in range(self.p)] for i in range(self.i)]
         capacities = [[self.C for p in range(self.p)] for v in range(self.v)]
         routes = []
@@ -206,7 +206,7 @@ class MultProductProdctionRoutingProblemGrasp:
                     candidatos = [c for c in candidatos if not (c[0]==i and c[1]==p)]
 
             candidates_t = [0]
-            dem_t = [[0.0,0.0]]
+            dem_t = [[0.0] * self.p]
             for i, linha in enumerate(solucao_t_i_p[t]):
                 prod = []
                 for p, celula in enumerate(linha):
@@ -221,10 +221,11 @@ class MultProductProdctionRoutingProblemGrasp:
             dem_t = [v for v in dem_t if v]
             D = self.getDistancesInPeriod(candidates_t)
 
-            routes.append(self.greedyRoute.greedyRandomizedConstruction(candidates_t, dem_t, capacities, D, int(self.v), self.alfa, random.Random(self.seed)))
+            route, distance, demandas = self.greedyRoute.greedyRandomizedConstruction(candidates_t, dem_t, capacities, D, int(self.v), self.alfa, random.Random(self.seed))
 
-            print(routes)
 
+
+            routes.append({'periodo':t ,'route':route,'distance':distance,'demandas':demandas})
 
 
         final_solution = {
@@ -261,4 +262,54 @@ class MultProductProdctionRoutingProblemGrasp:
     def getResults(self):
         return []
 
+
+    """
+    Busca_Local(solucao):
+    melhora ← verdadeiro
+    
+    enquanto melhora faça:
+        melhora ← falso
+        melhor_movimento ← ∅
+        melhor_custo ← custo(solucao)
+        
+        // Explorar vizinhanças
+        Para cada cliente c ∈ C:
+            Para cada produto p ∈ P:
+                Para cada período t ∈ T:
+                    
+                    // Movimento 1: realocar produção para outro período
+                    Para cada período t2 próximo de t:
+                        nova_solucao ← mover_producao(solucao, c, p, t, t2)
+                        se viável(nova_solucao):
+                            custo ← Avaliar(nova_solucao)
+                            se custo < melhor_custo:
+                                melhor_movimento ← (c,p,t,t2)
+                                melhor_custo ← custo
+                        
+                    // Movimento 2: redistribuir entre clientes
+                    Para cada cliente c2 ≠ c:
+                        nova_solucao ← transferir_producao(solucao, c → c2, p, t)
+                        se viável(nova_solucao):
+                            custo ← Avaliar(nova_solucao)
+                            se custo < melhor_custo:
+                                melhor_movimento ← (c,c2,p,t)
+                                melhor_custo ← custo
+                                
+                    // Movimento 3: reduzir excesso de estoque
+                    se estoque[c][p][t] >> demanda[c][p][t]:
+                        nova_solucao ← reduzir_estoque(solucao, c,p,t)
+                        se viável(nova_solucao):
+                            custo ← Avaliar(nova_solucao)
+                            se custo < melhor_custo:
+                                melhor_movimento ← (reduzir,c,p,t)
+                                melhor_custo ← custo
+                                
+        // Aplicar melhor movimento encontrado
+        se melhor_movimento ≠ ∅:
+            aplicar(melhor_movimento, solucao)
+            melhora ← verdadeiro
+    
+    retornar solucao
+
+    """
    
