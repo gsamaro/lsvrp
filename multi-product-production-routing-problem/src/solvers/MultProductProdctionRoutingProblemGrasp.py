@@ -54,6 +54,7 @@ class MultProductProdctionRoutingProblemGrasp:
         self.alfa = 0.2
         self.seed = 123
         self.greedyRoute = GR(log=log)
+        self.s = 0
 
     def setMaxInter(self,max_inter):
         self.max_inter = max_inter
@@ -235,15 +236,80 @@ class MultProductProdctionRoutingProblemGrasp:
 
         self.log.info(json.dumps(final_solution, indent=4))
 
+
+
+        # Vetor de zeros para todas variáveis binárias x[i,j]
+        
+        Z = np.zeros((self.v,self.i,self.k,self.t), dtype=int)
+
+
+        '''𝑧𝑣𝑖𝑘𝑡'''
+        for t in range(len(final_solution["routes"])):
+            for v in range(len(final_solution["routes"][t]["route"])):
+                for i in range( len(final_solution["routes"][t]["route"][v])):
+                    origem = final_solution["routes"][t]["route"][v][i]
+
+
+                    if(i+1 == len(final_solution["routes"][t]["route"][v])):
+                        destino = 0
+                    else:
+                        destino = final_solution["routes"][t]["route"][v][i+1]
+
+                    Z[v, origem, destino, t] = 1
+
+
+        R = np.zeros((self.p,self.v,self.i,self.k,self.t), dtype=int)
+        Q = np.zeros((self.p,self.v,self.i,self.t), dtype=int)
+        '''𝑟𝑝𝑣𝑖𝑘𝑡'''
+        '''𝑞𝑝𝑣𝑖𝑡'''
+        
+        for t in range(len(final_solution["routes"])):
+            for v in range(len(final_solution["routes"][t]["demandas"])):
+                for i in range( len(final_solution["routes"][t]["demandas"][v])):
+                    origem_i = final_solution["routes"][t]["demandas"][v]["entregas"][i]["cliente"]
+
+                    if(i+1 == len(final_solution["routes"][t]["demandas"][v])):
+                        destino_j = 0
+                    else: 
+                        destino_j = final_solution["routes"][t]["demandas"][v]["entregas"][i+1]["cliente"]
+                    
+                    
+                    print(origem_i,destino_j,final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"])
+                    for p in range(len(final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"])):
+                        print(p,v,origem_i,destino_j,t,final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"][p]["qte_entregue"])
+                        R[p,v,origem_i,destino_j,t] = final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"][p]["restante_veiculo"]
+                        Q[p,v,origem_i,t] = final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"][p]["qte_entregue"]
+
+
+     
+        X = np.zeros((self.p,self.t), dtype=int)
+        Y = np.zeros((self.p,self.t), dtype=int)
+        I = np.zeros((self.p,self.i,self.t), dtype=int)
+        '''𝐼𝑝𝑖𝑡'''
+        for t in range(len(final_solution["production"])):
+            producao = np.zeros((self.p), dtype=int)
+            for i in range(len(final_solution["production"][t])):
+                for p in range(len(final_solution["production"][t][i])):
+                    producao[p]+=final_solution["production"][t][i][p]["producaco"]
+                
+
+            for p in range(len(final_solution["production"][t][i])):
+                if(producao[p]>0):
+                    Y[p,t] = 1
+
+                X[p,t] = producao[p]
+
+
+        print("aqui",  X)
         
 
-        return final_solution
+        return  Z,X,Y,I,R,Q,0,0,0,0
     
 
     def grasp(self):
 
         melhor_solucao = {}
-        solucao = self.construirSolucao()
+        self.s = self.construirSolucao()
 
         #for ite in range(self.max_inter):
 
@@ -260,7 +326,7 @@ class MultProductProdctionRoutingProblemGrasp:
         return []
     
     def getResults(self):
-        return []
+        return self.s
 
 
     """
