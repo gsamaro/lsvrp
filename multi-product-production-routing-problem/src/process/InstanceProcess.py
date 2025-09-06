@@ -42,9 +42,10 @@ class InstanceProcess:
         instance = self.solverInstancie(data)
        
         instance.solver(timeLimit=self.timeLimit,numThreads=self.numThreads)
-        Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT = instance.getResults()
 
-        results = getResults(data,self.output,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT)
+        Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT, RELAXED_MODEL_OBJE_VAL, NODE_COUNT, OBJ_BOUND = instance.getResults()
+
+        results = getResults(data,self.output,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL,NODE_COUNT,OBJ_BOUND)
 
         if(self.isPloat=='true'):
             graphResults(results['periods'],{'coordsX':data['coordXY']['x'],'coordsY':data['coordXY']['y']},self.output)

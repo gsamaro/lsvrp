@@ -50,7 +50,7 @@ if __name__ == "__main__":
             outFile = f"{output}{data['data']}/{file[:-4]}/"
             # if os.path.exists(outFile):
             #     shutil.rmtree(outFile)
-            # os.makedirs(outFile, exist_ok=True) 
+            os.makedirs(outFile, exist_ok=True) 
 
             instancies.append({
                 'file': f"{dir}{data['data']}/{file}",

@@ -303,7 +303,7 @@ class MultProductProdctionRoutingProblemGrasp:
         print("aqui",  X)
         
 
-        return  Z,X,Y,I,R,Q,0,0,0,0
+        return  Z,X,Y,I,R,Q,0,0,0,0,0,0
     
 
     def grasp(self):
