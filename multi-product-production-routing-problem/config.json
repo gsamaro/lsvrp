@@ -1,11 +1,11 @@
 {
   "solver":{
-    "threadsLimit":null,
+    "threadsLimit":1,
     "timeLimit":1800
   },
   "workers":{
     "num":1,
-    "timeSupervisor":1
+    "timeSupervisor":10
   },
   "instance":{
     "is_plot": "true",
