@@ -255,7 +255,7 @@ class MultProductProdctionRoutingProblemGrasp:
                     else:
                         destino = final_solution["routes"][t]["route"][v][i+1]
 
-                    Z[v, origem, destino, t] = 1
+                    Z[v, destino,origem, t] = 1
 
 
         R = np.zeros((self.p,self.v,self.i,self.k,self.t), dtype=int)
@@ -265,19 +265,23 @@ class MultProductProdctionRoutingProblemGrasp:
         
         for t in range(len(final_solution["routes"])):
             for v in range(len(final_solution["routes"][t]["demandas"])):
+
+                print(len(final_solution["routes"][t]["demandas"][v]))
+
+                self.log.info(f"{len(final_solution["routes"][t]["demandas"][v])}")
+                for i in range( len(final_solution["routes"][t]["demandas"][v])-1):
+                    origem_i = final_solution["routes"][t]["demandas"][v]["entregas"][i]["cliente"]
+                    destino_j = final_solution["routes"][t]["demandas"][v]["entregas"][i+1]["cliente"]
+                    
+                    
+                    
+                    for p in range(len(final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"])):
+                        R[p,v,destino_j,origem_i,t] = final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"][p]["restante_veiculo"]
+
+
                 for i in range( len(final_solution["routes"][t]["demandas"][v])):
                     origem_i = final_solution["routes"][t]["demandas"][v]["entregas"][i]["cliente"]
-
-                    if(i+1 == len(final_solution["routes"][t]["demandas"][v])):
-                        destino_j = 0
-                    else: 
-                        destino_j = final_solution["routes"][t]["demandas"][v]["entregas"][i+1]["cliente"]
-                    
-                    
-                    print(origem_i,destino_j,final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"])
                     for p in range(len(final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"])):
-                        print(p,v,origem_i,destino_j,t,final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"][p]["qte_entregue"])
-                        R[p,v,origem_i,destino_j,t] = final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"][p]["restante_veiculo"]
                         Q[p,v,origem_i,t] = final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"][p]["qte_entregue"]
 
 
@@ -291,20 +295,143 @@ class MultProductProdctionRoutingProblemGrasp:
             for i in range(len(final_solution["production"][t])):
                 for p in range(len(final_solution["production"][t][i])):
                     producao[p]+=final_solution["production"][t][i][p]["producaco"]
-                
+                    I[p,i,t] = final_solution["production"][t][i][p]["estoque"] - final_solution["production"][t][i][p]["demanda"]
+
 
             for p in range(len(final_solution["production"][t][i])):
                 if(producao[p]>0):
                     Y[p,t] = 1
-
+                
                 X[p,t] = producao[p]
 
 
-        print("aqui",  X)
-        
-
         return  Z,X,Y,I,R,Q,0,0,0,0
+    def getResultsSolver(self):
+
+        z,x,y,ii,r,q,_,_,_,_ = self.s
+
+        print("*******************************")
+        print("============ Z ================")
+        print("*******************************")
+        Z=[]
+        for t in range(self.t):
+            print("\n\n============ periodo ",t," ============")
+            v_list =[]
+            for v in range(self.v):
+                print("\n============ veiculo ",v," ============")
+                i_list =[]
+                for i in range(self.i):
+                    k_list=[]
+                    for k in range(self.k):
+                        variable = z[v,i,k,t]
+                        print(" origem: ",i," destino: ",k," == ",variable)
+                        k_list.append(int(variable))
+                    i_list.append(k_list)
+                v_list.append(i_list)
+            Z.append(v_list)
+        print("\n\n===============================\n\n")
+
+        '''for t in range(len(Z)):
+            print("\n\n============ periodo ",t," ============")
+            for v in range(len(Z[t])):
+                print("\n============ veiculo ",v," ============")
+                for i in range(len(Z[t][v])):
+                    string = ""
+                    for k in range(len(Z[t][v][i])):
+                        string+= str(Z[t][v][i][k]) + "\t"
+                    print(string)'''
+
+        print("*******************************")
+        print("============ Y ================")
+        print("*******************************")
+        Y = []
+        for t in range(self.t):
+            print("\n\n============ periodo ",t," ============")
+            p_list_y=[]
+            for p in range(self.p):
+                variable = abs(y[p,t])
+                p_list_y.append(int(variable))
+                print("produto: ",p," == ", variable)
+            Y.append(p_list_y)
+        print("\n\n===============================\n\n")
+
+        print("*******************************")
+        print("============ X ================")
+        print("*******************************")
+        X = []
+        for t in range(self.t):
+            print("\n\n============ periodo ",t," ============")
+            p_list_x=[]
+            for p in range(self.p):
+                p_list_x.append(int(x[p,t]))
+                print("produto: ",p," == ",x[p,t])
+            X.append(p_list_x)
+        print("\n\n===============================\n\n")
+
+        print("*******************************")
+        print("============ I ================")
+        print("*******************************")
+        I=[]
+        for t in range(self.t):
+            print("\n\n============ periodo ",t," ============")
+            p_list_i=[]
+            for i in range(self.i):
+                i_list_i=[]
+                print("\n============ cliente ",i," ============")
+                for p in range(self.p):
+                    print("produto: ",p," == ", ii[p,i,t])
+                    i_list_i.append(int(ii[p,i,t]))
+                p_list_i.append(i_list_i)
+            I.append(p_list_i)
+        print("\n\n===============================\n\n")
+
+        print("*******************************")
+        print("============ R ================")
+        print("*******************************")
+        R=[]
+        for t in range(self.t):
+            print("\n\n============ periodo ",t," ============")
+            t_list=[]
+            for v in range(self.v):
+                print("\n============ veiculo ",v," ============")
+                v_list=[]
+                for p in range(self.p):
+                    p_list=[]
+                    for i in range(self.i):
+                        i_list=[]
+                        for k in range(self.k):
+                            self.log.info(f"\nperiodo {t} -> veiculo {v} -> cliente {i} -> cliente {k} -> produto {p} == { r[p,v,i,k,t]}",)
+                            print("\n============ cliente ",i," -> cliente ",k," ============")
+                            i_list.append(float(r[p,v,i,k,t]))
+                            print("produto: ",p," == ", r[p,v,i,k,t])
+                        p_list.append(i_list)
+                    v_list.append(p_list)
+                t_list.append(v_list)
+            R.append(t_list)
+        print("\n\n===============================\n\n")
+
+        print("*******************************")
+        print("============ Q ================")
+        print("*******************************")
+        Q=[]
+        for t in range(self.t):
+            print("\n\n============ periodo ",t," ============")
+            t_list=[]
+            for v in range(self.v):
+                print("\n============ veiculo ",v," ============")
+                v_list=[]
+                for p in range(self.p):
+                    print("\n============ cliente ",i," ============")
+                    p_list=[]
+                    for i in range(self.i):
+                        print("produto: ",p," == ",q[p,v,i,t])
+                        p_list.append(int(q[p,v,i,t]))
+                    v_list.append(p_list)
+                t_list.append(v_list)
+            Q.append(t_list)
+        print("\n\n===============================\n\n")
     
+        return Z,X,Y,I,R,Q,0,0,0,0    
 
     def grasp(self):
 
@@ -326,7 +453,7 @@ class MultProductProdctionRoutingProblemGrasp:
         return []
     
     def getResults(self):
-        return self.s
+        return self.getResultsSolver()
 
 
     """

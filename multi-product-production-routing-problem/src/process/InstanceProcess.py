@@ -44,6 +44,7 @@ class InstanceProcess:
         instance.solver(timeLimit=self.timeLimit,numThreads=self.numThreads)
         Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT = instance.getResults()
 
+        print("aquiiiii",X)
         results = getResults(data,self.output,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT)
 
         if(self.isPloat=='true'):
