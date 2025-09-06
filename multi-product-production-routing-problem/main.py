@@ -1,5 +1,5 @@
 from src.WorkerProcess import WorkerProcess
-
+from src.TablesResult import TablesResult
 import json
 import shutil
 import os
@@ -9,7 +9,12 @@ if __name__ == "__main__":
     with open('config.json', 'r') as f:
         config = json.load(f)
 
-    threadsLimitSolver = config['solver']['threadsLimit']
+    threadsLimitSolver=0
+    if(config['solver']['threadsLimit']=="None"):
+        threadsLimitSolver = None
+    else:
+        threadsLimitSolver=config['solver']['threadsLimit']
+
     timeLimitSolver = config['solver']['timeLimit']
     timeSupervisor = config['workers']['timeSupervisor']
     workers = config['workers']['num']
@@ -41,9 +46,9 @@ if __name__ == "__main__":
         for file in data['files']:
 
             outFile = f"{output}{data['data']}/{file[:-4]}/"
-            if os.path.exists(outFile):
-                shutil.rmtree(outFile)
-            os.makedirs(outFile, exist_ok=True) 
+            # if os.path.exists(outFile):
+            #     shutil.rmtree(outFile)
+            # os.makedirs(outFile, exist_ok=True) 
 
             instancies.append({
                 'file': f"{dir}{data['data']}/{file}",
@@ -53,4 +58,17 @@ if __name__ == "__main__":
                 'timeLimit':timeLimitSolver
             })
 
+
+
+
+
     WorkerProcess(workers,timeSupervisor,dirLogs=f'{output}logs').process(instancies = instancies)
+
+    # TablesResult.process(datas=datas)
+
+
+
+
+
+
+    

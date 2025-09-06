@@ -45,6 +45,9 @@ class MultProductProdctionRoutingProblem:
         self.dir = dir
         self.time = 0
         self.solCount = 0
+        self.relaxedModelObjVal = 0
+        self.objBound = 0
+        self.nodeCount = 0
 
     def createDecisionVariables(self):
         for p in range(self.p):
@@ -101,8 +104,8 @@ class MultProductProdctionRoutingProblem:
     def createEstablishInvetoryBalanceAtPlant(self):
         for p in range(self.p):
             for t in range(self.t):
+                r1=0
                 for v in range(self.v):
-                    r1=0
                     for i in range(1,self.i):
                         r1+=self.Q_p_v_i_t[p,v,i,t]
                 if(t == 0 ):
@@ -175,11 +178,11 @@ class MultProductProdctionRoutingProblem:
             for i in range(self.i):
                 for k in range(self.k):
                     for t in range(self.t):
-                        r9=0
-                        for p in range(self.p):
-                            r9+=self.R_p_v_i_k_t[p,v,i,k,t]
                         if(i!=k):
-                            self.model.addConstr(r9<=self.C*self.Z_v_i_k_t[v,i,k,t], name=f"EQ_(9)_v={v+1}_i={i}_k={k}_t={t+1}")
+                            r9=0
+                            for p in range(self.p):
+                                r9+=self.R_p_v_i_k_t[p,v,i,k,t]
+                                self.model.addConstr(r9<=self.C*self.Z_v_i_k_t[v,i,k,t], name=f"EQ_(9)_v={v+1}_i={i}_k={k}_t={t+1}")
 
     def createImposeMostOneRouteEachVehicle(self):
         for v in range(self.v):
@@ -219,7 +222,7 @@ class MultProductProdctionRoutingProblem:
 
     def getResults(self):
         if(self.solCount==0):
-            return [],[],[],[],[],[],0,0,self.time,self.solCount
+            return [],[],[],[],[],[],0,0,self.time,self.solCount,self.relaxedModelObjVal,self.nodeCount,self.objBound
         
         # print("*******************************")
         # print("============ Z ================")
@@ -341,10 +344,20 @@ class MultProductProdctionRoutingProblem:
             Q.append(t_list)
         # print("\n\n===============================\n\n")
     
-        return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap,self.time,self.solCount
+        return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap,self.time,self.solCount,self.relaxedModelObjVal,self.nodeCount,self.objBound
 
     def terminate(self):
         self.model.terminate()
+
+    def generteRelax(self):
+        relaxed = self.model.relax()
+        relaxed.optimize()
+        self.relaxedModelObjVal = relaxed.ObjVal
+
+    def processInformationsSolver(self):
+        self.solCount = self.model.SolCount
+        self.objBound = self.model.ObjBound
+        self.nodeCount = self.model.NodeCount
 
     def solver(self,numThreads=None,timeLimit=None):
         self.createDecisionVariables()
@@ -361,6 +374,7 @@ class MultProductProdctionRoutingProblem:
         self.createEnsureRoutesOnlyPlant()
         self.createVehicleMostVisitCustomerEachPeriod()
         self.outModel()
+        self.generteRelax()
 
         if numThreads is not None:
             self.model.setParam("Threads", numThreads)
@@ -371,4 +385,5 @@ class MultProductProdctionRoutingProblem:
         self.model.optimize()
         end_time = time.time()
         self.time = end_time - start_time
-        self.solCount = self.model.SolCount
+
+        self.processInformationsSolver()
