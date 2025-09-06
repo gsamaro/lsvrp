@@ -145,6 +145,7 @@ class MultProductProdctionRoutingProblemGrasp:
             for i in range(1, self.i):
                 for p in range(self.p):
                     demanda_t = self.d_p_i_t[p][i-1][t]
+                    qte = 0
                     if(estoque_i_p[i][p] < demanda_t): 
                         produto_faltante = demanda_t - estoque_i_p[i][p]
                         disponibilidade_estoque = self.U_p_i[p][i] - estoque_i_p[i][p]
@@ -158,13 +159,13 @@ class MultProductProdctionRoutingProblemGrasp:
                             break
 
 
-                        estoque_i_p[i][p] += qte
-                        solucao_t_i_p[t][i][p]['producaco']+= qte
-                        solucao_t_i_p[t][i][p]['cliente'] = i
-                        solucao_t_i_p[t][i][p]['produto'] = p
-                        solucao_t_i_p[t][i][p]['periodo'] = t
-                        solucao_t_i_p[t][i][p]['estoque'] = estoque_i_p[i][p]
-                        solucao_t_i_p[t][i][p]['demanda'] = demanda_t
+                    estoque_i_p[i][p] += qte
+                    solucao_t_i_p[t][i][p]['producaco']+= qte
+                    solucao_t_i_p[t][i][p]['cliente'] = i
+                    solucao_t_i_p[t][i][p]['produto'] = p
+                    solucao_t_i_p[t][i][p]['periodo'] = t
+                    solucao_t_i_p[t][i][p]['estoque'] = estoque_i_p[i][p]
+                    solucao_t_i_p[t][i][p]['demanda'] = demanda_t
                         
 
                     if(estoque_i_p[i][p]<self.U_p_i[p][i] and capacidade_producao_restante > 0 and capacidade_veiculo_total > 0):
@@ -210,13 +211,15 @@ class MultProductProdctionRoutingProblemGrasp:
             dem_t = [[0.0] * self.p]
             for i, linha in enumerate(solucao_t_i_p[t]):
                 prod = []
+                client_current = 0
                 for p, celula in enumerate(linha):
+                    prod.append(solucao_t_i_p[t][i][p]['producaco'])
                     estoque_i_p[i][p] = celula['estoque'] - celula['demanda']
-                    p_current = solucao_t_i_p[t][i][p]['producaco']
-                    if(p_current!=0):
-                        prod.append(solucao_t_i_p[t][i][p]['producaco'])
-                        candidates_t.append(solucao_t_i_p[t][i][p]['cliente'])
-                dem_t.append(prod)
+                    client_current = solucao_t_i_p[t][i][p]['cliente']
+
+                if set(prod) != {0}:
+                    candidates_t.append(client_current)
+                    dem_t.append(prod)
 
             candidates_t = list(dict.fromkeys(candidates_t))
             dem_t = [v for v in dem_t if v]
@@ -431,7 +434,7 @@ class MultProductProdctionRoutingProblemGrasp:
             Q.append(t_list)
         print("\n\n===============================\n\n")
     
-        return Z,X,Y,I,R,Q,0,0,0,0,0,0   
+        return Z,X,Y,I,R,Q,0,0,0,0,0,0,0   
 
     def grasp(self):
 

@@ -16,11 +16,13 @@ import numpy as np
 import random
 import pdb
 from src.log.Logger import Logger
+from src.solvers.TwoOptOnRoute import TwoOptOnRoute
 
 class GreedyRandomizedConstructionRoute:
 
     def __init__(self,log:Logger):
         self.log = log
+        self.twoOpt = TwoOptOnRoute()
 
     def addDemand(self, load: List[float], demand: List[float]) -> List[float]:
         return [l + d for l, d in zip(load, demand)]
@@ -140,6 +142,16 @@ class GreedyRandomizedConstructionRoute:
             loads[veiculo] = self.addDemand(loads[veiculo], demands[cliente])
             unserved.remove(cliente)
 
-        c = [[clients[i] for i in route] for route in routes]
+
+        cost=0
+        c=[]
+        for route in routes:
+            route_op, cost_route = self.twoOpt.twoOptOnRoute(route,D)
+            cost+=cost_route
+
+            c.append([clients[i] for i in route_op])
+
+
+        #c = [[clients[i] for i in route] for route in routes]
 
         return c, self.total_cost(routes,D), self.total_demanda(routes,demands,c)
