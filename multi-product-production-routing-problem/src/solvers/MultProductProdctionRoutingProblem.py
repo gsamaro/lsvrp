@@ -75,13 +75,6 @@ class MultProductProdctionRoutingProblem:
                         self.Z_v_i_k_t[v,i,k,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Z[{v},{i},{k},{t}]")
 
     def startVariables(self):
-
-
-        print(f"{-self.start["variables"]["I"][0][1][0]}+{self.start["variables"]["Q"][0][0][1][0]} = {-self.start["variables"]["I"][0][1][0]+self.start["variables"]["Q"][0][0][1][0]} == -123"   )
-
-        '''-I[0,1,0] + Q[0,0,1,0] = -123 -163+58 =-123'''
-        # print(self.start["variables"]["X"][p][t])
-
         for p in range(self.p):
             for t in range(self.t):
                 self.X_p_t[p,t].start=self.start["variables"]["X"][p][t]

@@ -1,7 +1,8 @@
 {
   "solver":{
     "threadsLimit":1,
-    "timeLimit":1800
+    "timeLimit":1800,
+    "method":"HEURISTICA_CONSTRUTIVA_MIT_START"
   },
   "workers":{
     "num":1,

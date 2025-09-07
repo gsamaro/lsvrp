@@ -44,7 +44,8 @@ Para Executar todas as instancias de uma pasta
     {
         "solver":{
             "threadsLimit":1,
-            "timeLimit":10
+            "timeLimit":10,
+            "method":"GUROBY/HEURISTICA_CONSTRUTIVA_MIT_START/HEURISTICA_CONSTRUTIVA"
         },
         "workers":{
             "num":4,
@@ -63,7 +64,8 @@ Para uma instancia expecifica
     {
         "solver":{
             "threadsLimit":1,
-            "timeLimit":10
+            "timeLimit":10,
+            "method":"GUROBY/HEURISTICA_CONSTRUTIVA_MIT_START/HEURISTICA_CONSTRUTIVA"
         },
         "workers":{
             "num":4,

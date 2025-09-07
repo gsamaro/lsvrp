@@ -23,6 +23,7 @@ if __name__ == "__main__":
     isPloat = config['instance']['is_plot']
     dir = config['instance']['dir']
     files = config['instance']['files']
+    method = config['solver']['method']
 
     if os.path.exists(f"{output}/logs"):
         shutil.rmtree(f"{output}/logs")
@@ -60,7 +61,7 @@ if __name__ == "__main__":
                 'timeLimit':timeLimitSolver
             })
 
-    WorkerProcess(workers,timeSupervisor,{'instancia': log,'dirLogs': f'{output}logs'}).process(instancies = instancies, solver= "HEURISTICA_CONSTRUTIVA")
+    WorkerProcess(workers,timeSupervisor,{'instancia': log,'dirLogs': f'{output}logs'}).process(instancies = instancies, solver= method)
 
     '''
 Explored 11164 nodes (448772 simplex iterations) in 30.82 seconds (21.64 work units)
