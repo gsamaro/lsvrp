@@ -8,7 +8,7 @@
     "timeSupervisor":10
   },
   "instance":{
-    "is_plot": "true",
+    "is_plot": "false",
     "dir": "./data/",
     "output": "./out/",
     "files": ["DATA_PRP_5C/PRP1_C5_P2_V1_T2_S1.dat"]

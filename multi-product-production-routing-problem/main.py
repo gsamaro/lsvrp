@@ -61,3 +61,10 @@ if __name__ == "__main__":
             })
 
     WorkerProcess(workers,timeSupervisor,{'instancia': log,'dirLogs': f'{output}logs'}).process(instancies = instancies, solver= "GRASP")
+
+    '''
+Explored 12449 nodes (354538 simplex iterations) in 39.23 seconds (12.53 work units)
+Thread count was 1 (of 8 available processors)
+
+Solution count 6: 107005 107498 107677 ... 108098
+'''

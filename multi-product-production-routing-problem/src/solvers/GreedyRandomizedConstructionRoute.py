@@ -27,17 +27,15 @@ class GreedyRandomizedConstructionRoute:
     def addDemand(self, load: List[float], demand: List[float]) -> List[float]:
         return [l + d for l, d in zip(load, demand)]
     
-    def canInsertCustomer(self, load: List[float], demand: List[float], capacity: List[float]) -> bool:
-        """
-        Verifica se é possível inserir um cliente respeitando as capacidades.
-        """
-        total_load = sum(load)
+    def canInsertCustomer(self, load, demand, capacity):
+        # load, demand, capacity são vetores (um valor para cada produto)
 
-        for d, c in zip(demand, capacity):
-            if total_load + d > c + 1e-9:
+        # pdb.set_trace()
+        for p in range(len(load)):
+            if load[p] + demand[p] > capacity[p]:
                 return False
         return True
-    
+        
     def total_demanda(self, solution: List[List[int]], demands: List[List[float]], c:List[int]) -> float:
         p_size = len(demands[0])
         vehicles = []

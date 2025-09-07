@@ -4,6 +4,7 @@ from src.solvers.MultProductProdctionRoutingProblemGrasp import MultProductProdc
 from src.log.Logger import Logger
 from src.process.ProcessResults import getResults
 from src.helpers.GraphDisplay import graphResults
+import pdb
 
 class InstanceProcess:
 
@@ -24,11 +25,11 @@ class InstanceProcess:
         match self.solver:
             case "GUROBY":
                 self.log.info(f" Solver: GUROBY")
-                return MPPRP(data,self.output,self.log)
+                return MPPRP(map=data,dir=self.output,log=self.log,start={"start":False})
                 
             case "GRASP":
                 self.log.info(f" Solver: GRASP")
-                return MPPRPG(data,self.output,self.log)
+                return MPPRPG(map=data,dir=self.output,log=self.log)
             
             case _: 
                 print(" VALOR SETADO COMO DEFAULT ----- SEM SOLVER ")

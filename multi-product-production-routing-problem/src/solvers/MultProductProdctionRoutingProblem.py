@@ -18,7 +18,7 @@ import time
 
 class MultProductProdctionRoutingProblem:
 
-    def __init__(self,map,dir,log:Logger):
+    def __init__(self,map,dir,log:Logger,start):
         self.model = gp.Model("Multi_Product_Prodction_Routing_Problem") 
         self.p=map['num_products']            ##Products  
         self.i=map['num_customers'] + 1       ##Customers
@@ -49,29 +49,60 @@ class MultProductProdctionRoutingProblem:
         self.relaxedModelObjVal = 0
         self.objBound = 0
         self.nodeCount = 0
-        self.log = log
+        self.log:Logger = log
+        self.start = start
 
     def createDecisionVariables(self):
         for p in range(self.p):
             for t in range(self.t):
-                self.X_p_t[p,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"X[{p+1},{t+1}]")
-                self.Y_p_t[p,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Y[{p+1},{t+1}]")
+                self.X_p_t[p,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"X[{p},{t}]")
+                self.Y_p_t[p,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Y[{p},{t}]")
             for i in range(self.i):
                 for t in range(self.t):
-                    self.I_p_i_t[p,i,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"I[{p+1},{i},{t+1}]")
+                    self.I_p_i_t[p,i,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"I[{p},{i},{t}]")
             for v in range(self.v):
                 for i in range(self.i):
                     for k in range(self.k):
                         for t in range(self.t):
-                            self.R_p_v_i_k_t[p,v,i,k,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"R[{p+1},{v+1},{i},{k},{t+1}]")
+                            self.R_p_v_i_k_t[p,v,i,k,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"R[{p},{v},{i},{k},{t}]")
                 for i in range(self.i):
                     for t in range(self.t):
-                        self.Q_p_v_i_t[p,v,i,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"Q[{p+1},{v+1},{i},{t+1}]")
+                        self.Q_p_v_i_t[p,v,i,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"Q[{p},{v},{i},{t}]")
         for v in range(self.v):
             for i in range(self.i):
                 for k in range(self.k):
                     for t in range(self.t):
-                        self.Z_v_i_k_t[v,i,k,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Z[{v+1},{i},{k},{t+1}]")
+                        self.Z_v_i_k_t[v,i,k,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Z[{v},{i},{k},{t}]")
+
+    def startVariables(self):
+
+
+        self.log.info(f"{self.start["variables"]["R"][0][0][0][5][1]} + {self.start["variables"]["R"][1][0][0][5][1]} - 300 * {self.start["variables"]["Z"][0][0][5][1]} == {self.start["variables"]["R"][0][0][0][5][1] + self.start["variables"]["R"][1][0][0][5][1] - 300 * self.start["variables"]["Z"][0][0][5][1]} <= 0")
+
+
+        '''R[0,0,0,5,1] + R[1,0,0,5,1] - 300 Z[0,0,5,1] <= 0'''
+        # print(self.start["variables"]["X"][p][t])
+
+        for p in range(self.p):
+            for t in range(self.t):
+                self.X_p_t[p,t].start=self.start["variables"]["X"][p][t]
+                self.Y_p_t[p,t].start=self.start["variables"]["Y"][p][t]
+            for i in range(self.i):
+                for t in range(self.t):
+                    self.I_p_i_t[p,i,t].start=self.start["variables"]["I"][p][i][t]
+            for v in range(self.v):
+                for i in range(self.i):
+                    for k in range(self.k):
+                        for t in range(self.t):
+                            self.R_p_v_i_k_t[p,v,i,k,t].start=self.start["variables"]["R"][p][v][i][k][t]
+                for i in range(self.i):
+                    for t in range(self.t):
+                        self.Q_p_v_i_t[p,v,i,t].start=self.start["variables"]["Q"][p][v][i][t]
+        for v in range(self.v):
+            for i in range(self.i):
+                for k in range(self.k):
+                    for t in range(self.t):
+                        self.Z_v_i_k_t[v,i,k,t].start=self.start["variables"]["Z"][v][i][k][t]
 
     def crateObjectiveFunction(self):
         objExpr_1 = gp.LinExpr()
@@ -111,9 +142,9 @@ class MultProductProdctionRoutingProblem:
                     for i in range(1,self.i):
                         r1+=self.Q_p_v_i_t[p,v,i,t]
                 if(t == 0 ):
-                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_0[p][0] - r1 == self.I_p_i_t[p,0,t], name=f"EQ_(2)_p={p+1}_t={t+1}")
+                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_0[p][0] - r1 == self.I_p_i_t[p,0,t], name=f"EQ_(2)_p={p}_t={t}")
                 else:
-                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1]-r1 == self.I_p_i_t[p,0,t], name=f"EQ_(2)_p={p+1}_t={t+1}")
+                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1]-r1 == self.I_p_i_t[p,0,t], name=f"EQ_(2)_p={p}_t={t}")
                          
     def creteInventoryBalancingInventoryCustomers(self):  
         for p in range(self.p):
@@ -123,9 +154,9 @@ class MultProductProdctionRoutingProblem:
                     for v in range(self.v):
                         r2+=self.Q_p_v_i_t[p,v,i,t]
                     if(t == 0 ):
-                        self.model.addConstr(r2+self.I_p_i_0[p][i] - self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"EQ_(3)_p={p+1}_i={i}_t={t+1}")
+                        self.model.addConstr(r2+self.I_p_i_0[p][i] - self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"EQ_(3)_p={p}_i={i}_t={t}")
                     else:
-                        self.model.addConstr(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"EQ_(3)_p={p+1}_i={i}_t={t+1}")
+                        self.model.addConstr(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"EQ_(3)_p={p}_i={i}_t={t}")
 
     def createPlantsMaximum(self):
         for t in range(self.t):
@@ -137,13 +168,13 @@ class MultProductProdctionRoutingProblem:
     def createRelationshipBetweenProduction(self):
         for p in range(self.p):
             for t in range(self.t):
-                self.model.addConstr(self.X_p_t[p,t]<=self.M*self.Y_p_t[p,t], name=f"EQ_(5)_p={p+1}_t={t+1}")
+                self.model.addConstr(self.X_p_t[p,t]<=self.M*self.Y_p_t[p,t], name=f"EQ_(5)_p={p}_t={t}")
 
     def createDelimitMaximumCapacityItemsAtPlant(self):
         for p in range(self.p):
             for i in range(self.i):
                 for t in range(self.t):
-                    self.model.addConstr(self.I_p_i_t[p,i,t]<=self.U_p_i[p][i], name=f"EQ_(6)_p={p+1}_i={i}_t={t+1}")
+                    self.model.addConstr(self.I_p_i_t[p,i,t]<=self.U_p_i[p][i], name=f"EQ_(6)_p={p}_i={i}_t={t}")
 
     def createVehiclePreventTransshipmentIntermediateNodes(self):
         for p in range(self.p):
@@ -158,7 +189,7 @@ class MultProductProdctionRoutingProblem:
                         for l in range(self.i):
                             if(k!=l):
                                 r7_b+=self.R_p_v_i_k_t[p,v,k,l,t]
-                        self.model.addConstr(r7_a-r7_b==self.Q_p_v_i_t[p,v,k,t], name=f"EQ_(7)_p={p+1}_v={v+1}_k={k}_t={t+1}")
+                        self.model.addConstr(r7_a-r7_b==self.Q_p_v_i_t[p,v,k,t], name=f"EQ_(7)_p={p}_v={v}_k={k}_t={t}")
         
     def createEliminationSubroutes(self):
         for p in range(self.p):
@@ -173,7 +204,7 @@ class MultProductProdctionRoutingProblem:
                         r8_b+=self.R_p_v_i_k_t[p,v,i,0,t]
                     for l in range(1,self.i):
                         r8_c+=self.Q_p_v_i_t[p,v,l,t]
-                self.model.addConstr(r8_a-r8_b==r8_c, name=f"EQ_(8)_p={p+1}_t={t+1}")
+                self.model.addConstr(r8_a-r8_b==r8_c, name=f"EQ_(8)_p={p}_t={t}")
 
     def createVehicleLoadCapacityDelimited(self):
         for v in range(self.v):
@@ -184,7 +215,7 @@ class MultProductProdctionRoutingProblem:
                             r9=0
                             for p in range(self.p):
                                 r9+=self.R_p_v_i_k_t[p,v,i,k,t]
-                                self.model.addConstr(r9<=self.C*self.Z_v_i_k_t[v,i,k,t], name=f"EQ_(9)_v={v+1}_i={i}_k={k}_t={t+1}")
+                            self.model.addConstr(r9<=self.C*self.Z_v_i_k_t[v,i,k,t], name=f"EQ_(9)_v={v}_i={i}_k={k}_t={t}")
 
     def createImposeMostOneRouteEachVehicle(self):
         for v in range(self.v):
@@ -192,7 +223,7 @@ class MultProductProdctionRoutingProblem:
                 r10=0
                 for k in range(1,self.k):
                     r10+=self.Z_v_i_k_t[v,0,k,t]
-                self.model.addConstr(r10<=1, name=f"EQ_(10)_v={v+1}_t={t+1}")        
+                self.model.addConstr(r10<=1, name=f"EQ_(10)_v={v}_t={t}")        
 
     def createEnsureRoutesOnlyPlant(self):
         for v in range(self.v):
@@ -206,7 +237,7 @@ class MultProductProdctionRoutingProblem:
                     for l in range(self.i):
                         if(k!=l):
                             r11_b+=self.Z_v_i_k_t[v,k,l,t]
-                    self.model.addConstr(r11_a-r11_b==0, name=f"EQ_(11)_v={v+1}_k={k}_t={t+1}")  
+                    self.model.addConstr(r11_a-r11_b==0, name=f"EQ_(11)_v={v}_k={k}_t={t}")  
 
     def createVehicleMostVisitCustomerEachPeriod(self):
         for k in range(1,self.k):
@@ -216,7 +247,7 @@ class MultProductProdctionRoutingProblem:
                     for i in range(self.i): 
                         if(k!=i):
                             r12+=self.Z_v_i_k_t[v,i,k,t]
-                self.model.addConstr(r12<=1, name=f"EQ_(12)_k={k}_t={t+1}")  
+                self.model.addConstr(r12<=1, name=f"EQ_(12)_k={k}_t={t}")  
 
     def outModel(self):
         self.model.Params.OutputFlag = 1
@@ -365,6 +396,11 @@ class MultProductProdctionRoutingProblem:
 
     def solver(self,numThreads=None,timeLimit=None):
         self.createDecisionVariables()
+
+        self.log.info(f"Variabes.start == {self.start['start']}")
+        if(self.start['start'] == True):
+            self.startVariables()
+        
         self.crateObjectiveFunction()
         self.createEstablishInvetoryBalanceAtPlant()
         self.creteInventoryBalancingInventoryCustomers()
