@@ -146,15 +146,16 @@ class GreedyRandomizedConstructionRoute:
             unserved.remove(cliente)
 
 
-        # cost=0
-        # c=[]
-        # for route in routes:
-        #     route_op, cost_route = self.twoOpt.twoOptOnRoute(route,D)
-        #     cost+=cost_route
+        cost=0
+        c=[]
+        routes_op = []
+        for route in routes:
+            route_op, cost_route = self.twoOpt.twoOptOnRoute(route,D)
+            cost+=cost_route
+            routes_op.append(route_op)
+            c.append([clients[i] for i in route_op])
 
-        #     c.append([clients[i] for i in route_op])
 
+        #c = [[clients[i] for i in route] for route in routes]
 
-        c = [[clients[i] for i in route] for route in routes]
-
-        return c, self.total_cost(routes,D), self.total_demanda(routes,demands,c)
+        return c, self.total_cost(routes_op,D), self.total_demanda(routes_op,demands,c)

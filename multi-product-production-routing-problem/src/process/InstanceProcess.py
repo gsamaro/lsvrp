@@ -1,6 +1,6 @@
 from src.helpers.ReadPrpFile import ReadPrpFile as RD
 from src.solvers.MultProductProdctionRoutingProblem import MultProductProdctionRoutingProblem as MPPRP
-from src.solvers.MultProductProdctionRoutingProblemGrasp import MultProductProdctionRoutingProblemGrasp as MPPRPG
+from src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic import MultProductProdctionRoutingProblemGreedyConstructiveHeuristic as MPPRPG
 from src.log.Logger import Logger
 from src.process.ProcessResults import getResults
 from src.helpers.GraphDisplay import graphResults
@@ -26,9 +26,15 @@ class InstanceProcess:
             case "GUROBY":
                 self.log.info(f" Solver: GUROBY")
                 return MPPRP(map=data,dir=self.output,log=self.log,start={"start":False})
-                
-            case "GRASP":
-                self.log.info(f" Solver: GRASP")
+            
+            case "HEURISTICA_CONSTRUTIVA_MIT_START":
+                self.log.info(f" Solver: HEURISTICA_CONSTRUTIVA_MIT_START")
+                instancia = MPPRPG(map=data,dir=self.output,log=self.log)
+                instancia.setMitStart(True)
+                return instancia
+            
+            case "HEURISTICA_CONSTRUTIVA":
+                self.log.info(f" Solver: HEURISTICA_CONSTRUTIVA")
                 return MPPRPG(map=data,dir=self.output,log=self.log)
             
             case _: 

@@ -60,7 +60,7 @@ if __name__ == "__main__":
                 'timeLimit':timeLimitSolver
             })
 
-    WorkerProcess(workers,timeSupervisor,{'instancia': log,'dirLogs': f'{output}logs'}).process(instancies = instancies, solver= "GRASP")
+    WorkerProcess(workers,timeSupervisor,{'instancia': log,'dirLogs': f'{output}logs'}).process(instancies = instancies, solver= "HEURISTICA_CONSTRUTIVA")
 
     '''
 Explored 11164 nodes (448772 simplex iterations) in 30.82 seconds (21.64 work units)
