@@ -20,7 +20,7 @@ class Logger:
         log_message = f"[{self._timestamp()}] [{level}] {message}\n"
 
         with open(self.log_path, 'a', encoding='utf-8') as f:
-            print(log_message)
+            #print(log_message)
             f.write(log_message)
 
     def info(self, message):

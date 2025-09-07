@@ -77,10 +77,9 @@ class MultProductProdctionRoutingProblem:
     def startVariables(self):
 
 
-        self.log.info(f"{self.start["variables"]["I"][0][1][0]} - {self.start["variables"]["I"][0][1][1]} - {self.start["variables"]["Q"][0][0][1][1]} + {self.start["variables"]["Q"][0][1][1][1]} = 42")
+        print(f"{-self.start["variables"]["I"][0][1][0]}+{self.start["variables"]["Q"][0][0][1][0]} = {-self.start["variables"]["I"][0][1][0]+self.start["variables"]["Q"][0][0][1][0]} == -123"   )
 
-
-        '''I EQ_(3)_p=0_i=1_t=1: I[0,1,0] - I[0,1,1] + Q[0,0,1,1] + Q[0,1,1,1] = 42'''
+        '''-I[0,1,0] + Q[0,0,1,0] = -123 -163+58 =-123'''
         # print(self.start["variables"]["X"][p][t])
 
         for p in range(self.p):
@@ -257,12 +256,12 @@ class MultProductProdctionRoutingProblem:
         if(self.solCount==0):
             return [],[],[],[],[],[],0,0,self.time,self.solCount,self.relaxedModelObjVal,self.nodeCount,self.objBound
         
-        self.log.info("*******************************")
+        '''self.log.info("*******************************")
         self.log.info("============ Z ================")
-        self.log.info("*******************************")
+        self.log.info("*******************************")'''
         Z=[]
         for t in range(self.t):
-            self.log.info(f"\n\n============ periodo {t} ============")
+            #self.log.info(f"\n\n============ periodo {t} ============")
             v_list =[]
             for v in range(self.v):
                 self.log.info(f"\n============ veiculo {v} ============")
@@ -271,27 +270,27 @@ class MultProductProdctionRoutingProblem:
                     k_list=[]
                     for k in range(self.k):
                         variable = abs(self.Z_v_i_k_t[v,i,k,t].x)
-                        self.log.info(f" origem: {i} destino: {k} == {variable}")
+                        #self.log.info(f" origem: {i} destino: {k} == {variable}")
                         k_list.append(variable)
                     i_list.append(k_list)
                 v_list.append(i_list)
             Z.append(v_list)
-        self.log.info("\n\n===============================\n\n")
+        #self.log.info("\n\n===============================\n\n")
 
         for t in range(len(Z)):
-            self.log.info(f"\n\n============ periodo {t} ============")
+            #self.log.info(f"\n\n============ periodo {t} ============")
             v_list =[]
             for v in range(len(Z[t])):
-                self.log.info(f"\n============ veiculo {v} ============")
+                #self.log.info(f"\n============ veiculo {v} ============")
                 for i in range(len(Z[t][v])):
                     string = ""
                     for k in range(len(Z[t][v][i])):
                         string+= str(Z[t][v][i][k]) + "\t"
-                    self.log.info(string)
+                    #self.log.info(string)
 
-        self.log.info("*******************************")
-        self.log.info("============ Y ================")
-        self.log.info("*******************************")
+        #self.log.info("*******************************")
+        #self.log.info("============ Y ================")
+        #self.log.info("*******************************")
         Y = []
         for t in range(self.t):
             self.log.info(f"\n\n============ periodo {t} ============")
@@ -301,24 +300,24 @@ class MultProductProdctionRoutingProblem:
                 p_list_y.append(variable)
                 # print("produto: ",p," == ", variable)
             Y.append(p_list_y)
-        self.log.info("\n\n===============================\n\n")
+        #self.log.info("\n\n===============================\n\n")
 
-        self.log.info("*******************************")
-        self.log.info("============ X ================")
-        self.log.info("*******************************")
+        #self.log.info("*******************************")
+        #self.log.info("============ X ================")
+        #self.log.info("*******************************")
         X = []
         for t in range(self.t):
-            self.log.info(f"\n\n============ periodo {t} ============")
+            #self.log.info(f"\n\n============ periodo {t} ============")
             p_list_x=[]
             for p in range(self.p):
                 p_list_x.append(self.X_p_t[p,t].x)
                 # print("produto: ",p," == ", self.X_p_t[p,t].x)
             X.append(p_list_x)
-        self.log.info("\n\n===============================\n\n")
+        #self.log.info("\n\n===============================\n\n")
 
-        self.log.info("*******************************")
-        self.log.info("============ I ================")
-        self.log.info("*******************************")
+        #self.log.info("*******************************")
+        #self.log.info("============ I ================")
+        #self.log.info("*******************************")
         I=[]
         for t in range(self.t):
             # print("\n\n============ periodo ",t," ============")
@@ -333,15 +332,15 @@ class MultProductProdctionRoutingProblem:
             I.append(p_list_i)
         self.log.info("\n\n===============================\n\n")
 
-        self.log.info("*******************************")
-        self.log.info("============ R ================")
-        self.log.info("*******************************")
+        #self.log.info("*******************************")
+        #self.log.info("============ R ================")
+        #self.log.info("*******************************")
         R=[]
         for t in range(self.t):
-            self.log.info(f"\n\n============ periodo {t} ============")
+            #self.log.info(f"\n\n============ periodo {t} ============")
             t_list=[]
             for v in range(self.v):
-                self.log.info(f"\n============ veiculo {v} ============")
+                #self.log.info(f"\n============ veiculo {v} ============")
                 v_list=[]
                 for p in range(self.p):
                     p_list=[]
@@ -356,20 +355,20 @@ class MultProductProdctionRoutingProblem:
                     v_list.append(p_list)
                 t_list.append(v_list)
             R.append(t_list)
-        self.log.info("\n\n===============================\n\n")
+        #self.log.info("\n\n===============================\n\n")
 
-        self.log.info("*******************************")
-        self.log.info("============ Q ================")
-        self.log.info("*******************************")
+        #self.log.info("*******************************")
+        #self.log.info("============ Q ================")
+        #self.log.info("*******************************")
         Q=[]
         for t in range(self.t):
-            self.log.info(f"\n\n============ periodo {t} ============")
+            #self.log.info(f"\n\n============ periodo {t} ============")
             t_list=[]
             for v in range(self.v):
-                self.log.info(f"\n============ veiculo {v} ============")
+                #self.log.info(f"\n============ veiculo {v} ============")
                 v_list=[]
                 for p in range(self.p):
-                    self.log.info(f"\n============ cliente {i} ============")
+                    #self.log.info(f"\n============ cliente {i} ============")
                     p_list=[]
                     for i in range(self.i):
                         self.log.info(f"produto:{p} == {self.Q_p_v_i_t[p,v,i,t].x}")
@@ -377,7 +376,7 @@ class MultProductProdctionRoutingProblem:
                     v_list.append(p_list)
                 t_list.append(v_list)
             Q.append(t_list)
-        self.log.info("\n\n===============================\n\n")
+        #self.log.info("\n\n===============================\n\n")
     
         return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap,self.time,self.solCount,self.relaxedModelObjVal,self.nodeCount,self.objBound
 

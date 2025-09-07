@@ -41,6 +41,8 @@ class GreedyRandomizedConstructionRoute:
         p_size = len(demands[0])
         vehicles = []
 
+
+        #pdb.set_trace()
         for v in range(len(solution)):
             d = []
             d_t = [0.0 for _ in range(p_size)]
@@ -64,6 +66,8 @@ class GreedyRandomizedConstructionRoute:
 
             vehicles.append({'veiculo':v, 'entregas': d_e})
 
+
+        #pdb.set_trace()
         return vehicles
     
     def total_cost(self, solution: List[List[int]], D: np.ndarray) -> float:
@@ -142,15 +146,15 @@ class GreedyRandomizedConstructionRoute:
             unserved.remove(cliente)
 
 
-        cost=0
-        c=[]
-        for route in routes:
-            route_op, cost_route = self.twoOpt.twoOptOnRoute(route,D)
-            cost+=cost_route
+        # cost=0
+        # c=[]
+        # for route in routes:
+        #     route_op, cost_route = self.twoOpt.twoOptOnRoute(route,D)
+        #     cost+=cost_route
 
-            c.append([clients[i] for i in route_op])
+        #     c.append([clients[i] for i in route_op])
 
 
-        #c = [[clients[i] for i in route] for route in routes]
+        c = [[clients[i] for i in route] for route in routes]
 
         return c, self.total_cost(routes,D), self.total_demanda(routes,demands,c)

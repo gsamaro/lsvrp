@@ -11,6 +11,6 @@
     "is_plot": "false",
     "dir": "./data/",
     "output": "./out/",
-    "files": ["DATA_PRP_5C/PRP1_C5_P2_V1_T2_S1.dat"]
+    "files": ["DATA_PRP_30C/PRP1_C30_P10_V5_T12_S1.dat"]
   }
 }
