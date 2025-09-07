@@ -146,7 +146,7 @@ class MultProductProdctionRoutingProblemGrasp:
             capacidade_producao_restante = int(self.B)
             capacidade_veiculo_totais = [self.C for _ in range(self.v)]
 
-            pdb.set_trace()
+            # pdb.set_trace()
             candidatos = []
             veiculo_corrente=0
             for i in range(1, self.i):
@@ -192,7 +192,7 @@ class MultProductProdctionRoutingProblemGrasp:
             candidatos.sort(key=lambda x: x[3], reverse=True)
 
             iter=0
-            while ( (capacidade_producao_restante > 0 and len(candidatos)!=0 and capacidade_veiculo_total > 0) and iter<=len(candidatos)):
+            while ( (capacidade_producao_restante > 0 and len(candidatos)!=0 and capacidade_veiculo_totais[veiculo_corrente] > 0) and iter<=len(candidatos)):
                 top_k = math.ceil(self.alfa * len(candidatos))
                 RCL = candidatos[:top_k]
                 i,p,_,_ = random.choice(RCL)
@@ -204,12 +204,17 @@ class MultProductProdctionRoutingProblemGrasp:
                 if(faltante<0):
                     faltante = 0
 
-                qte = min(capacidade_producao_restante, demanda_futura, disponibilidade_estoque, faltante, capacidade_veiculo_total)
-                capacidade_producao_restante -=qte
-                capacidade_veiculo_total -= qte
+                disponivel_veiculo = max(capacidade_veiculo_totais)
+                veiculo_corrente = capacidade_veiculo_totais.index(disponivel_veiculo)
 
-                if(capacidade_producao_restante<0 or capacidade_veiculo_total< 0 ):
-                    self.log.warning(f"Produção está negátiva: {capacidade_producao_restante} ou capcidade_veiculo negativo:{capacidade_veiculo_total}")
+                qte = min(capacidade_producao_restante, demanda_futura, disponibilidade_estoque, faltante, disponivel_veiculo)
+
+
+                capacidade_producao_restante -=qte
+                capacidade_veiculo_totais[veiculo_corrente] -= qte
+
+                if(capacidade_producao_restante<0 or capacidade_veiculo_totais[veiculo_corrente]< 0 ):
+                    self.log.warning(f"Produção está negátiva: {capacidade_producao_restante} ou capcidade_veiculo negativo:{capacidade_veiculo_totais[veiculo_corrente]}")
                     capacidade_producao_restante += qte
                     capacidade_veiculo_total += qte
                     iter+=1
