@@ -25,14 +25,15 @@ class GreedyRandomizedConstructionRoute:
         self.twoOpt = TwoOptOnRoute()
 
     def addDemand(self, load: List[float], demand: List[float]) -> List[float]:
-        return [l + d for l, d in zip(load, demand)]
+        # pdb.set_trace()
+        total = sum(demand)
+        return [l + total for l, _ in zip(load, demand)]
     
     def canInsertCustomer(self, load, demand, capacity):
         # load, demand, capacity são vetores (um valor para cada produto)
-
-        # pdb.set_trace()
+        total = sum(demand)
         for p in range(len(load)):
-            if load[p] + demand[p] > capacity[p]:
+            if load[p] + total > capacity[p]:
                 return False
         return True
         

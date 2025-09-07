@@ -81,258 +81,299 @@ class MultProductProdctionRoutingProblemGrasp:
 
     def construirSolucao(self):
         """
-        procedimento construirSolucao():
-        inicializar matriz solucao_t_i_p com células {cliente, produto, periodo, estoque, demanda, producao=0}
-        inicializar estoque_i_p[i][p] com estoques iniciais
-        inicializar capacities para veículos
-        routes ← []
-        para cada período t:
-            capacidade_producao_restante ← B
-            capacidade_veiculo_total ← C * v
-            candidatos ← []
-            # 1. Satisfazer demanda imediata
-            para cada cliente i (exceto depósito):
-                para cada produto p:
-                    demanda_t ← demanda do cliente i, produto p, no período t
-                    se estoque atual < demanda_t:
-                        produto_faltante ← demanda_t - estoque atual
-                        disponibilidade ← estoque máximo permitido - estoque atual
-                        qte ← mínimo(produto_faltante, capacidade_producao_restante, disponibilidade)
-                        atualizar capacidade_producao_restante -= qte
-                        atualizar capacidade_veiculo_total -= qte
-                        se capacidades < 0: parar (inviável)
-                        atualizar estoque_i_p[i][p] += qte
-                        registrar no solucao_t_i_p[t][i][p]
-                    # 2. Produzir a mais para demanda futura
-                    se estoque atual < estoque máximo e capacidades disponíveis:
-                        demanda_futura ← soma da demanda de i,p nos períodos t+1...T
-                        custo_unitario ← custo_setup + custo_producao + custo_estoque * demanda_futura
-                        adicionar (i,p, prioridade=1/custo_unitario) em candidatos
-            # 3. Construção Gulosa Aleatorizada
-            ordenar candidatos por prioridade (desc)
-            iter ← 0
-            enquanto houver capacidade e candidatos:
-                top_k ← ceil(alfa * |candidatos|)
-                RCL ← top_k primeiros candidatos
-                (i,p) ← escolher aleatoriamente de RCL
-                demanda_futura ← soma demandas futuras(i,p)
-                disponibilidade ← estoque máximo - estoque atual
-                faltante ← max(demanda_futura - estoque atual, 0)
-                qte ← mínimo(capacidade_restante, demanda_futura, disponibilidade, faltante, capacidade_veiculo_total)
-                atualizar capacidades -= qte
-                se capacidades < 0:
-                    desfazer qte
-                    iter += 1
-                senão:
-                    atualizar estoque_i_p[i][p] += qte
-                    registrar em solucao_t_i_p[t][i][p]
-                    remover (i,p) dos candidatos
-            # 4. Atualizar demandas e preparar roteamento
-            candidates_t ← {clientes atendidos no período t}
-            dem_t ← demandas correspondentes de produção
-            D ← matriz de distâncias entre candidates_t
-            rota ← geraRota(candidates_t, dem_t, capacities, D, v, alfa, seed)
-            adicionar rota em routes
-
-        final_solution ← { "production": solucao_t_i_p, "routes": routes }
-        retornar final_solution
+        Constrói uma solução (produção + roteiros) respeitando capacidades de produção e veículos,
+        e prepara os tensores X, Y, I, Q, R, Z para o modelo.
+        Mantém a compatibilidade com o restante do código (chaves e formato de retorno).
         """
-        solucao_t_i_p = [[[{'cliente': i,'produto': p,'periodo': t,'estoque': 0,'demanda': 0,'producaco': 0} for p in range(self.p)] for i in range(self.i)] for t in range(self.t)]
+        # ---------- Iniciais ----------
+        # produção/estoque por (t, i, p)
+        solucao_t_i_p = [
+            [
+                [
+                    {
+                        "cliente": i,
+                        "produto": p,
+                        "periodo": t,
+                        "estoque": 0,
+                        "demanda": 0,
+                        "producaco": 0,
+                    }
+                    for p in range(self.p)
+                ]
+                for i in range(self.i)
+            ]
+            for t in range(self.t)
+        ]
+
+        # estoque inicial I_{p,i,0} -> organização [i][p]
         estoque_i_p = [[self.I_p_i_0[p][i] for p in range(self.p)] for i in range(self.i)]
+
+        # capacidade de cada veículo (para passar ao construtor de rotas)
         capacities = [[self.C] for _ in range(self.v)]
+
         routes = []
 
-        for t in range(self.t):
-            capacidade_producao_restante = int(self.B)
-            capacidade_veiculo_totais = [self.C for _ in range(self.v)]
+        # ---------- Helpers internos ----------
+        def demanda_futura(p, i, t_atual):
+            """Soma de demanda futura para (p,i) de t_atual+1 até T-1."""
+            if t_atual + 1 >= self.t:
+                return 0
+            return sum(self.d_p_i_t[p][i - 1][t_atual + 1 : self.t])
 
-            # pdb.set_trace()
-            candidatos = []
-            veiculo_corrente=0
-            for i in range(1, self.i):
+        def escolher_veiculo_maior_cap(restantes):
+            """Retorna índice do veículo com maior capacidade restante; se tudo zerado, 0."""
+            positivos = [v for v in restantes if v > 0]
+            if not positivos:
+                return 0
+            m = max(positivos)
+            return restantes.index(m)
+
+        # ---------- Laço principal por período ----------
+        for t in range(self.t):
+            cap_producao_rest = int(self.B)
+            cap_veic_rest = [self.C for _ in range(self.v)]
+            veic_atual = 0
+
+            candidatos = []  # cada item: (i, score)
+            # 1) Atender demanda corrente (produção mínima necessária)
+            for i in range(1, self.i):  # cliente 0 costuma ser o depósito
                 for p in range(self.p):
-                    demanda_t = self.d_p_i_t[p][i-1][t]
+                    dem_t = self.d_p_i_t[p][i - 1][t]
                     qte = 0
 
-                    if(estoque_i_p[i][p] < demanda_t): 
-                        produto_faltante = demanda_t - estoque_i_p[i][p]
-                        disponibilidade_estoque = self.U_p_i[p][i] - estoque_i_p[i][p]
-                        qte = min(produto_faltante, capacidade_producao_restante, disponibilidade_estoque)
+                    if estoque_i_p[i][p] < dem_t:
+                        faltante = dem_t - estoque_i_p[i][p]
+                        disp_estoque = self.U_p_i[p][i] - estoque_i_p[i][p]
+                        qte = min(faltante, cap_producao_rest, disp_estoque)
 
-                        capacidade_producao_restante -=qte
-                        capacidade_veiculo_totais[veiculo_corrente] -= qte
+                        # tenta usar veículo corrente; se estourar, passa pro próximo
+                        if qte > 0:
+                            cap_veic_rest[veic_atual] -= qte
+                            if cap_veic_rest[veic_atual] < 0:
+                                # desfaz e tenta próximo veículo
+                                cap_veic_rest[veic_atual] += qte
+                                veic_atual += 1
+                                if veic_atual >= self.v:
+                                    self.log.error("Modelo inviável: sem capacidade veicular.")
+                                    veic_atual = self.v - 1
+                                    qte = 0  # não produz (evita índice fora do limite)
+                                else:
+                                    cap_veic_rest[veic_atual] -= qte
 
-                        if(capacidade_veiculo_totais[veiculo_corrente] < 0):
+                            cap_producao_rest -= qte
+                            if cap_producao_rest < 0:
+                                self.log.error("Modelo inviável: capacidade de produção excedida.")
+                                # desfaz a produção aplicada
+                                cap_producao_rest += qte
+                                cap_veic_rest[veic_atual] += qte
+                                qte = 0
 
-                            capacidade_veiculo_totais[veiculo_corrente] += qte
-                            veiculo_corrente+=1
-                            capacidade_veiculo_totais[veiculo_corrente] -= qte
-
-                            if(veiculo_corrente>self.v):
-                                self.log.error("modelo Inviavel pelas restrições de capacidade do veiculo")
-
-                        if(capacidade_producao_restante<0):
-                            self.log.error("modelo Inviavel pelas restrições de produção")
-                            break
-
-
+                    # aplica efeitos (mesmo se qte = 0, atualiza metadados)
                     estoque_i_p[i][p] += qte
-                    solucao_t_i_p[t][i][p]['producaco']+= qte
-                    solucao_t_i_p[t][i][p]['cliente'] = i
-                    solucao_t_i_p[t][i][p]['produto'] = p
-                    solucao_t_i_p[t][i][p]['periodo'] = t
-                    solucao_t_i_p[t][i][p]['estoque'] = estoque_i_p[i][p]
-                    solucao_t_i_p[t][i][p]['demanda'] = demanda_t
-                        
-                    if(estoque_i_p[i][p]<self.U_p_i[p][i] and capacidade_producao_restante > 0 and capacidade_veiculo_totais[veiculo_corrente] > 0):
-                        demanda_futura = sum(self.d_p_i_t[p][i-1][t+1:self.t])
-                        custo_unitario = self.s_p[p] + self.c_p[p] + self.h_p_i[p][i]*demanda_futura
-                        candidatos.append((i,p,'barato',1/custo_unitario))
+                    cel = solucao_t_i_p[t][i][p]
+                    cel["producaco"] += qte
+                    cel["cliente"] = i
+                    cel["produto"] = p
+                    cel["periodo"] = t
+                    cel["estoque"] = estoque_i_p[i][p]
+                    cel["demanda"] = dem_t
 
-            candidatos.sort(key=lambda x: x[3], reverse=True)
+                    # 2) Considerar produzir extra (estoque antecipado) se ainda houver capacidade
+                    if (
+                        estoque_i_p[i][p] < self.U_p_i[p][i]
+                        and cap_producao_rest > 0
+                        and cap_veic_rest[veic_atual] > 0
+                    ):
+                        dem_fut = demanda_futura(p, i, t)
+                        # custo efetivo p/ priorização: (s + c + h * demanda_futura)
+                        custo_unit = self.s_p[p] + self.c_p[p] + self.h_p_i[p][i] * dem_fut
+                        if custo_unit > 0:
+                            # candidato por cliente (i) – usamos 1/custo como score para ordenar
+                            candidatos.append((i, 1.0 / custo_unit))
 
-            iter=0
-            while ( (capacidade_producao_restante > 0 and len(candidatos)!=0 and capacidade_veiculo_totais[veiculo_corrente] > 0) and iter<=len(candidatos)):
-                top_k = math.ceil(self.alfa * len(candidatos))
-                RCL = candidatos[:top_k]
-                i,p,_,_ = random.choice(RCL)
+            # ordena candidatos por "barateza"
+            # se o cliente aparecer mais de uma vez (por produtos diferentes), vamos unificar depois
+            candidatos.sort(key=lambda x: x[1], reverse=True)
 
-                demanda_futura = sum(self.d_p_i_t[p][i-1][t+1:self.t])
-                disponibilidade_estoque = self.U_p_i[p][i] - estoque_i_p[i][p]
-               
-                faltante = demanda_futura - estoque_i_p[i][p]
-                if(faltante<0):
-                    faltante = 0
+            # usa o veículo com maior capacidade restante
+            veic_atual = escolher_veiculo_maior_cap(cap_veic_rest)
 
-                disponivel_veiculo = max(capacidade_veiculo_totais)
-                veiculo_corrente = capacidade_veiculo_totais.index(disponivel_veiculo)
+            # 3) Produção adicional (estoque) guiada por RCL por cliente
+            # Consolidar candidatos por cliente (melhor score)
+            score_por_cliente = {}
+            for i, s in candidatos:
+                score_por_cliente[i] = max(s, score_por_cliente.get(i, -float("inf")))
+            candidatos_unicos = sorted(score_por_cliente.items(), key=lambda x: x[1], reverse=True)
 
-                qte = min(capacidade_producao_restante, demanda_futura, disponibilidade_estoque, faltante, disponivel_veiculo)
+            iter_count = 0
+            while (
+                cap_producao_rest > 0
+                and candidatos_unicos
+                and cap_veic_rest[veic_atual] > 0
+                and iter_count <= len(candidatos_unicos)
+            ):
+                top_k = max(1, math.ceil(self.alfa * len(candidatos_unicos)))
+                RCL = candidatos_unicos[:top_k]
+                i, _ = random.choice(RCL)
 
+                # decide quanto produzir, por produto, para estoque futuro
+                total_p = [0] * self.p
+                for p in range(self.p):
+                    dem_fut = demanda_futura(p, i, t)
+                    disp_estoque = self.U_p_i[p][i] - estoque_i_p[i][p]
+                    faltante_fut = max(0, dem_fut - estoque_i_p[i][p])
 
-                capacidade_producao_restante -=qte
-                capacidade_veiculo_totais[veiculo_corrente] -= qte
+                    q = min(cap_producao_rest, dem_fut, disp_estoque, faltante_fut, cap_veic_rest[veic_atual])
+                    total_p[p] = max(0, int(q))  # garantir inteiro não-negativo
 
-                if(capacidade_producao_restante<0 or capacidade_veiculo_totais[veiculo_corrente]< 0 ):
-                    self.log.warning(f"Produção está negátiva: {capacidade_producao_restante} ou capcidade_veiculo negativo:{capacidade_veiculo_totais[veiculo_corrente]}")
-                    capacidade_producao_restante += qte
-                    capacidade_veiculo_total += qte
-                    iter+=1
-                else:
-                    estoque_i_p[i][p] += qte
-                    solucao_t_i_p[t][i][p]['producaco']+= qte
-                    solucao_t_i_p[t][i][p]['cliente'] = i
-                    solucao_t_i_p[t][i][p]['produto'] = p
-                    solucao_t_i_p[t][i][p]['periodo'] = t
-                    solucao_t_i_p[t][i][p]['estoque'] = estoque_i_p[i][p]
-                    solucao_t_i_p[t][i][p]['demanda'] = self.d_p_i_t[p][i-1][t]
-                    candidatos = [c for c in candidatos if not (c[0]==i and c[1]==p)]
+                soma = sum(total_p)
 
-            candidates_t = [0]
-            dem_t = [[0.0]]
+                if soma <= 0:
+                    # remove cliente da lista e continua
+                    candidatos_unicos = [c for c in candidatos_unicos if c[0] != i]
+                    iter_count += 1
+                    continue
+
+                # aplica consumo de capacidades
+                cap_producao_rest -= soma
+                cap_veic_rest[veic_atual] -= soma
+
+                if cap_producao_rest < 0 or cap_veic_rest[veic_atual] < 0:
+                    # desfaz e encerra iteração
+                    self.log.warning(
+                        f"Capacidades negativas detectadas: prod={cap_producao_rest}, veic={cap_veic_rest[veic_atual]}"
+                    )
+                    cap_producao_rest += soma
+                    cap_veic_rest[veic_atual] += soma
+                    iter_count += 1
+                    break
+
+                # aplica produção e atualiza células
+                for p in range(self.p):
+                    q = total_p[p]
+                    if q <= 0:
+                        continue
+                    estoque_i_p[i][p] += q
+                    cel = solucao_t_i_p[t][i][p]
+                    cel["producaco"] += q
+                    cel["cliente"] = i
+                    cel["produto"] = p
+                    cel["periodo"] = t
+                    cel["estoque"] = estoque_i_p[i][p]
+                    cel["demanda"] = self.d_p_i_t[p][i - 1][t]
+
+                # remove o cliente escolhido (já atendido nesta rodada)
+                candidatos_unicos = [c for c in candidatos_unicos if c[0] != i]
+                # re-escolhe veículo com maior capacidade restante
+                veic_atual = escolher_veiculo_maior_cap(cap_veic_rest)
+                iter_count += 1
+
+            # 4) Montagem dos candidatos de roteamento e demandas agregadas por cliente no período t
+            candidates_t = [0]  # 0 = depósito
+            dem_t = [[0.0] * self.p]  # vetor de produtos no depósito (zerado)
+
             for i, linha in enumerate(solucao_t_i_p[t]):
                 prod = []
                 client_current = 0
                 for p, celula in enumerate(linha):
-                    prod.append(solucao_t_i_p[t][i][p]['producaco'])
+                    prod.append(celula['producaco'])  # já é separado por produto
                     estoque_i_p[i][p] = celula['estoque'] - celula['demanda']
-                    client_current = solucao_t_i_p[t][i][p]['cliente']
+                    client_current = celula['cliente']
 
-                if set(prod) != {0}:
+                if any(q > 0 for q in prod):  # se tem algo produzido para o cliente
                     candidates_t.append(client_current)
-                    dem_t.append([sum(prod)])
+                    dem_t.append(prod)  # agora vai com vetor por produto, não o somatório
 
-            # pdb.set_trace()
+            # remove duplicados em candidates_t mantendo ordem
             candidates_t = list(dict.fromkeys(candidates_t))
-            dem_t = [v for v in dem_t if v]
+            # mantém dem_t coerente (primeiro elemento é o depósito 0 com 0.0)
+            dem_t = [row for row in dem_t if row is not None]
+
             D = self.getDistancesInPeriod(candidates_t)
 
-            print(dem_t, "=====",capacities)
-            route, distance, demandas = self.greedyRoute.greedyRandomizedConstruction(candidates_t, dem_t, capacities, D, int(self.v), self.alfa, random.Random(self.seed))
+            # chamada do construtor de rotas (precisa devolver (route, distance, demandas))
+            route_distance_dem = self.greedyRoute.greedyRandomizedConstruction(
+                candidates_t, dem_t, capacities, D, int(self.v), self.alfa, random.Random(self.seed)
+            )
+            if not route_distance_dem or len(route_distance_dem) != 3:
+                self.log.error("greedyRandomizedConstruction não retornou (route, distance, demandas).")
+                route, distance, demandas = [], 0.0, []
+            else:
+                route, distance, demandas = route_distance_dem
 
+            routes.append({"periodo": t, "route": route, "distance": distance, "demandas": demandas})
 
-
-            routes.append({'periodo':t ,'route':route,'distance':distance,'demandas':demandas})
-
-
-        final_solution = {
-            "production": solucao_t_i_p,
-            "routes": routes
-        }
-
+        # ---------- Empacotamento final ----------
+        final_solution = {"production": solucao_t_i_p, "routes": routes}
         self.log.info(json.dumps(final_solution, indent=4))
 
-
-
-        # Vetor de zeros para todas variáveis binárias x[i,j]
-        
-        Z = np.zeros((self.v,self.i,self.k,self.t), dtype=int)
-
-
-        '''𝑧𝑣𝑖𝑘𝑡'''
+        # Z[v,i,k,t] arestas percorridas
+        Z = np.zeros((self.v, self.i, self.k, self.t), dtype=int)
         for t in range(len(final_solution["routes"])):
-            for v in range(len(final_solution["routes"][t]["route"])):
-                for i in range( len(final_solution["routes"][t]["route"][v])):
-                    origem = final_solution["routes"][t]["route"][v][i]
+            rotas_t = final_solution["routes"][t]["route"]
+            for v in range(len(rotas_t)):
+                rota_v = rotas_t[v]
+                for idx_i in range(len(rota_v)):
+                    origem = rota_v[idx_i]
+                    destino = rota_v[idx_i + 1] if (idx_i + 1) < len(rota_v) else 0
+                    Z[v, origem, destino, t] = 1
 
+        # R[p,v,i,k,t] e Q[p,v,i,t]
+        R = np.zeros((self.p, self.v, self.i, self.k, self.t), dtype=int)
+        Q = np.zeros((self.p, self.v, self.i, self.t), dtype=int)
 
-                    if(i+1 == len(final_solution["routes"][t]["route"][v])):
-                        destino = 0
-                    else:
-                        destino = final_solution["routes"][t]["route"][v][i+1]
-
-                    Z[v, origem,destino, t] = 1
-
-
-        R = np.zeros((self.p,self.v,self.i,self.k,self.t), dtype=int)
-        Q = np.zeros((self.p,self.v,self.i,self.t), dtype=int)
-        '''𝑟𝑝𝑣𝑖𝑘𝑡'''
-        '''𝑞𝑝𝑣𝑖𝑡'''
-        
         for t in range(len(final_solution["routes"])):
-            for v in range(len(final_solution["routes"][t]["demandas"])):
-                for i in range( len(final_solution["routes"][t]["demandas"][v]['entregas'])):
-                    origem_i = final_solution["routes"][t]["demandas"][v]["entregas"][i]["cliente"]
-            
-                    if(i+1 == len(final_solution["routes"][t]["route"][v])):
-                        destino_j = 0
-                    else:
-                        destino_j = final_solution["routes"][t]["demandas"][v]["entregas"][i+1]["cliente"]
+            dem_t_v = final_solution["routes"][t]["demandas"]
+            rotas_t = final_solution["routes"][t]["route"]
 
-                    
-                    for p in range(len(final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"])):
-                        R[p,v,origem_i,destino_j,t] = final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"][p]["restante_veiculo"]
+            for v in range(len(dem_t_v)):
+                entregas_v = dem_t_v[v].get("entregas", [])
+                rota_v = rotas_t[v] if v < len(rotas_t) else []
 
+                # R usa pares (origem->destino) na sequência da rota
+                for i_idx in range(len(entregas_v)):
+                    origem_i = entregas_v[i_idx]["cliente"]
+                    proximo_cliente = (
+                        entregas_v[i_idx + 1]["cliente"] if (i_idx + 1) < len(entregas_v) else 0
+                    )
+                    destino_j = proximo_cliente
 
-                for i in range( len(final_solution["routes"][t]["demandas"][v]['entregas'])):
-                    origem_i = final_solution["routes"][t]["demandas"][v]["entregas"][i]["cliente"]
-                    for p in range(len(final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"])):
+                    for p in range(len(entregas_v[i_idx]["produtos"])):
+                        R[p, v, origem_i, destino_j, t] = entregas_v[i_idx]["produtos"][p].get(
+                            "restante_veiculo", 0
+                        )
 
-                        
-                        Q[p,v,origem_i,t] = final_solution["routes"][t]["demandas"][v]["entregas"][i]["produtos"][p]["qte_entregue"]
+                # Q quantidade entregue por (p,v,i,t)
+                for i_idx in range(len(entregas_v)):
+                    origem_i = entregas_v[i_idx]["cliente"]
+                    for p in range(len(entregas_v[i_idx]["produtos"])):
+                        Q[p, v, origem_i, t] = entregas_v[i_idx]["produtos"][p].get(
+                            "qte_entregue", 0
+                        )
 
-     
-        X = np.zeros((self.p,self.t), dtype=int)
-        Y = np.zeros((self.p,self.t), dtype=int)
-        I = np.zeros((self.p,self.i,self.t), dtype=int)
-        '''𝐼𝑝𝑖𝑡'''
+        # X[p,t], Y[p,t], I[p,i,t]
+        X = np.zeros((self.p, self.t), dtype=int)
+        Y = np.zeros((self.p, self.t), dtype=int)
+        I = np.zeros((self.p, self.i, self.t), dtype=int)
+
         for t in range(len(final_solution["production"])):
-            producao = np.zeros((self.p), dtype=int)
+            producao_p = np.zeros((self.p,), dtype=int)
             for i in range(len(final_solution["production"][t])):
-                for p in range(len(final_solution["production"][t][i])):
-                    producao[p]+=final_solution["production"][t][i][p]["producaco"]
-                    I[p,i,t] = final_solution["production"][t][i][p]["estoque"] - final_solution["production"][t][i][p]["demanda"]
+                for p in range(self.p):
+                    cel = final_solution["production"][t][i][p]
+                    producao_p[p] += cel["producaco"]
+                    I[p, i, t] = cel["estoque"] - cel["demanda"]
 
+            for p in range(self.p):
+                if producao_p[p] > 0:
+                    Y[p, t] = 1
+                X[p, t] = producao_p[p]
 
-            for p in range(len(final_solution["production"][t][i])):
-                if(producao[p]>0):
-                    Y[p,t] = 1
-                
-                X[p,t] = producao[p]
+        self.variables = {"X": X, "Y": Y, "I": I, "Q": Q, "R": R, "Z": Z}
 
-        self.variables={"X":X, "Y":Y, "I":I, "Q":Q, "R":R, "Z":Z}
+        # mantém a mesma assinatura/ordem de retorno usada por você
+        return Z, X, Y, I, R, Q, 0, 0, 0, 0
 
-        return  Z,X,Y,I,R,Q,0,0,0,0
     def getResultsSolver(self):
 
         z,x,y,ii,r,q,_,_,_,_ = self.s

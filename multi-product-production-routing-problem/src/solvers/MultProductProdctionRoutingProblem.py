@@ -77,10 +77,10 @@ class MultProductProdctionRoutingProblem:
     def startVariables(self):
 
 
-        self.log.info(f"{self.start["variables"]["R"][0][0][0][5][1]} + {self.start["variables"]["R"][1][0][0][5][1]} - 300 * {self.start["variables"]["Z"][0][0][5][1]} == {self.start["variables"]["R"][0][0][0][5][1] + self.start["variables"]["R"][1][0][0][5][1] - 300 * self.start["variables"]["Z"][0][0][5][1]} <= 0")
+        self.log.info(f"{self.start["variables"]["I"][0][1][0]} - {self.start["variables"]["I"][0][1][1]} - {self.start["variables"]["Q"][0][0][1][1]} + {self.start["variables"]["Q"][0][1][1][1]} = 42")
 
 
-        '''R[0,0,0,5,1] + R[1,0,0,5,1] - 300 Z[0,0,5,1] <= 0'''
+        '''I EQ_(3)_p=0_i=1_t=1: I[0,1,0] - I[0,1,1] + Q[0,0,1,1] + Q[0,1,1,1] = 42'''
         # print(self.start["variables"]["X"][p][t])
 
         for p in range(self.p):
