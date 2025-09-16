@@ -1,8 +1,8 @@
 import json
 import os
-from src.Converter import toStopPoint
+from src.helpers.Converter import toStopPoint
 
-def getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT):
+def getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL, NODE_COUNT, OBJ_BOUND):
     routes = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]
     periods = []
     for t in range(len(routes)):
@@ -104,7 +104,10 @@ def getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT):
         'FO':FO,
         'gap':GAP,
         'time':TIME,
-        'solCount':SOL_COUNT
+        'solCount':SOL_COUNT,
+        'relaxeModelObjeVal':RELAXED_MODEL_OBJE_VAL,
+        'nodeCount':NODE_COUNT,
+        'objBound':OBJ_BOUND
     }
 
     caminho_arquivo = os.path.join(dir, "result.json")

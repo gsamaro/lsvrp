@@ -6,7 +6,7 @@ Number of Vehicles = 2
 Number of Periods = 3
 
 B = Production capacity
-	2558
+	1000
 
 b_p = Time required to produce item p
  	1	1
@@ -21,12 +21,12 @@ M = Big number
 	5115
 
 U_pi = Maximum inventory upper bound of item p at site i
- 	5115	284	175	202	141	121
-	5115	175	104	153	288	256
+ 	0	100	100	100	100	100
+	0	100	100	100	100	100
 
 I_pi0 = Initial inventory of item p at site i
- 	0	70	0	0	50	0
-	0	0	10	0	50	0
+ 	0	100	0	0	0	0
+	0	100	0	0	0	100
 
 h_pi = Inventory cost of item p at site i
  	3	3	3	8	4	6

@@ -1,16 +1,17 @@
 {
   "solver":{
-    "threadsLimit":null,
-    "timeLimit":1800
+    "threadsLimit":1,
+    "timeLimit":1800,
+    "method":"HEURISTICA_CONSTRUTIVA_MIT_START"
   },
   "workers":{
-    "num":7,
+    "num":1,
     "timeSupervisor":10
   },
   "instance":{
     "is_plot": "true",
     "dir": "./data/",
     "output": "./out/",
-    "files": ["DATA_PRP_30C/PRP40_C30_P10_V5_T12_S5.dat"]
+    "files": ["DATA_PRP_5C/PRP1_C5_P3_V1_T6_S1.dat"]
   }
 }
