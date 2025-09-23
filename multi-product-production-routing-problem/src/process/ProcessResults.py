@@ -1,6 +1,8 @@
 import json
 import os
 from src.helpers.Converter import toStopPoint
+import pandas as pd
+from hashlib import sha1
 
 def getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL, NODE_COUNT, OBJ_BOUND):
     routes = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]
@@ -115,4 +117,14 @@ def getResults(data,dir,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL
         json.dump(results, arquivo, indent=4, ensure_ascii=False)
     
     return results
+
+def new_get_results(dir,FO,f1,f2,f3,f4,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL,NODE_COUNT,OBJ_BOUND):
+    df = pd.DataFrame.from_records(
+        [(dir, sha1(dir.encode()).hexdigest(),FO,f1,f2,f3,f4,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL,NODE_COUNT,OBJ_BOUND)],
+        columns=['dir','hash','FO','f1','f2','f3','f4','GAP','TIME','SOL_COUNT','RELAXED_MODEL_OBJE_VAL','NODE_COUNT','OBJ_BOUND']
+    )
+    df.to_excel(
+        os.path.join(dir, "result.xlsx"),
+        index=False
+    )
 

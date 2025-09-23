@@ -101,18 +101,21 @@ class MultProductProdctionRoutingProblem:
         for p in range(self.p):
             for t in range(self.t):
                 objExpr_1 += self.s_p[p] * self.Y_p_t[p,t] + self.c_p[p] * self.X_p_t[p,t]
+        self.f1=objExpr_1
 
         objExpr_2 = gp.LinExpr()
         for p in range(self.p):
             for i in range(self.i):
                 for t in range(self.t):
                     objExpr_2+=self.h_p_i[p][i]*self.I_p_i_t[p,i,t]
+        self.f2=objExpr_2
 
         objExpr_3 = gp.LinExpr()
         for v in range(self.v):
             for k in range(1,self.k):
                 for t in range(self.t):
                     objExpr_3+=self.f*self.Z_v_i_k_t[v,0,k,t]
+        self.f3=objExpr_3
 
         objExpr_4 = gp.LinExpr()
         for v in range(self.v):
@@ -121,6 +124,7 @@ class MultProductProdctionRoutingProblem:
                     if(i!=k):
                         for t in range(self.t):
                             objExpr_4+=self.a_i_k[i][k]*self.Z_v_i_k_t[v,i,k,t]
+        self.f4=objExpr_4
 
         objExpr = gp.LinExpr()
         objExpr = objExpr_1 + objExpr_2 + objExpr_3 + objExpr_4
@@ -372,6 +376,21 @@ class MultProductProdctionRoutingProblem:
         #self.log.info("\n\n===============================\n\n")
     
         return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap,self.time,self.solCount,self.relaxedModelObjVal,self.nodeCount,self.objBound
+
+    def new_get_results(self):
+        return (
+            self.model.ObjVal,
+            self.f1.getValue(),
+            self.f2.getValue(),
+            self.f3.getValue(),
+            self.f4.getValue(),
+            self.model.MIPGap,
+            self.time,
+            self.solCount,
+            self.relaxedModelObjVal,
+            self.nodeCount,
+            self.objBound
+        )
 
     def terminate(self):
         self.model.terminate()
