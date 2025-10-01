@@ -30,6 +30,8 @@ class ReadPrpFile:
             demand = []
             i = 0
 
+            data['file'] = self.file_path
+
             while i < len(lines):
                 line = lines[i].strip()
 
