@@ -26,6 +26,8 @@ def getResults(
 ):
     routes = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]
 
+    weight = data['weight']
+
     s_p = np.array(data["s_p"])
     c_p = np.array(data["c_p"])
     csetup = [np.sum(s_p * Y[t]) for t in range(len(Y))]
@@ -51,7 +53,7 @@ def getResults(
         f4.append(sum_f4)
         f3.append(sum_f3)
 
-    file_name_hash = sha1(data['file'].encode()).hexdigest()
+    file_name_hash = sha1((data['file']+str(weight)).encode()).hexdigest()
     # Build one row per period with consistent native types
     n = len(f1)
     df_aux = pd.DataFrame({
@@ -64,6 +66,7 @@ def getResults(
         "f2": [float(x) for x in f2],
         "f3": [float(x) for x in f3],
         "f4": [float(x) for x in f4],
+        "weight": str(weight)
     })
     # Generate a unique SHA1 per row based on stable string representation
     def _row_hash(row):

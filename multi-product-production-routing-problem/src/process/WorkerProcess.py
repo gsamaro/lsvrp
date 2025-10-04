@@ -4,6 +4,16 @@ import time
 from src.log.Logger import Logger
 from src.process.InstanceProcess import InstanceProcess
 import traceback
+from multiprocessing import Pool
+from constants import WEIGHTS
+try:
+    from mpi4py import MPI
+    from mpi4py.futures import MPIPoolExecutor
+
+    MPI_BOOL = True
+except:
+    print("mpi4py not running")
+    MPI_BOOL = False
 
 class WorkerProcess:
 
@@ -52,23 +62,48 @@ class WorkerProcess:
             
             self.taskQueue.task_done()
 
-    def process(self, instancies=[], solver="DEFAULT"):
+    def old_process(self, instancies=[], solver="DEFAULT"):
 
         for i in range(len(instancies)):
             self.taskQueue.put({'task': {i+1},'instancie':instancies[i]})
 
         workers = []
         for i in range(self.numWorkers):
-            t = threading.Thread(target=self.worker, args=(i+1, solver))
-            t.start()
-            workers.append(t)
+            self.worker(i+1,solver)
+            # t = threading.Thread(target=self.worker, args=(i+1, solver))
+            # t.start()
+            # workers.append(t)
 
-        supervisor_thread = threading.Thread(target=self.supervisor)
-        supervisor_thread.start()
+        # supervisor_thread = threading.Thread(target=self.supervisor)
+        # supervisor_thread.start()
 
-        for t in workers:
-            t.join()
+        # for t in workers:
+        #     t.join()
 
-        supervisor_thread.join()
+        # supervisor_thread.join()
 
         self.log.info(">> Fim do processamento.")
+
+    def run_parallel(self, instancies=[], solver="GUROBY"):
+        if MPI_BOOL:
+            with MPIPoolExecutor() as executor:
+                for i in instancies:
+                    for w in WEIGHTS:
+                        executor.submit(self.process, i, w)
+                executor.shutdown(wait=True)
+        else:
+            for i in instancies:
+                for w in WEIGHTS:
+                    self.process(i, w)
+    
+    def process(self, instancie, w):        
+            InstanceProcess(
+                instancie['file'],
+                instancie['output'],
+                isPloat=False,
+                timeLimit=instancie['timeLimit'],
+                numThreads=instancie['numThreads'],
+                log=self.log,
+                solver="GUROBY",
+                weight=w
+            ).process()

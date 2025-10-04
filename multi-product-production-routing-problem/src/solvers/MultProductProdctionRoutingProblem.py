@@ -37,6 +37,7 @@ class MultProductProdctionRoutingProblem:
         self.f=map['f']                       ##Fixed transportation cost;
         self.a_i_k=map['a_ik']                ##Transportation cost for traveling from node 𝑖 to node k;
         self.d_p_i_t=map['d_pit']             ##Demand of item 𝑝 at customer 𝑖 in period 𝑡.
+        self.weight=map['weight']             ##Weight of the objective function.
         self.X_p_t={}                         ##Quantity of item 𝑝 produced in period 𝑡.
         self.Y_p_t={}                         ##1, if item 𝑝 is produced in period 𝑡; or 0, otherwise.
         self.I_p_i_t={}                       ##Inventory of item 𝑝 at site 𝑖 in the end of period 𝑡.
@@ -127,7 +128,7 @@ class MultProductProdctionRoutingProblem:
         self.f4=objExpr_4
 
         objExpr = gp.LinExpr()
-        objExpr = objExpr_1 + objExpr_2 + objExpr_3 + objExpr_4
+        objExpr = self.weight[0]*self.f1 + self.weight[1]*self.f2 + self.weight[2]*self.f3 + self.weight[3]*self.f4
         self.model.setObjective(objExpr, GRB.MINIMIZE)
     
     def createEstablishInvetoryBalanceAtPlant(self):

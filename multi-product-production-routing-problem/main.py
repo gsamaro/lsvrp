@@ -4,6 +4,36 @@ from src.log.Logger import Logger
 import json
 import shutil
 import os
+import pandas as pd
+
+def _union_results(output):
+    # Recursively collect all .xlsx files under output (including subfolders)
+    excel_paths = []
+    for root, _, files in os.walk(output):
+        for fname in files:
+            if fname.lower().endswith(".xlsx") and not fname.startswith("~$"):
+                excel_paths.append(os.path.join(root, fname))
+
+    if not excel_paths:
+        return None
+
+    frames = []
+    for path in excel_paths:
+        try:
+            df = pd.read_excel(path)
+            df["__source_file__"] = os.path.relpath(path, start=output)
+            frames.append(df)
+        except Exception as e:
+            # Skip files that cannot be read; could log if needed
+            continue
+
+    if not frames:
+        return None
+
+    union_df = pd.concat(frames, ignore_index=True, sort=False)
+    out_path = os.path.join(output, "union_results.xlsx")
+    union_df.to_excel(out_path, index=False)
+    return out_path
 
 if __name__ == "__main__":
 
@@ -61,7 +91,10 @@ if __name__ == "__main__":
                 'timeLimit':timeLimitSolver
             })
 
-    WorkerProcess(workers,timeSupervisor,{'instancia': log,'dirLogs': f'{output}logs'}).process(instancies = instancies, solver= method)
+    WorkerProcess(workers,timeSupervisor,{'instancia': log,'dirLogs': f'{output}logs'}).run_parallel(instancies = instancies, solver= method)
+
+    # After processing, aggregate Excel outputs into a single file
+    _union_results(output)
 
     '''
 Explored 11164 nodes (448772 simplex iterations) in 30.82 seconds (21.64 work units)

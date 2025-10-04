@@ -8,7 +8,7 @@ import pdb
 
 class InstanceProcess:
 
-    def __init__(self,instance,output,isPloat='false',numThreads=None,timeLimit=None,log:Logger=None,solver="GRASP"):
+    def __init__(self,instance,output,isPloat='false',numThreads=None,timeLimit=None,log:Logger=None,solver="GRASP",weight=None):
         self.instance = instance
         self.isPloat = isPloat
         self.numThreads = numThreads
@@ -17,6 +17,7 @@ class InstanceProcess:
         self.isFinished=False
         self.solver = solver
         self.log:Logger = log
+        self.weight = weight
 
     def isProcessFinished(self):
         return self.isFinished
@@ -46,6 +47,7 @@ class InstanceProcess:
     def process(self):
 
         data = RD(file_path=self.instance,log=self.log).getDataSet()
+        data['weight'] = self.weight
         instance = self.solverInstancie(data)
        
         instance.solver(timeLimit=self.timeLimit,numThreads=self.numThreads)
