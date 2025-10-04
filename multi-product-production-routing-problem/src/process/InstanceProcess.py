@@ -23,26 +23,21 @@ class InstanceProcess:
         return self.isFinished
     
     def solverInstancie(self, data):
-        match self.solver:
-            case "GUROBY":
-                self.log.info(f" Solver: GUROBY")
-                return MPPRP(map=data,dir=self.output,log=self.log,start={"start":False})
-            
-            case "HEURISTICA_CONSTRUTIVA_MIT_START":
-                self.log.info(f" Solver: HEURISTICA_CONSTRUTIVA_MIT_START")
-                instancia = MPPRPG(map=data,dir=self.output,log=self.log)
-                instancia.setMitStart(True)
-                return instancia
-            
-            case "HEURISTICA_CONSTRUTIVA":
-                self.log.info(f" Solver: HEURISTICA_CONSTRUTIVA")
-                return MPPRPG(map=data,dir=self.output,log=self.log)
-            
-            case _: 
-                print(" VALOR SETADO COMO DEFAULT ----- SEM SOLVER ")
-                return 0
-
-        return 
+        # Python 3.8-compatible replacement for match-case
+        if self.solver == "GUROBY":
+            self.log.info(f" Solver: GUROBY")
+            return MPPRP(map=data, dir=self.output, log=self.log, start={"start": False})
+        elif self.solver == "HEURISTICA_CONSTRUTIVA_MIT_START":
+            self.log.info(f" Solver: HEURISTICA_CONSTRUTIVA_MIT_START")
+            instancia = MPPRPG(map=data, dir=self.output, log=self.log)
+            instancia.setMitStart(True)
+            return instancia
+        elif self.solver == "HEURISTICA_CONSTRUTIVA":
+            self.log.info(f" Solver: HEURISTICA_CONSTRUTIVA")
+            return MPPRPG(map=data, dir=self.output, log=self.log)
+        else:
+            print(" VALOR SETADO COMO DEFAULT ----- SEM SOLVER ")
+            return 0
 
     def process(self):
 
