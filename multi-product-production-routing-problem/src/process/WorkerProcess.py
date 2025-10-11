@@ -85,7 +85,9 @@ class WorkerProcess:
         self.log.info(">> Fim do processamento.")
 
     def run_parallel(self, instancies=[], solver="GUROBY"):
+        self.log.info(">> Iniciando processamento paralelo.")
         if MPI_BOOL:
+            self.log.info(">> Iniciando processamento paralelo com MPI.")
             with MPIPoolExecutor() as executor:
                 for i in instancies:
                     for w in WEIGHTS:
@@ -96,8 +98,9 @@ class WorkerProcess:
                 for w in WEIGHTS:
                     self.process(i, w)
     
-    def process(self, instancie, w):        
-            InstanceProcess(
+    def process(self, instancie, w):
+        self.log.info(">> Processando instância.")
+        InstanceProcess(
                 instancie['file'],
                 instancie['output'],
                 isPloat=False,
