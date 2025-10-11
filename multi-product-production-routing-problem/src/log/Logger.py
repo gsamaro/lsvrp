@@ -24,28 +24,16 @@ class Logger:
             f.write(log_message)
 
     def info(self, message):
-        if(self.task == 0):
-            self._write(f" INFO [Worker {self.worker_id}]", message)
-        else: 
-            self._write(f" INFO [Worker {self.worker_id}] Processando: {self.task['task']}, Arquivo: {self.task['instancie']['file']}", message)
+        self._write(f" INFO [Worker {self.worker_id}]", message)
 
     def warning(self, message):
-        if(self.task == 0):
-            self._write(f" WARNING [Worker {self.worker_id}]", message)
-        else: 
-            self._write(f" WARNING [Worker {self.worker_id}] Processando: {self.task['task']}, Arquivo: {self.task['instancie']['file']}", message)
+        self._write(f" WARNING [Worker {self.worker_id}]", message)
 
     def error(self, message):
-        if(self.task == 0):
-            self._write(f" ERROR [Worker {self.worker_id}]", message)
-        else: 
-            self._write(f" ERROR [Worker {self.worker_id}] Processando: {self.task['task']}, Arquivo: {self.task['instancie']['file']}", message)
+        self._write(f" ERROR [Worker {self.worker_id}]", message)
         
     def debug(self, message):
-        if(self.task == 0):
-            self._write(f" DEBUG [Worker {self.worker_id}]",message)
-        else: 
-            self._write(f" DEBUG [Worker {self.worker_id}] Processando: {self.task['task']}, Arquivo: {self.task['instancie']['file']}",message)
+        self._write(f" DEBUG [Worker {self.worker_id}]",message)
 
     def log(self, level, message):
         self._write(level.upper(), message)
