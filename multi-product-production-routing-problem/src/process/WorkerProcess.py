@@ -89,11 +89,7 @@ class WorkerProcess:
         if MPI_BOOL:
             self.log.info(">> Iniciando processamento paralelo com MPI.")
             with MPIPoolExecutor() as executor:
-                for i in instancies:
-                    self.log.info(f">> Processando instância {i['file']}")
-                    for w in WEIGHTS:
-                        self.log.info(f">> Processando peso {w}")
-                        executor.submit(self.process, i, w)
+                futures = executor.starmap(self.process, ((i, w) for i in instancies for w in WEIGHTS))
                 executor.shutdown(wait=True)
         else:
             for i in instancies:
