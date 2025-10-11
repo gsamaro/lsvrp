@@ -90,7 +90,9 @@ class WorkerProcess:
             self.log.info(">> Iniciando processamento paralelo com MPI.")
             with MPIPoolExecutor() as executor:
                 for i in instancies:
+                    self.log.info(f">> Processando instância {i['file']}")
                     for w in WEIGHTS:
+                        self.log.info(f">> Processando peso {w}")
                         executor.submit(self.process, i, w)
                 executor.shutdown(wait=True)
         else:
