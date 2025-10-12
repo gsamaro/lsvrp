@@ -19,7 +19,10 @@ import time
 class MultProductProdctionRoutingProblem:
 
     def __init__(self,map,dir,log:Logger,start):
+        self.log:Logger = log
+        self.log.info(">> Iniciando MultProductProdctionRoutingProblem.")
         self.model = gp.Model("Multi_Product_Prodction_Routing_Problem") 
+        self.log.info(">> Iniciado model.")
         self.p=map['num_products']            ##Products  
         self.i=map['num_customers'] + 1       ##Customers
         self.k=map['num_customers'] + 1       ##Customers
@@ -52,8 +55,10 @@ class MultProductProdctionRoutingProblem:
         self.nodeCount = 0
         self.log:Logger = log
         self.start = start
+        self.log.info(">> Finalizado MultProductProdctionRoutingProblem.")
 
     def createDecisionVariables(self):
+        self.log.info(">> Iniciando createDecisionVariables.")
         for p in range(self.p):
             for t in range(self.t):
                 self.X_p_t[p,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"X[{p},{t}]")
