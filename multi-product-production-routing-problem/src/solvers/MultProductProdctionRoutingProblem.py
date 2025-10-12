@@ -414,22 +414,34 @@ class MultProductProdctionRoutingProblem:
             self.startVariables()
         
         self.crateObjectiveFunction()
+        self.log.info("Objetivo criado")
         self.createEstablishInvetoryBalanceAtPlant()
+        self.log.info("Balanceamento estoque Planta criado")
         self.creteInventoryBalancingInventoryCustomers()
+        self.log.info("Balanceamento estoque Cliente criado")
         self.createPlantsMaximum()
+        self.log.info("Planta max criado")
         self.createRelationshipBetweenProduction()
+        self.log.info("Produção criado")
         self.createDelimitMaximumCapacityItemsAtPlant()
+        self.log.info("Capacidade maxima planta criado")
         self.createVehiclePreventTransshipmentIntermediateNodes()
+        self.log.info("Transshipment criado")
         self.createEliminationSubroutes()
+        self.log.info("Subrotas criado")
         self.createVehicleLoadCapacityDelimited()
+        self.log.info("Capacidade maxima veículo criado")
         self.createImposeMostOneRouteEachVehicle()
+        self.log.info("Max rota veículo criado")
         self.createEnsureRoutesOnlyPlant()
+        self.log.info("Rota somente entre plantas criado")
         self.createVehicleMostVisitCustomerEachPeriod()
+        self.log.info("Veículo visita cliente criado")
         self.outModel()
         self.generteRelax()
 
-        if numThreads is not None:
-            self.model.setParam("Threads", numThreads)
+        # if numThreads is not None:
+            # self.model.setParam("Threads", numThreads)
         if timeLimit is not None:
             self.model.setParam("TimeLimit", timeLimit)
 
