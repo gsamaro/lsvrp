@@ -94,7 +94,7 @@ class WorkerProcess:
         else:
             for i in instancies:
                 for w in WEIGHTS:
-                    self.process(i, w)
+                    process(i, w)
     
 def process(log, instancie, w):
     log.info(">> Processando instância.")
