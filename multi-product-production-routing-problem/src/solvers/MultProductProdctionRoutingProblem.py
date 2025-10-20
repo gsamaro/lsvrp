@@ -11,17 +11,17 @@
 
 # Veja a Licença Pública Geral GNU para mais detalhes
 #################################################################################################
-import gurobipy as gp
-from gurobipy import GRB
+from docplex.mp.model import Model
 from src.log.Logger import Logger
 import time
+from docplex.mp.relax_linear import LinearRelaxer
 
 class MultProductProdctionRoutingProblem:
 
     def __init__(self,map,dir,log:Logger,start):
         self.log:Logger = log
         self.log.info(">> Iniciando MultProductProdctionRoutingProblem.")
-        self.model = gp.Model("Multi_Product_Prodction_Routing_Problem") 
+        self.model = Model(name="Multi_Product_Prodction_Routing_Problem") 
         self.log.info(">> Iniciado model.")
         self.p=map['num_products']            ##Products  
         self.i=map['num_customers'] + 1       ##Customers
@@ -61,152 +61,137 @@ class MultProductProdctionRoutingProblem:
         self.log.info(">> Iniciando createDecisionVariables.")
         for p in range(self.p):
             for t in range(self.t):
-                self.X_p_t[p,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"X[{p},{t}]")
-                self.Y_p_t[p,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Y[{p},{t}]")
+                self.X_p_t[p,t] = self.model.integer_var(lb=0, name=f"X[{p},{t}]")
+                self.Y_p_t[p,t] = self.model.binary_var(name=f"Y[{p},{t}]")
             for i in range(self.i):
                 for t in range(self.t):
-                    self.I_p_i_t[p,i,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"I[{p},{i},{t}]")
+                    self.I_p_i_t[p,i,t] = self.model.integer_var(lb=0, name=f"I[{p},{i},{t}]")
             for v in range(self.v):
                 for i in range(self.i):
                     for k in range(self.k):
                         for t in range(self.t):
-                            self.R_p_v_i_k_t[p,v,i,k,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"R[{p},{v},{i},{k},{t}]")
+                            self.R_p_v_i_k_t[p,v,i,k,t] = self.model.integer_var(lb=0, name=f"R[{p},{v},{i},{k},{t}]")
                 for i in range(self.i):
                     for t in range(self.t):
-                        self.Q_p_v_i_t[p,v,i,t] = self.model.addVar(vtype=GRB.INTEGER, name=f"Q[{p},{v},{i},{t}]")
+                        self.Q_p_v_i_t[p,v,i,t] = self.model.integer_var(lb=0, name=f"Q[{p},{v},{i},{t}]")
         for v in range(self.v):
             for i in range(self.i):
                 for k in range(self.k):
                     for t in range(self.t):
-                        self.Z_v_i_k_t[v,i,k,t] = self.model.addVar(vtype=GRB.BINARY, name=f"Z[{v},{i},{k},{t}]")
+                        self.Z_v_i_k_t[v,i,k,t] = self.model.binary_var(name=f"Z[{v},{i},{k},{t}]")
 
     def startVariables(self):
+        warm_start = self.model.new_solution()
         for p in range(self.p):
             for t in range(self.t):
-                self.X_p_t[p,t].start=self.start["variables"]["X"][p][t]
-                self.Y_p_t[p,t].start=self.start["variables"]["Y"][p][t]
+                warm_start.add_var_value(self.X_p_t[p,t], self.start["variables"]["X"][p][t])
+                warm_start.add_var_value(self.Y_p_t[p,t], self.start["variables"]["Y"][p][t])
             for i in range(self.i):
                 for t in range(self.t):
-                    self.I_p_i_t[p,i,t].start=self.start["variables"]["I"][p][i][t]
+                    warm_start.add_var_value(self.I_p_i_t[p,i,t], self.start["variables"]["I"][p][i][t])
             for v in range(self.v):
                 for i in range(self.i):
                     for k in range(self.k):
                         for t in range(self.t):
-                            self.R_p_v_i_k_t[p,v,i,k,t].start=self.start["variables"]["R"][p][v][i][k][t]
+                            warm_start.add_var_value(self.R_p_v_i_k_t[p,v,i,k,t], self.start["variables"]["R"][p][v][i][k][t])
                 for i in range(self.i):
                     for t in range(self.t):
-                        self.Q_p_v_i_t[p,v,i,t].start=self.start["variables"]["Q"][p][v][i][t]
+                        warm_start.add_var_value(self.Q_p_v_i_t[p,v,i,t], self.start["variables"]["Q"][p][v][i][t])
         for v in range(self.v):
             for i in range(self.i):
                 for k in range(self.k):
                     for t in range(self.t):
-                        self.Z_v_i_k_t[v,i,k,t].start=self.start["variables"]["Z"][v][i][k][t]
+                        warm_start.add_var_value(self.Z_v_i_k_t[v,i,k,t], self.start["variables"]["Z"][v][i][k][t])
+        self.model.add_mip_start(warm_start)
 
     def crateObjectiveFunction(self):
-        objExpr_1 = gp.LinExpr()
-        for p in range(self.p):
-            for t in range(self.t):
-                objExpr_1 += self.s_p[p] * self.Y_p_t[p,t] + self.c_p[p] * self.X_p_t[p,t]
+        objExpr_1 = self.model.sum(
+            self.s_p[p] * self.Y_p_t[p,t] + self.c_p[p] * self.X_p_t[p,t]
+            for p in range(self.p)
+            for t in range(self.t)
+        )
         self.f1=objExpr_1
 
-        objExpr_2 = gp.LinExpr()
-        for p in range(self.p):
-            for i in range(self.i):
-                for t in range(self.t):
-                    objExpr_2+=self.h_p_i[p][i]*self.I_p_i_t[p,i,t]
+        objExpr_2 = self.model.sum(
+            self.h_p_i[p][i]*self.I_p_i_t[p,i,t]
+            for p in range(self.p)
+            for i in range(self.i)
+            for t in range(self.t)
+        )
         self.f2=objExpr_2
 
-        objExpr_3 = gp.LinExpr()
-        for v in range(self.v):
-            for k in range(1,self.k):
-                for t in range(self.t):
-                    objExpr_3+=self.f*self.Z_v_i_k_t[v,0,k,t]
+        objExpr_3 = self.model.sum(
+            self.f*self.Z_v_i_k_t[v,0,k,t]
+            for v in range(self.v)
+            for k in range(1,self.k)
+            for t in range(self.t)
+        )
         self.f3=objExpr_3
 
-        objExpr_4 = gp.LinExpr()
-        for v in range(self.v):
-            for i in range(self.i):
-                for k in range(self.k):
-                    if(i!=k):
-                        for t in range(self.t):
-                            objExpr_4+=self.a_i_k[i][k]*self.Z_v_i_k_t[v,i,k,t]
+        objExpr_4 = self.model.sum(
+            self.a_i_k[i][k]*self.Z_v_i_k_t[v,i,k,t]
+            for v in range(self.v)
+            for i in range(self.i)
+            for k in range(self.k)
+            if i!=k
+            for t in range(self.t)
+        )
         self.f4=objExpr_4
 
-        objExpr = gp.LinExpr()
         objExpr = self.weight[0]*self.f1 + self.weight[1]*self.f2 + self.weight[2]*self.f3 + self.weight[3]*self.f4
-        self.model.setObjective(objExpr, GRB.MINIMIZE)
+        self.model.minimize(objExpr)
     
     def createEstablishInvetoryBalanceAtPlant(self):
         for p in range(self.p):
             for t in range(self.t):
-                r1=0
-                for v in range(self.v):
-                    for i in range(1,self.i):
-                        r1+=self.Q_p_v_i_t[p,v,i,t]
+                r1 = self.model.sum(self.Q_p_v_i_t[p,v,i,t] for v in range(self.v) for i in range(1,self.i))
                 if(t == 0 ):
-                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_0[p][0] - r1 == self.I_p_i_t[p,0,t], name=f"EQ_(2)_p={p}_t={t}")
+                    self.model.add_constraint(self.X_p_t[p,t]+self.I_p_i_0[p][0] - r1 == self.I_p_i_t[p,0,t], ctname=f"EQ_(2)_p={p}_t={t}")
                 else:
-                    self.model.addConstr(self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1]-r1 == self.I_p_i_t[p,0,t], name=f"EQ_(2)_p={p}_t={t}")
+                    self.model.add_constraint(self.X_p_t[p,t]+self.I_p_i_t[p,0,t-1]-r1 == self.I_p_i_t[p,0,t], ctname=f"EQ_(2)_p={p}_t={t}")
                          
     def creteInventoryBalancingInventoryCustomers(self):  
         for p in range(self.p):
             for i in range(1,self.i):
                 for t in range(self.t):
-                    r2=0
-                    for v in range(self.v):
-                        r2+=self.Q_p_v_i_t[p,v,i,t]
+                    r2 = self.model.sum(self.Q_p_v_i_t[p,v,i,t] for v in range(self.v))
                     if(t == 0 ):
-                        self.model.addConstr(r2+self.I_p_i_0[p][i] - self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"EQ_(3)_p={p}_i={i}_t={t}")
+                        self.model.add_constraint(r2+self.I_p_i_0[p][i] - self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], ctname=f"EQ_(3)_p={p}_i={i}_t={t}")
                     else:
-                        self.model.addConstr(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], name=f"EQ_(3)_p={p}_i={i}_t={t}")
+                        self.model.add_constraint(r2+self.I_p_i_t[p,i,t-1]-self.d_p_i_t[p][i-1][t]==self.I_p_i_t[p,i,t], ctname=f"EQ_(3)_p={p}_i={i}_t={t}")
 
     def createPlantsMaximum(self):
         for t in range(self.t):
-            r3 = 0
-            for p in range(self.p): 
-                r3+=self.b_p[p]*self.X_p_t[p,t]  
-            self.model.addConstr(r3<=self.B, name=f"EQ_(4)_t={t+1}")
+            r3 = self.model.sum(self.b_p[p]*self.X_p_t[p,t] for p in range(self.p))
+            self.model.add_constraint(r3<=self.B, ctname=f"EQ_(4)_t={t+1}")
 
     def createRelationshipBetweenProduction(self):
         for p in range(self.p):
             for t in range(self.t):
-                self.model.addConstr(self.X_p_t[p,t]<=self.M*self.Y_p_t[p,t], name=f"EQ_(5)_p={p}_t={t}")
+                self.model.add_constraint(self.X_p_t[p,t]<=self.M*self.Y_p_t[p,t], ctname=f"EQ_(5)_p={p}_t={t}")
 
     def createDelimitMaximumCapacityItemsAtPlant(self):
         for p in range(self.p):
             for i in range(self.i):
                 for t in range(self.t):
-                    self.model.addConstr(self.I_p_i_t[p,i,t]<=self.U_p_i[p][i], name=f"EQ_(6)_p={p}_i={i}_t={t}")
+                    self.model.add_constraint(self.I_p_i_t[p,i,t]<=self.U_p_i[p][i], ctname=f"EQ_(6)_p={p}_i={i}_t={t}")
 
     def createVehiclePreventTransshipmentIntermediateNodes(self):
         for p in range(self.p):
             for v in range(self.v):
                 for k in range(1,self.k): 
                     for t in range(self.t):
-                        r7_a=0
-                        r7_b=0
-                        for i in range(self.i): 
-                            if(k!=i):
-                                r7_a+=self.R_p_v_i_k_t[p,v,i,k,t]
-                        for l in range(self.i):
-                            if(k!=l):
-                                r7_b+=self.R_p_v_i_k_t[p,v,k,l,t]
-                        self.model.addConstr(r7_a-r7_b==self.Q_p_v_i_t[p,v,k,t], name=f"EQ_(7)_p={p}_v={v}_k={k}_t={t}")
+                        r7_a = self.model.sum(self.R_p_v_i_k_t[p,v,i,k,t] for i in range(self.i) if k!=i)
+                        r7_b = self.model.sum(self.R_p_v_i_k_t[p,v,k,l,t] for l in range(self.i) if k!=l)
+                        self.model.add_constraint(r7_a-r7_b==self.Q_p_v_i_t[p,v,k,t], ctname=f"EQ_(7)_p={p}_v={v}_k={k}_t={t}")
         
     def createEliminationSubroutes(self):
         for p in range(self.p):
             for t in range(self.t):
-                r8_a=0
-                r8_b=0
-                r8_c=0
-                for v in range(self.v):
-                    for k in range(1,self.k): 
-                        r8_a+=self.R_p_v_i_k_t[p,v,0,k,t]
-                    for i in range(1,self.i): 
-                        r8_b+=self.R_p_v_i_k_t[p,v,i,0,t]
-                    for l in range(1,self.i):
-                        r8_c+=self.Q_p_v_i_t[p,v,l,t]
-                self.model.addConstr(r8_a-r8_b==r8_c, name=f"EQ_(8)_p={p}_t={t}")
+                r8_a = self.model.sum(self.R_p_v_i_k_t[p,v,0,k,t] for v in range(self.v) for k in range(1,self.k))
+                r8_b = self.model.sum(self.R_p_v_i_k_t[p,v,i,0,t] for v in range(self.v) for i in range(1,self.i))
+                r8_c = self.model.sum(self.Q_p_v_i_t[p,v,l,t] for v in range(self.v) for l in range(1,self.i))
+                self.model.add_constraint(r8_a-r8_b==r8_c, ctname=f"EQ_(8)_p={p}_t={t}")
 
     def createVehicleLoadCapacityDelimited(self):
         for v in range(self.v):
@@ -214,46 +199,31 @@ class MultProductProdctionRoutingProblem:
                 for k in range(self.k):
                     for t in range(self.t):
                         if(i!=k):
-                            r9=0
-                            for p in range(self.p):
-                                r9+=self.R_p_v_i_k_t[p,v,i,k,t]
-                            self.model.addConstr(r9<=self.C*self.Z_v_i_k_t[v,i,k,t], name=f"EQ_(9)_v={v}_i={i}_k={k}_t={t}")
+                            r9 = self.model.sum(self.R_p_v_i_k_t[p,v,i,k,t] for p in range(self.p))
+                            self.model.add_constraint(r9<=self.C*self.Z_v_i_k_t[v,i,k,t], ctname=f"EQ_(9)_v={v}_i={i}_k={k}_t={t}")
 
     def createImposeMostOneRouteEachVehicle(self):
         for v in range(self.v):
             for t in range(self.t):
-                r10=0
-                for k in range(1,self.k):
-                    r10+=self.Z_v_i_k_t[v,0,k,t]
-                self.model.addConstr(r10<=1, name=f"EQ_(10)_v={v}_t={t}")        
+                r10 = self.model.sum(self.Z_v_i_k_t[v,0,k,t] for k in range(1,self.k))
+                self.model.add_constraint(r10<=1, ctname=f"EQ_(10)_v={v}_t={t}")        
 
     def createEnsureRoutesOnlyPlant(self):
         for v in range(self.v):
             for k in range(self.k):
                 for t in range(self.t):
-                    r11_a=0
-                    r11_b=0
-                    for i in range(self.i): 
-                        if(k!=i):
-                            r11_a+=self.Z_v_i_k_t[v,i,k,t]
-                    for l in range(self.i):
-                        if(k!=l):
-                            r11_b+=self.Z_v_i_k_t[v,k,l,t]
-                    self.model.addConstr(r11_a-r11_b==0, name=f"EQ_(11)_v={v}_k={k}_t={t}")  
+                    r11_a = self.model.sum(self.Z_v_i_k_t[v,i,k,t] for i in range(self.i) if k!=i)
+                    r11_b = self.model.sum(self.Z_v_i_k_t[v,k,l,t] for l in range(self.i) if k!=l)
+                    self.model.add_constraint(r11_a-r11_b==0, ctname=f"EQ_(11)_v={v}_k={k}_t={t}")  
 
     def createVehicleMostVisitCustomerEachPeriod(self):
         for k in range(1,self.k):
             for t in range(self.t):
-                r12=0
-                for v in range(self.v):
-                    for i in range(self.i): 
-                        if(k!=i):
-                            r12+=self.Z_v_i_k_t[v,i,k,t]
-                self.model.addConstr(r12<=1, name=f"EQ_(12)_k={k}_t={t}")  
+                r12 = self.model.sum(self.Z_v_i_k_t[v,i,k,t] for v in range(self.v) for i in range(self.i) if k!=i)
+                self.model.add_constraint(r12<=1, ctname=f"EQ_(12)_k={k}_t={t}")  
 
     def outModel(self):
-        self.model.Params.OutputFlag = 1
-        self.model.write(f"{self.dir}modelo.lp")
+        self.model.export_as_lp(f"{self.dir}modelo.lp")
 
     def getResults(self):
         if(self.solCount==0):
@@ -272,7 +242,7 @@ class MultProductProdctionRoutingProblem:
                 for i in range(self.i):
                     k_list=[]
                     for k in range(self.k):
-                        variable = abs(self.Z_v_i_k_t[v,i,k,t].x)
+                        variable = abs(self.Z_v_i_k_t[v,i,k,t].solution_value)
                         #self.log.info(f" origem: {i} destino: {k} == {variable}")
                         k_list.append(variable)
                     i_list.append(k_list)
@@ -299,7 +269,7 @@ class MultProductProdctionRoutingProblem:
             #self.log.info(f"\n\n============ periodo {t} ============")
             p_list_y=[]
             for p in range(self.p):
-                variable = abs(self.Y_p_t[p,t].x)
+                variable = abs(self.Y_p_t[p,t].solution_value)
                 p_list_y.append(variable)
                 # print("produto: ",p," == ", variable)
             Y.append(p_list_y)
@@ -313,7 +283,7 @@ class MultProductProdctionRoutingProblem:
             #self.log.info(f"\n\n============ periodo {t} ============")
             p_list_x=[]
             for p in range(self.p):
-                p_list_x.append(self.X_p_t[p,t].x)
+                p_list_x.append(self.X_p_t[p,t].solution_value)
                 # print("produto: ",p," == ", self.X_p_t[p,t].x)
             X.append(p_list_x)
         #self.log.info("\n\n===============================\n\n")
@@ -330,7 +300,7 @@ class MultProductProdctionRoutingProblem:
                 # print("\n============ cliente ",i," ============")
                 for p in range(self.p):
                     # print("produto: ",p," == ", self.I_p_i_t[p,i,t].x)
-                    i_list_i.append(self.I_p_i_t[p,i,t].x)
+                    i_list_i.append(self.I_p_i_t[p,i,t].solution_value)
                 p_list_i.append(i_list_i)
             I.append(p_list_i)
         #self.log.info("\n\n===============================\n\n")
@@ -351,7 +321,7 @@ class MultProductProdctionRoutingProblem:
                         i_list=[]
                         for k in range(self.k):
                             # print("\n============ cliente ",i," -> cliente ",k," ============")
-                            i_list.append(float(self.R_p_v_i_k_t[p,v,i,k,t].x))
+                            i_list.append(float(self.R_p_v_i_k_t[p,v,i,k,t].solution_value))
                             #self.log.info(f"\nperiodo {t} -> veiculo {v} -> cliente {i} -> cliente {k} -> produto {p} == { float(self.R_p_v_i_k_t[p,v,i,k,t].x)}")
                             # print("produto: ",p," == ", self.R_p_v_i_k_t[p,v,i,k,t].x)
                         p_list.append(i_list)
@@ -375,22 +345,22 @@ class MultProductProdctionRoutingProblem:
                     p_list=[]
                     for i in range(self.i):
                         #self.log.info(f"produto:{p} == {self.Q_p_v_i_t[p,v,i,t].x}")
-                        p_list.append(self.Q_p_v_i_t[p,v,i,t].x)
+                        p_list.append(self.Q_p_v_i_t[p,v,i,t].solution_value)
                     v_list.append(p_list)
                 t_list.append(v_list)
             Q.append(t_list)
         #self.log.info("\n\n===============================\n\n")
     
-        return Z,X,Y,I,R,Q,self.model.ObjVal,self.model.MIPGap,self.time,self.solCount,self.relaxedModelObjVal,self.nodeCount,self.objBound
+        return Z,X,Y,I,R,Q,self.model.objective_value,self.model.solve_details.mip_relative_gap,self.time,self.solCount,self.relaxedModelObjVal,self.nodeCount,self.objBound
 
     def new_get_results(self):
         return (
-            self.model.ObjVal,
-            self.f1.getValue(),
-            self.f2.getValue(),
-            self.f3.getValue(),
-            self.f4.getValue(),
-            self.model.MIPGap,
+            self.model.objective_value,
+            self.model.solution.get_value(self.f1),
+            self.model.solution.get_value(self.f2),
+            self.model.solution.get_value(self.f3),
+            self.model.solution.get_value(self.f4),
+            self.model.solve_details.mip_relative_gap,
             self.time,
             self.solCount,
             self.relaxedModelObjVal,
@@ -399,17 +369,27 @@ class MultProductProdctionRoutingProblem:
         )
 
     def terminate(self):
-        self.model.terminate()
+        self.model.end()
 
     def generteRelax(self):
-        relaxed = self.model.relax()
-        relaxed.optimize()
-        self.relaxedModelObjVal = relaxed.ObjVal
+        # Create a linear relaxation of the model using docplex
+        linear_relaxer = LinearRelaxer()
+        relaxed = linear_relaxer.linear_relaxation(self.model.clone())
+        solution = relaxed.solve()
+        if solution:
+            self.relaxedModelObjVal = solution.objective_value
+        else:
+            self.relaxedModelObjVal = 0
 
     def processInformationsSolver(self):
-        self.solCount = self.model.SolCount
-        self.objBound = self.model.ObjBound
-        self.nodeCount = self.model.NodeCount
+        if self.model.solve_details:
+            self.solCount = 1 if self.model.solution else 0
+            self.objBound = self.model.solve_details.best_bound if hasattr(self.model.solve_details, 'best_bound') else 0
+            self.nodeCount = self.model.solve_details.nb_nodes_processed if hasattr(self.model.solve_details, 'nb_nodes_processed') else 0
+        else:
+            self.solCount = 0
+            self.objBound = 0
+            self.nodeCount = 0
 
     def solver(self,numThreads=None,timeLimit=None):
         self.createDecisionVariables()
@@ -445,13 +425,14 @@ class MultProductProdctionRoutingProblem:
         self.outModel()
         self.generteRelax()
 
-        # if numThreads is not None:
-            # self.model.setParam("Threads", numThreads)
+        # Set parameters
         if timeLimit is not None:
-            self.model.setParam("TimeLimit", timeLimit)
+            self.model.set_time_limit(timeLimit)
+        # if numThreads is not None:
+            # self.model.context.cplex_parameters.threads = numThreads
 
         start_time = time.time()
-        self.model.optimize()
+        solution = self.model.solve()
         end_time = time.time()
         self.time = end_time - start_time
 

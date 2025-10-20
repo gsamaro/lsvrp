@@ -91,7 +91,11 @@ if __name__ == "__main__":
                 'timeLimit':timeLimitSolver
             })
 
-    WorkerProcess(workers,timeSupervisor,{'instancia': log,'dirLogs': f'{output}logs'}).run_parallel(instancies = instancies, solver= method)
+    WorkerProcess(
+        workers,
+        timeSupervisor,
+        {'instancia': log,'dirLogs': f'{output}logs'}
+    ).run_parallel(instancies = instancies, solver= method)
 
     # After processing, aggregate Excel outputs into a single file
     _union_results(output)
