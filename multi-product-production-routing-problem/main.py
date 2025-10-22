@@ -21,7 +21,7 @@ def _union_results(log, output):
     frames = []
     for path in excel_paths:
         try:
-            df = pd.read_excel(path)
+            df = pd.read_excel(path, engine='openpyxl')
             df["__source_file__"] = os.path.relpath(path, start=output)
             frames.append(df)
         except Exception as e:
