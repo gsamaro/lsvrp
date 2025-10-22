@@ -6,7 +6,7 @@ import shutil
 import os
 import pandas as pd
 
-def _union_results(output):
+def _union_results(log, output):
     # Recursively collect all .xlsx files under output (including subfolders)
     excel_paths = []
     for root, _, files in os.walk(output):
@@ -15,6 +15,7 @@ def _union_results(output):
                 excel_paths.append(os.path.join(root, fname))
 
     if not excel_paths:
+        log.error("Nenhum arquivo .xlsx encontrado.")
         return None
 
     frames = []
@@ -25,9 +26,11 @@ def _union_results(output):
             frames.append(df)
         except Exception as e:
             # Skip files that cannot be read; could log if needed
+            log.error(f"Erro ao ler arquivo {path}: {e}")
             continue
 
     if not frames:
+        log.error("Nenhum DataFrame lido.")
         return None
 
     union_df = pd.concat(frames, ignore_index=True, sort=False)
@@ -98,7 +101,7 @@ if __name__ == "__main__":
     ).run_parallel(instancies = instancies, solver= method)
 
     # After processing, aggregate Excel outputs into a single file
-    _union_results(output)
+    _union_results(log, output)
 
     '''
 Explored 11164 nodes (448772 simplex iterations) in 30.82 seconds (21.64 work units)
