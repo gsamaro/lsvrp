@@ -95,6 +95,7 @@ class WorkerProcess:
             for i in instancies:
                 for w in WEIGHTS:
                     process(self.log, i, w)
+        self.log.info(">> Fim do processamento paralelo.")
     
 def process(log, instancie, w):
     log.info(">> Processando instância.")

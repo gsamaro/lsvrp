@@ -51,7 +51,7 @@ class InstanceProcess:
         # FO, f1, f2, f3, f4, GAP, TIME, SOL_COUNT, RELAXED_MODEL_OBJE_VAL, NODE_COUNT, OBJ_BOUND = instance.new_get_results()
 
         results = getResults(data,self.output,Z,X,Y,I,R,Q,FO,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL,NODE_COUNT,OBJ_BOUND)
-
+        self.log.info(f"Resultados gerados.")
         # new_get_results(self.output, FO,f1,f2,f3,f4,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL,NODE_COUNT,OBJ_BOUND)
 
         # if(self.isPloat=='true'):
