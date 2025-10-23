@@ -33,9 +33,13 @@ def _union_results(log, output):
         log.error("Nenhum DataFrame lido.")
         return None
 
-    union_df = pd.concat(frames, ignore_index=True, sort=False)
-    out_path = os.path.join(output, "union_results.xlsx")
-    union_df.to_excel(out_path, index=False)
+    try:
+        union_df = pd.concat(frames, ignore_index=True, sort=False)
+        out_path = os.path.join(output, "union_results.xlsx")
+        union_df.to_excel(out_path, index=False, engine='openpyxl')
+    except Exception as e:
+        log.error(f"Erro ao salvar arquivo {out_path}: {e}")
+        return None
     return out_path
 
 if __name__ == "__main__":
