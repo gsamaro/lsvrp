@@ -4,7 +4,7 @@
  - N -> represents the set of the plant and the customers indexed by i = {0; … ; n}
  - A = {(i,j): i,j ∈ N, i ≠ j} is the set of arcs
  - T = {1,...,l}
- - K = {1,...,m} 
+ - K = {1,...,m}
 
 ### Parameters:
  - u -> unit production cost;
@@ -28,5 +28,5 @@
  - qit quantity delivered to customer i in period t;
  - wit load of a vehicle before making a delivery to customer i in period t.
 
-### Basic Formulation Based on that of Bard and Nananukul 
+### Basic Formulation Based on that of Bard and Nananukul
  ![alt text](./imgs/PRP1.png)

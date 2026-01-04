@@ -9,21 +9,21 @@ The file instances of each folder represents :
 #### column 2 : The X value of the each customer location
 #### column 3 : The y value of the each customer location
 
-The cost Cij of travelling from i to j is computed using the euclidien distance 
+The cost Cij of travelling from i to j is computed using the euclidien distance
 arounded to the nearest integer value and multiplied by the unitarian distance cost.
 
 
-The demands of each customer at each period are represented by column 4 to column 23. 
+The demands of each customer at each period are represented by column 4 to column 23.
 
 The holding cost = 1 unit/period/unit of product
 
 
 ## A remark regarding the benchmark set of Boudia et al. added by Yossiri Adulyasak in 2012.*
 
-According to the description given in Boudia et al.(2007), production in period t becomes only available in period t+1, 
-but no inventory costs are incurred before the production becomes available. As a consequence, the demand in period 1 
-must be satisfied from the initial inventory at the plant. In the experiments of  Boudia et al.(2007) and Boudia et al.(2009), 
-the initial inventory at the plant is set equal to the total customer demand in the first period and no inventory holding cost 
+According to the description given in Boudia et al.(2007), production in period t becomes only available in period t+1,
+but no inventory costs are incurred before the production becomes available. As a consequence, the demand in period 1
+must be satisfied from the initial inventory at the plant. In the experiments of  Boudia et al.(2007) and Boudia et al.(2009),
+the initial inventory at the plant is set equal to the total customer demand in the first period and no inventory holding cost
 is incurred for the initial inventory between period 0 and 1 (Prins 2012).
 
 [References:]

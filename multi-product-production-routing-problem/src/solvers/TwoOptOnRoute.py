@@ -12,11 +12,13 @@
 # Veja a Licença Pública Geral GNU para mais detalhes
 #################################################################################################
 from typing import List, Tuple
+
 import numpy as np
+
 
 class TwoOptOnRoute:
 
-    def routeCost(self,route: List[int], D: np.ndarray) -> float:
+    def routeCost(self, route: List[int], D: np.ndarray) -> float:
         if not route:
             return 0.0
         cost = 0.0
@@ -27,7 +29,7 @@ class TwoOptOnRoute:
             prev = v
         cost += D[prev, 0]
         return cost
-    
+
     def twoOptOnRoute(self, route: List[int], D: np.ndarray) -> Tuple[List[int], float]:
 
         if len(route) <= 2:
@@ -40,7 +42,7 @@ class TwoOptOnRoute:
             improved = False
             for i in range(0, n - 1):
                 for j in range(i + 1, n):
-                    new_route = best[:i] + best[i:j + 1][::-1] + best[j + 1:]
+                    new_route = best[:i] + best[i : j + 1][::-1] + best[j + 1 :]
                     new_cost = self.routeCost(new_route, D)
                     if new_cost + 1e-12 < best_cost:
                         best = new_route

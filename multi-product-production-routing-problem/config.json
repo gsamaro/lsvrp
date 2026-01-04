@@ -2,7 +2,7 @@
   "solver":{
     "threadsLimit":1,
     "timeLimit":1800,
-    "method":"HEURISTICA_CONSTRUTIVA_MIT_START"
+    "method":"GUROBY"
   },
   "workers":{
     "num":1,
