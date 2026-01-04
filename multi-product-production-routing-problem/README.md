@@ -26,14 +26,14 @@ Copiar código
     pip install pandas
     pip install tabulate
     pip install Jinja2
-    
+
 Executar o código dentro do ambiente virtual: Agora você pode executar seu código Python com o gurobipy instalado dentro do ambiente virtual.
 
 
 ## Executar terminal
 
 Para Executar sem travar o terminal atual:
-	
+
 	gnome-terminal -- bash -c "python3 main.py"
 
 
@@ -59,7 +59,7 @@ Para Executar todas as instancias de uma pasta
         }
     }
 
-Para uma instancia expecifica 
+Para uma instancia expecifica
 
     {
         "solver":{
@@ -177,7 +177,7 @@ do problema que foram incorporadas pela busca local aplicada.
 
     - BFD (Best-Fit Decreasing)
     - BFD-Inverse (Best-Fit Decreasing Inverse)
-    - BFD-Rand (Best-Fit Decreasing Randomized) 
+    - BFD-Rand (Best-Fit Decreasing Randomized)
     - CW (Clarke & Wright, 1964)
     - CW-Rand
 
@@ -211,7 +211,7 @@ a production plan.
 - swapCustomer:
 - relocateCustomer:
 
-### 
+###
 
     Data: Parameters - Instance and MA
     Result: Best individual at population

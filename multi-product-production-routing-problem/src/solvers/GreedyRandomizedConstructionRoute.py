@@ -9,18 +9,21 @@
 # Este programa é distribuído na esperança de que possa ser útil, mas SEM NENHUMA GARANTIA,
 # e sem uma garantia implícita de ADEQUAÇÃO a qualquer MERCADO ou APLICAÇÃO EM PARTICULAR.
 
+import pdb
+import random
+
 # Veja a Licença Pública Geral GNU para mais detalhes
 #################################################################################################
 from typing import List
+
 import numpy as np
-import random
-import pdb
 from src.log.Logger import Logger
 from src.solvers.TwoOptOnRoute import TwoOptOnRoute
 
+
 class GreedyRandomizedConstructionRoute:
 
-    def __init__(self,log:Logger):
+    def __init__(self, log: Logger):
         self.log = log
         self.twoOpt = TwoOptOnRoute()
 
@@ -28,7 +31,7 @@ class GreedyRandomizedConstructionRoute:
         # pdb.set_trace()
         total = sum(demand)
         return [l + total for l, _ in zip(load, demand)]
-    
+
     def canInsertCustomer(self, load, demand, capacity):
         # load, demand, capacity são vetores (um valor para cada produto)
         total = sum(demand)
@@ -36,13 +39,14 @@ class GreedyRandomizedConstructionRoute:
             if load[p] + total > capacity[p]:
                 return False
         return True
-        
-    def total_demanda(self, solution: List[List[int]], demands: List[List[float]], c:List[int]) -> float:
+
+    def total_demanda(
+        self, solution: List[List[int]], demands: List[List[float]], c: List[int]
+    ) -> float:
         p_size = len(demands[0])
         vehicles = []
 
-
-        #pdb.set_trace()
+        # pdb.set_trace()
         for v in range(len(solution)):
             d = []
             d_t = [0.0 for _ in range(p_size)]
@@ -54,25 +58,30 @@ class GreedyRandomizedConstructionRoute:
                     d_t[p] += demands[client][p]
                     d_p_i.append(demands[client][p])
                 d.append(d_p_i)
-            
+
             # Atualizar demandas restantes
             d_e = []
             for d_i in range(len(d)):
                 d_e_p = []
                 for p in range(len(d[d_i])):
                     d_t[p] -= d[d_i][p]
-                    d_e_p.append({'produto':p,'restante_veiculo':d_t[p], 'qte_entregue': d[d_i][p]})
-                d_e.append({'cliente': c[v][d_i], 'produtos': d_e_p})
+                    d_e_p.append(
+                        {
+                            "produto": p,
+                            "restante_veiculo": d_t[p],
+                            "qte_entregue": d[d_i][p],
+                        }
+                    )
+                d_e.append({"cliente": c[v][d_i], "produtos": d_e_p})
 
-            vehicles.append({'veiculo':v, 'entregas': d_e})
+            vehicles.append({"veiculo": v, "entregas": d_e})
 
-
-        #pdb.set_trace()
+        # pdb.set_trace()
         return vehicles
-    
+
     def total_cost(self, solution: List[List[int]], D: np.ndarray) -> float:
         return sum(self.route_cost(r, D) for r in solution)
-    
+
     def route_cost(self, route: List[int], D: np.ndarray) -> float:
         if not route:
             return 0.0
@@ -129,7 +138,9 @@ class GreedyRandomizedConstructionRoute:
             if not candidate_list:
                 # não há inserção possível -> tentativa falha (solução inviável)
                 # retornamos rotas incompletas para que o GRASP considere a iteração inválida
-                self.log.warning("não há inserção possível -> tentativa falha (solução inviável)")
+                self.log.warning(
+                    "não há inserção possível -> tentativa falha (solução inviável)"
+                )
                 return None
 
             costs = [t[2] for t in candidate_list]
@@ -145,17 +156,19 @@ class GreedyRandomizedConstructionRoute:
             loads[veiculo] = self.addDemand(loads[veiculo], demands[cliente])
             unserved.remove(cliente)
 
-
-        cost=0
-        c=[]
+        cost = 0
+        c = []
         routes_op = []
         for route in routes:
-            route_op, cost_route = self.twoOpt.twoOptOnRoute(route,D)
-            cost+=cost_route
+            route_op, cost_route = self.twoOpt.twoOptOnRoute(route, D)
+            cost += cost_route
             routes_op.append(route_op)
             c.append([clients[i] for i in route_op])
 
+        # c = [[clients[i] for i in route] for route in routes]
 
-        #c = [[clients[i] for i in route] for route in routes]
-
-        return c, self.total_cost(routes_op,D), self.total_demanda(routes_op,demands,c)
+        return (
+            c,
+            self.total_cost(routes_op, D),
+            self.total_demanda(routes_op, demands, c),
+        )

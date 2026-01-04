@@ -1,10 +1,11 @@
 import json
 import os
-from src.helpers.Converter import toStopPoint
-import pandas as pd
 from hashlib import sha1
+
 import numpy as np
 import orjson
+import pandas as pd
+from src.helpers.Converter import toStopPoint
 
 
 def getResults(
@@ -26,7 +27,7 @@ def getResults(
 ):
     routes = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]
 
-    weight = data['weight']
+    weight = data["weight"]
 
     s_p = np.array(data["s_p"])
     c_p = np.array(data["c_p"])
@@ -53,27 +54,29 @@ def getResults(
         f4.append(sum_f4)
         f3.append(sum_f3)
 
-    file_name_hash = sha1((data['file']+str(weight)).encode()).hexdigest()
+    file_name_hash = sha1((data["file"] + str(weight)).encode()).hexdigest()
     # Build one row per period with consistent native types
     n = len(f1)
-    df_aux = pd.DataFrame({
-        "time": list(range(n)),
-        "file": [data['file']] * n,
-        "hash_file": [file_name_hash] * n,
-        "csetup": [float(x) for x in csetup],
-        "cprod": [float(x) for x in cprod],
-        "f1": [float(x) for x in f1],
-        "f2": [float(x) for x in f2],
-        "f3": [float(x) for x in f3],
-        "f4": [float(x) for x in f4],
-        "weight": str(weight)
-    })
+    df_aux = pd.DataFrame(
+        {
+            "time": list(range(n)),
+            "file": [data["file"]] * n,
+            "hash_file": [file_name_hash] * n,
+            "csetup": [float(x) for x in csetup],
+            "cprod": [float(x) for x in cprod],
+            "f1": [float(x) for x in f1],
+            "f2": [float(x) for x in f2],
+            "f3": [float(x) for x in f3],
+            "f4": [float(x) for x in f4],
+            "weight": str(weight),
+        }
+    )
+
     # Generate a unique SHA1 per row based on stable string representation
     def _row_hash(row):
-        payload = (
-            f"{file_name_hash}|{row['time']}|"
-        )
-        return sha1(payload.encode('utf-8')).hexdigest()
+        payload = f"{file_name_hash}|{row['time']}|"
+        return sha1(payload.encode("utf-8")).hexdigest()
+
     df_aux["hash_row"] = df_aux.apply(_row_hash, axis=1)
     df_aux.to_excel(os.path.join(dir, f"{file_name_hash[:6]}_fobs.xlsx"), index=False)
 

@@ -18,4 +18,3 @@ The directory  “DATI_14” contains the instances with  14 retailers and only 
     7. The file  RESULT_OU__50R.PDF contains all the solutions obtained by using the algorithm to solve the problem IPD-OU on the instances, repeated 10 times, with  50 retailers
     8. The file  RESULT_OU__100.PDF contains all the solutions obtained by using the algorithm to solve the problem IPD-OU on the instances with  100 retailers
     9. The file  RESULT_OU__100R.PDF contains all the solutions obtained by using the algorithm to solve the problem IPD-OU on the instances, repeated 10 times, with  100 retailers
-
