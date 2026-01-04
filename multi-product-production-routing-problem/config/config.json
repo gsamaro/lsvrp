@@ -17,5 +17,9 @@
   "relaxed_solution": {
     "use": true,
     "replace_model": true
+  },
+  "postprocessing": {
+    "build_target": true,
+    "output": "./out/target/"
   }
 }
