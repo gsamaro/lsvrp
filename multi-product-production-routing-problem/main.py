@@ -3,6 +3,7 @@ import os
 import shutil
 
 import pandas as pd
+from config import Config
 from src.log.Logger import Logger
 from src.process.WorkerProcess import WorkerProcess
 
@@ -46,23 +47,35 @@ def _union_results(log, output):
 
 if __name__ == "__main__":
 
-    with open("config.json", "r") as f:
-        config = json.load(f)
-
-    threadsLimitSolver = 0
-    if config["solver"]["threadsLimit"] == "None":
+    config = Config.get_nested("solver", "threadsLimit")
+    if config == "None":
         threadsLimitSolver = None
     else:
-        threadsLimitSolver = config["solver"]["threadsLimit"]
+        threadsLimitSolver = config
 
-    timeLimitSolver = config["solver"]["timeLimit"]
-    timeSupervisor = config["workers"]["timeSupervisor"]
-    workers = config["workers"]["num"]
-    output = config["instance"]["output"]
-    isPloat = config["instance"]["is_plot"]
-    dir = config["instance"]["dir"]
-    files = config["instance"]["files"]
-    method = config["solver"]["method"]
+    config = Config.get_nested("solver", "timeLimit")
+    timeLimitSolver = int(config)
+
+    config = Config.get_nested("workers", "timeSupervisor")
+    timeSupervisor = int(config)
+
+    config = Config.get_nested("workers", "num")
+    workers = config
+
+    config = Config.get_nested("instance", "output")
+    output = config
+
+    config = Config.get_nested("instance", "is_plot")
+    isPloat = config
+
+    config = Config.get_nested("instance", "dir")
+    dir = config
+
+    config = Config.get_nested("instance", "files")
+    files = config
+
+    config = Config.get_nested("solver", "method")
+    method = config
 
     if os.path.exists(f"{output}/logs"):
         shutil.rmtree(f"{output}/logs")

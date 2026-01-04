@@ -1,7 +1,7 @@
 {
   "solver":{
     "threadsLimit":1,
-    "timeLimit":1800,
+    "timeLimit":5,
     "method":"GUROBY"
   },
   "workers":{
@@ -13,5 +13,9 @@
     "dir": "./data/",
     "output": "./out/",
     "files": ["DATA_PRP_5C/PRP1_C5_P3_V1_T6_S1.dat"]
+  },
+  "relaxed_solution": {
+    "use": true,
+    "replace_model": true
   }
 }

@@ -11,6 +11,8 @@
 
 import time
 
+from config import Config
+
 # Veja a Licença Pública Geral GNU para mais detalhes
 #################################################################################################
 from docplex.mp.model import Model
@@ -605,7 +607,13 @@ class MultProductProdctionRoutingProblem:
         self.createVehicleMostVisitCustomerEachPeriod()
         self.log.info("Veículo visita cliente criado")
         self.outModel()
-        self.generteRelax(REPLACE_MODEL=True)
+        if Config.get_nested("relaxed_solution", "use"):
+            self.generteRelax(
+                REPLACE_MODEL=Config.get_nested("relaxed_solution", "replace_model")
+            )
+            self.log.info("Solução relaxada gerada")
+        else:
+            self.log.info("Solução não relaxada - usando modelo original")
 
         # Set parameters
         if timeLimit is not None:
@@ -614,7 +622,8 @@ class MultProductProdctionRoutingProblem:
         # self.model.context.cplex_parameters.threads = numThreads
 
         start_time = time.time()
-        # solution = self.model.solve()
+        if not Config.get_nested("relaxed_solution", "use"):
+            self.solution = self.model.solve(log_output=True)
         end_time = time.time()
         self.time = end_time - start_time
 
