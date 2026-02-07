@@ -19,7 +19,7 @@
     "replace_model": true
   },
   "postprocessing": {
-    "build_target": true,
+    "build_target": false,
     "output": "./out/target/"
   }
 }

@@ -1,6 +1,9 @@
 import json
 import os
 import shutil
+import subprocess
+from datetime import datetime
+from hashlib import sha1
 
 import pandas as pd
 from config import Config
@@ -9,7 +12,31 @@ from src.log.Logger import Logger
 from src.process.PostProcessingProcess import PostProcessingProcess
 from src.process.WorkerProcess import WorkerProcess
 
+
+def _get_git_commit_hash6():
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return result.stdout.strip()[:6]
+    except Exception:
+        return "000000"
+
+
+def _build_run_tag(now: datetime):
+    date_part = now.strftime("%Y-%m-%d")
+    commit_part = _get_git_commit_hash6()
+    ts_full = now.astimezone().isoformat()
+    ts_part = sha1(ts_full.encode("utf-8")).hexdigest()[:6]
+    return f"{date_part}-{commit_part}-{ts_part}"
+
+
 if __name__ == "__main__":
+
+    run_tag = _build_run_tag(datetime.now())
 
     config = Config.get_nested("solver", "threadsLimit")
     if config == "None":
@@ -87,9 +114,12 @@ if __name__ == "__main__":
     ).run_parallel(instancies=instancies, solver=method)
 
     postprocessing = PostProcessingProcess(log=log, output=output)
-    postprocessing.union_results()
-    if Config.get_nested("postprocessing", "build_target"):
-        postprocessing.build_target()
+    build_target = Config.get_nested("postprocessing", "build_target")
+    union_path = postprocessing.union_results(
+        run_tag=run_tag, build_target=build_target
+    )
+    if build_target:
+        postprocessing.build_target(union_results_path=union_path)
 
     """
 Explored 11164 nodes (448772 simplex iterations) in 30.82 seconds (21.64 work units)
