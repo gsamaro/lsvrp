@@ -6,7 +6,6 @@ import traceback
 from multiprocessing import Pool
 
 from config import Config
-from constants import WEIGHTS
 from src.helpers.TargetsLoader import load_targets_by_file
 from src.log.Logger import Logger
 from src.process.InstanceProcess import InstanceProcess
@@ -19,6 +18,13 @@ try:
 except:
     print("mpi4py not running")
     MPI_BOOL = False
+
+from constants import WEIGHTS_OPTIMIZE, WEIGHTS_TARGET
+
+if Config.get_nested("postprocessing", "build_target"):
+    WEIGHTS = WEIGHTS_TARGET
+else:
+    WEIGHTS = WEIGHTS_OPTIMIZE
 
 
 class WorkerProcess:

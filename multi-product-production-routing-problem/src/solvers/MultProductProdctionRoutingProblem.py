@@ -12,6 +12,7 @@
 import time
 
 from config import Config
+from constants import ALPHA
 
 # Veja a Licença Pública Geral GNU para mais detalhes
 #################################################################################################
@@ -27,6 +28,7 @@ class MultProductProdctionRoutingProblem:
         self.log.info(">> Iniciando MultProductProdctionRoutingProblem.")
         self.model = Model(name="Multi_Product_Prodction_Routing_Problem")
         self.log.info(">> Iniciado model.")
+        self.j = 5
         self.p = map["num_products"]  ##Products
         self.i = map["num_customers"] + 1  ##Customers
         self.k = map["num_customers"] + 1  ##Customers
@@ -68,6 +70,7 @@ class MultProductProdctionRoutingProblem:
         self.nodeCount = 0
         self.log: Logger = log
         self.start = start
+        self.alpha = ALPHA
         self.log.info(">> Finalizado MultProductProdctionRoutingProblem.")
 
     def createDecisionVariables(self):
@@ -102,6 +105,13 @@ class MultProductProdctionRoutingProblem:
                         self.model.Z_v_i_k_t[v, i, k, t] = self.model.binary_var(
                             name=f"Z_{v}_{i}_{k}_{t}"
                         )
+        self.positive = self.model.continuous_var_dict(
+            keys=((j, t) for j in range(self.j) for t in range(self.t)), name=f"p"
+        )
+        self.negative = self.model.continuous_var_dict(
+            keys=((j, t) for j in range(self.j) for t in range(self.t)), name=f"n"
+        )
+        self.lambda_ = self.model.continuous_var(name="lambda")
 
     def startVariables(self):
         warm_start = self.model.new_solution()
@@ -191,7 +201,37 @@ class MultProductProdctionRoutingProblem:
             + self.weight[3] * self.f4
             + self.weight[4] * self.f5
         )
-        self.model.minimize(objExpr)
+        if Config.get_nested("postprocessing", "build_target"):
+            self.model.minimize(objExpr)
+        else:
+            if Config.get_nested("solver", "multiobjective"):
+                self.model.minimize(
+                    self.model.sum(
+                        self.alpha[0] * self.lambda_
+                        + (1 - self.alpha[0])
+                        * (self.weight[0] * self.positive[0, t])
+                        / self.targets[t]["f1_target"]
+                        + self.alpha[0] * self.lambda_
+                        + (1 - self.alpha[0])
+                        * (self.weight[1] * self.positive[1, t])
+                        / self.targets[t]["f2_target"]
+                        + self.alpha[0] * self.lambda_
+                        + (1 - self.alpha[0])
+                        * (self.weight[2] * self.positive[2, t])
+                        / self.targets[t]["f3_target"]
+                        + self.alpha[0] * self.lambda_
+                        + (1 - self.alpha[0])
+                        * (self.weight[3] * self.positive[3, t])
+                        / self.targets[t]["f4_target"]
+                        + self.alpha[0] * self.lambda_
+                        + (1 - self.alpha[0])
+                        * (self.weight[4] * self.positive[4, t])
+                        / self.targets[t]["f5_target"]
+                        for t in range(self.t)
+                    )
+                )
+            else:
+                self.model.minimize(self.f1 + self.f2 + self.f3 + self.f4 + self.f5)
 
     def createEstablishInvetoryBalanceAtPlant(self):
         for p in range(self.p):
@@ -353,6 +393,40 @@ class MultProductProdctionRoutingProblem:
                     if k != i
                 )
                 self.model.add_constraint(r12 <= 1, ctname=f"EQ_12_k_{k}_t_{t}")
+
+    def createGoalProgrammingRestrictions(self):
+        for t in range(self.t):
+            self.model.add_constraints(
+                [
+                    self.f1 + self.negative[0, t] - self.positive[0, t]
+                    == self.targets[t]["f1_target"],
+                    self.f2 + self.negative[1, t] - self.positive[1, t]
+                    == self.targets[t]["f2_target"],
+                    self.f3 + self.negative[2, t] - self.positive[2, t]
+                    == self.targets[t]["f3_target"],
+                    self.f4 + self.negative[3, t] - self.positive[3, t]
+                    == self.targets[t]["f4_target"],
+                    self.f5 + self.negative[4, t] - self.positive[4, t]
+                    == self.targets[t]["f5_target"],
+                ]
+            )
+
+    def createEpsilonRestricted(self):
+        for t in range(self.t):
+            self.model.add_constraints(
+                [
+                    self.weight[0] * self.positive[0, t]
+                    <= self.lambda_ * self.targets[t]["f1_target"],
+                    self.weight[1] * self.positive[1, t]
+                    <= self.lambda_ * self.targets[t]["f2_target"],
+                    self.weight[2] * self.positive[2, t]
+                    <= self.lambda_ * self.targets[t]["f3_target"],
+                    self.weight[3] * self.positive[3, t]
+                    <= self.lambda_ * self.targets[t]["f4_target"],
+                    self.weight[4] * self.positive[4, t]
+                    <= self.lambda_ * self.targets[t]["f5_target"],
+                ]
+            )
 
     def outModel(self):
         self.model.export_as_lp(f"{self.dir}modelo.lp")
@@ -594,6 +668,9 @@ class MultProductProdctionRoutingProblem:
 
         self.crateObjectiveFunction()
         self.log.info("Objetivo criado")
+        if Config.get_nested("solver", "multiobjective"):
+            self.createGoalProgrammingRestrictions()
+            self.createEpsilonRestricted()
         self.createEstablishInvetoryBalanceAtPlant()
         self.log.info("Balanceamento estoque Planta criado")
         self.creteInventoryBalancingInventoryCustomers()
@@ -617,7 +694,7 @@ class MultProductProdctionRoutingProblem:
         self.createVehicleMostVisitCustomerEachPeriod()
         self.log.info("Veículo visita cliente criado")
         self.outModel()
-        if Config.get_nested("relaxed_solution", "use"):
+        if Config.get_nested("postprocessing", "build_target"):
             self.generteRelax(
                 REPLACE_MODEL=Config.get_nested("relaxed_solution", "replace_model")
             )
