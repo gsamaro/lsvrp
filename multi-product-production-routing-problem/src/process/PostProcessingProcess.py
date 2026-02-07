@@ -14,7 +14,12 @@ class PostProcessingProcess:
         excel_paths = []
         for root, _, files in os.walk(self.output):
             for fname in files:
-                if fname.lower().endswith(".xlsx") and not fname.startswith("~$"):
+                if (
+                    fname.lower().endswith(".xlsx")
+                    and not fname.startswith("~$")
+                    and "target" not in fname
+                    and "union_results" not in fname
+                ):
                     excel_paths.append(os.path.join(root, fname))
 
         if not excel_paths:
