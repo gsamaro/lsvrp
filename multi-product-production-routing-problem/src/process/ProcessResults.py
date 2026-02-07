@@ -34,25 +34,26 @@ def getResults(
     csetup = [np.sum(s_p * Y[t]) for t in range(len(Y))]
     cprod = [np.sum(c_p * X[t]) for t in range(len(X))]
 
-    # Keep as a plain Python list (avoid ndarray for JSON serialization)
-    f1 = [cs + cp for cs, cp in zip(csetup, cprod)]
+    # f1..f5 aligned with model definitions
+    f1 = cprod
+    f2 = csetup
 
     h_pi = np.array(data["h_pi"])
     I_aux = np.array(I)
-    f2 = [np.sum(h_pi * I_aux[t].T) for t in range(len(I))]
+    f3 = [np.sum(h_pi * I_aux[t].T) for t in range(len(I))]
 
-    f3 = []
     f4 = []
+    f5 = []
     f = data["f"]
     a_ik = np.array(data["a_ik"])
     for t in range(len(Z)):
+        sum_f5 = 0
         sum_f4 = 0
-        sum_f3 = 0
         for v in range(len(Z[t])):
-            sum_f4 += np.sum(a_ik * Z[t][v])
-            sum_f3 += np.sum(f * Z[t][v][0])
+            sum_f5 += np.sum(a_ik * Z[t][v])
+            sum_f4 += np.sum(f * Z[t][v][0])
+        f5.append(sum_f5)
         f4.append(sum_f4)
-        f3.append(sum_f3)
 
     file_name_hash = sha1((data["file"] + str(weight)).encode()).hexdigest()
     # Build one row per period with consistent native types
@@ -68,6 +69,7 @@ def getResults(
             "f2": [float(x) for x in f2],
             "f3": [float(x) for x in f3],
             "f4": [float(x) for x in f4],
+            "f5": [float(x) for x in f5],
             "weight": str(weight),
         }
     )
@@ -184,6 +186,7 @@ def new_get_results(
     f2,
     f3,
     f4,
+    f5,
     GAP,
     TIME,
     SOL_COUNT,
@@ -201,6 +204,7 @@ def new_get_results(
                 f2,
                 f3,
                 f4,
+                f5,
                 GAP,
                 TIME,
                 SOL_COUNT,
@@ -217,6 +221,7 @@ def new_get_results(
             "f2",
             "f3",
             "f4",
+            "f5",
             "GAP",
             "TIME",
             "SOL_COUNT",

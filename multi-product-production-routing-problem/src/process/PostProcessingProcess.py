@@ -51,7 +51,13 @@ class PostProcessingProcess:
         ideal_solution = pd.pivot_table(
             df,
             index=["file", "time"],
-            aggfunc={"f1": "min", "f2": "min", "f3": "min", "f4": "min"},
+            aggfunc={
+                "f1": "min",
+                "f2": "min",
+                "f3": "min",
+                "f4": "min",
+                "f5": "min",
+            },
         )
         anti_ideal_solution = pd.pivot_table(
             df,
@@ -61,6 +67,7 @@ class PostProcessingProcess:
                 "f2": "max",
                 "f3": "max",
                 "f4": "max",
+                "f5": "max",
             },
         )
         joined = ideal_solution.join(
@@ -77,6 +84,10 @@ class PostProcessingProcess:
         )
         joined["f4_target"] = joined["f4_ideal"] + 0.3 * (
             joined["f4_nadir"] - joined["f4_ideal"]
+        )
+
+        joined["f5_target"] = joined["f5_ideal"] + 0.3 * (
+            joined["f5_nadir"] - joined["f5_ideal"]
         )
 
         # Save the target values

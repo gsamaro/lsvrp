@@ -144,29 +144,36 @@ class MultProductProdctionRoutingProblem:
 
     def crateObjectiveFunction(self):
         objExpr_1 = self.model.sum(
-            self.s_p[p] * self.model.Y_p_t[p, t] + self.c_p[p] * self.model.X_p_t[p, t]
+            self.c_p[p] * self.model.X_p_t[p, t]
             for p in range(self.p)
             for t in range(self.t)
         )
         self.f1 = objExpr_1
 
         objExpr_2 = self.model.sum(
-            self.h_p_i[p][i] * self.model.I_p_i_t[p, i, t]
+            self.s_p[p] * self.model.Y_p_t[p, t]
             for p in range(self.p)
-            for i in range(self.i)
             for t in range(self.t)
         )
         self.f2 = objExpr_2
 
         objExpr_3 = self.model.sum(
-            self.f * self.model.Z_v_i_k_t[v, 0, k, t]
-            for v in range(self.v)
-            for k in range(1, self.k)
+            self.h_p_i[p][i] * self.model.I_p_i_t[p, i, t]
+            for p in range(self.p)
+            for i in range(self.i)
             for t in range(self.t)
         )
         self.f3 = objExpr_3
 
         objExpr_4 = self.model.sum(
+            self.f * self.model.Z_v_i_k_t[v, 0, k, t]
+            for v in range(self.v)
+            for k in range(1, self.k)
+            for t in range(self.t)
+        )
+        self.f4 = objExpr_4
+
+        objExpr_5 = self.model.sum(
             self.a_i_k[i][k] * self.model.Z_v_i_k_t[v, i, k, t]
             for v in range(self.v)
             for i in range(self.i)
@@ -174,13 +181,14 @@ class MultProductProdctionRoutingProblem:
             if i != k
             for t in range(self.t)
         )
-        self.f4 = objExpr_4
+        self.f5 = objExpr_5
 
         objExpr = (
             self.weight[0] * self.f1
             + self.weight[1] * self.f2
             + self.weight[2] * self.f3
             + self.weight[3] * self.f4
+            + self.weight[4] * self.f5
         )
         self.model.minimize(objExpr)
 
@@ -529,6 +537,7 @@ class MultProductProdctionRoutingProblem:
             self.model.solution.get_value(self.f2),
             self.model.solution.get_value(self.f3),
             self.model.solution.get_value(self.f4),
+            self.model.solution.get_value(self.f5),
             self.model.solve_details.mip_relative_gap,
             self.time,
             self.solCount,
