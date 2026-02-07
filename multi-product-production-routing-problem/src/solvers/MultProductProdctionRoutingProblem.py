@@ -47,6 +47,7 @@ class MultProductProdctionRoutingProblem:
         ]  ##Transportation cost for traveling from node 𝑖 to node k;
         self.d_p_i_t = map["d_pit"]  ##Demand of item 𝑝 at customer 𝑖 in period 𝑡.
         self.weight = map["weight"]  ##Weight of the objective function.
+        self.targets = map.get("targets")
         self.model.X_p_t = {}  ##Quantity of item 𝑝 produced in period 𝑡.
         self.model.Y_p_t = {}  ##1, if item 𝑝 is produced in period 𝑡; or 0, otherwise.
         self.model.I_p_i_t = {}  ##Inventory of item 𝑝 at site 𝑖 in the end of period 𝑡.
