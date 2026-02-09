@@ -154,52 +154,56 @@ class MultProductProdctionRoutingProblem:
         self.model.add_mip_start(warm_start)
 
     def crateObjectiveFunction(self):
-        objExpr_1 = self.model.sum(
-            self.c_p[p] * self.model.X_p_t[p, t]
-            for p in range(self.p)
+        objExpr_1 = [
+            self.model.sum(self.c_p[p] * self.model.X_p_t[p, t] for p in range(self.p))
             for t in range(self.t)
-        )
+        ]
         self.f1 = objExpr_1
 
-        objExpr_2 = self.model.sum(
-            self.s_p[p] * self.model.Y_p_t[p, t]
-            for p in range(self.p)
+        objExpr_2 = [
+            self.model.sum(self.s_p[p] * self.model.Y_p_t[p, t] for p in range(self.p))
             for t in range(self.t)
-        )
+        ]
         self.f2 = objExpr_2
 
-        objExpr_3 = self.model.sum(
-            self.h_p_i[p][i] * self.model.I_p_i_t[p, i, t]
-            for p in range(self.p)
-            for i in range(self.i)
+        objExpr_3 = [
+            self.model.sum(
+                self.h_p_i[p][i] * self.model.I_p_i_t[p, i, t]
+                for p in range(self.p)
+                for i in range(self.i)
+            )
             for t in range(self.t)
-        )
+        ]
         self.f3 = objExpr_3
 
-        objExpr_4 = self.model.sum(
-            self.f * self.model.Z_v_i_k_t[v, 0, k, t]
-            for v in range(self.v)
-            for k in range(1, self.k)
+        objExpr_4 = [
+            self.model.sum(
+                self.f * self.model.Z_v_i_k_t[v, 0, k, t]
+                for v in range(self.v)
+                for k in range(1, self.k)
+            )
             for t in range(self.t)
-        )
+        ]
         self.f4 = objExpr_4
 
-        objExpr_5 = self.model.sum(
-            self.a_i_k[i][k] * self.model.Z_v_i_k_t[v, i, k, t]
-            for v in range(self.v)
-            for i in range(self.i)
-            for k in range(self.k)
-            if i != k
+        objExpr_5 = [
+            self.model.sum(
+                self.a_i_k[i][k] * self.model.Z_v_i_k_t[v, i, k, t]
+                for v in range(self.v)
+                for i in range(self.i)
+                for k in range(self.k)
+                if i != k
+            )
             for t in range(self.t)
-        )
+        ]
         self.f5 = objExpr_5
 
         objExpr = (
-            self.weight[0] * self.f1
-            + self.weight[1] * self.f2
-            + self.weight[2] * self.f3
-            + self.weight[3] * self.f4
-            + self.weight[4] * self.f5
+            self.weight[0] * sum(self.f1)
+            + self.weight[1] * sum(self.f2)
+            + self.weight[2] * sum(self.f3)
+            + self.weight[3] * sum(self.f4)
+            + self.weight[4] * sum(self.f5)
         )
         if Config.get_nested("postprocessing", "build_target"):
             self.model.minimize(objExpr)
@@ -398,15 +402,15 @@ class MultProductProdctionRoutingProblem:
         for t in range(self.t):
             self.model.add_constraints(
                 [
-                    self.f1 + self.negative[0, t] - self.positive[0, t]
+                    self.f1[t] + self.negative[0, t] - self.positive[0, t]
                     == self.targets[t]["f1_target"],
-                    self.f2 + self.negative[1, t] - self.positive[1, t]
+                    self.f2[t] + self.negative[1, t] - self.positive[1, t]
                     == self.targets[t]["f2_target"],
-                    self.f3 + self.negative[2, t] - self.positive[2, t]
+                    self.f3[t] + self.negative[2, t] - self.positive[2, t]
                     == self.targets[t]["f3_target"],
-                    self.f4 + self.negative[3, t] - self.positive[3, t]
+                    self.f4[t] + self.negative[3, t] - self.positive[3, t]
                     == self.targets[t]["f4_target"],
-                    self.f5 + self.negative[4, t] - self.positive[4, t]
+                    self.f5[t] + self.negative[4, t] - self.positive[4, t]
                     == self.targets[t]["f5_target"],
                 ]
             )
