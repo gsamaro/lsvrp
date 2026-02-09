@@ -447,11 +447,19 @@ class MultProductProdctionRoutingProblem:
                 0,
                 0,
                 self.time,
+                None,
                 self.solCount,
                 self.relaxedModelObjVal,
                 self.nodeCount,
                 self.objBound,
             )
+
+        epsilon = None
+        try:
+            if Config.get_nested("solver", "multiobjective"):
+                epsilon = float(self.lambda_.solution_value)
+        except Exception:
+            epsilon = None
 
         """self.log.info("*******************************")
         self.log.info("============ Z ================")
@@ -603,6 +611,7 @@ class MultProductProdctionRoutingProblem:
             self.model.objective_value,
             self.model.solve_details.mip_relative_gap,
             self.time,
+            epsilon,
             self.solCount,
             self.relaxedModelObjVal,
             self.nodeCount,
