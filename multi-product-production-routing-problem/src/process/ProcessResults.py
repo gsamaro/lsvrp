@@ -17,6 +17,7 @@ def getResults(
     I,
     R,
     Q,
+    P,
     FO,
     GAP,
     TIME,
@@ -59,23 +60,37 @@ def getResults(
     file_name_hash = sha1((data["file"] + str(weight)).encode()).hexdigest()
     # Build one row per period with consistent native types
     n = len(f1)
+
+    p_cols = {}
+    for j in range(5):
+        col = f"p{j+1}"
+        if P and len(P) == n and all(len(P[t]) >= 5 for t in range(n)):
+            p_cols[col] = [float(P[t][j]) for t in range(n)]
+        else:
+            p_cols[col] = [np.nan] * n
+
     df_aux = pd.DataFrame(
         {
             "time": list(range(n)),
             "file": [data["file"]] * n,
             "hash_file": [file_name_hash] * n,
+            "weight": str(weight),
             "FO": [float(FO)] * n,
             "gap": [float(GAP)] * n,
             "solver_time": [float(TIME)] * n,
-            "epsilon": [float(EPSILON) if EPSILON is not None else np.nan] * n,
-            "csetup": [float(x) for x in csetup],
-            "cprod": [float(x) for x in cprod],
             "f1": [float(x) for x in f1],
             "f2": [float(x) for x in f2],
             "f3": [float(x) for x in f3],
             "f4": [float(x) for x in f4],
             "f5": [float(x) for x in f5],
-            "weight": str(weight),
+            **p_cols,
+            "epsilon": [float(EPSILON) if EPSILON is not None else np.nan] * n,
+            "total_production": [float(np.sum(X))] * n,
+            "total_inventory": [float(np.sum(I))] * n,
+            "total_setup": [float(np.sum(Y))] * n,
+            "total_delivered": [float(np.sum(Q))] * n,
+            "csetup": [float(x) for x in csetup],
+            "cprod": [float(x) for x in cprod],
         }
     )
 
@@ -85,7 +100,114 @@ def getResults(
         return sha1(payload.encode("utf-8")).hexdigest()
 
     df_aux["hash_row"] = df_aux.apply(_row_hash, axis=1)
-    df_aux.to_excel(os.path.join(dir, f"{file_name_hash[:6]}_fobs.xlsx"), index=False)
+
+    excel_base_name = f"{file_name_hash[:6]}_fobs"
+    excel_path = os.path.join(dir, f"{excel_base_name}.xlsx")
+    df_aux.to_excel(excel_path, index=False)
+
+    parquet_dir = os.path.join(dir, "parquets")
+    os.makedirs(parquet_dir, exist_ok=True)
+    parquet_path = os.path.join(parquet_dir, f"{excel_base_name}.parquet")
+
+    def _append_records(records, hash_file, var, idx: dict, value):
+        rec = {"hash_file": hash_file, "var": var, **idx, "value": value}
+        records.append(rec)
+
+    records = []
+
+    # Z[t][v][i][k]
+    for t in range(len(Z)):
+        for v in range(len(Z[t])):
+            for i_idx in range(len(Z[t][v])):
+                for k_idx in range(len(Z[t][v][i_idx])):
+                    _append_records(
+                        records,
+                        file_name_hash,
+                        "Z",
+                        {"t": t, "v": v, "i": i_idx, "k": k_idx},
+                        float(Z[t][v][i_idx][k_idx]),
+                    )
+
+    # X[t][p]
+    for t in range(len(X)):
+        for p_idx in range(len(X[t])):
+            _append_records(
+                records,
+                file_name_hash,
+                "X",
+                {"t": t, "p": p_idx},
+                float(X[t][p_idx]),
+            )
+
+    # Y[t][p]
+    for t in range(len(Y)):
+        for p_idx in range(len(Y[t])):
+            _append_records(
+                records,
+                file_name_hash,
+                "Y",
+                {"t": t, "p": p_idx},
+                float(Y[t][p_idx]),
+            )
+
+    # I[t][i][p] in ProcessResults (note: computed as list over i then p)
+    for t in range(len(I)):
+        for i_idx in range(len(I[t])):
+            for p_idx in range(len(I[t][i_idx])):
+                _append_records(
+                    records,
+                    file_name_hash,
+                    "I",
+                    {"t": t, "p": p_idx, "i": i_idx},
+                    float(I[t][i_idx][p_idx]),
+                )
+
+    # R[t][v][p][i][k]
+    for t in range(len(R)):
+        for v in range(len(R[t])):
+            for p_idx in range(len(R[t][v])):
+                for i_idx in range(len(R[t][v][p_idx])):
+                    for k_idx in range(len(R[t][v][p_idx][i_idx])):
+                        _append_records(
+                            records,
+                            file_name_hash,
+                            "R",
+                            {"t": t, "p": p_idx, "v": v, "i": i_idx, "k": k_idx},
+                            float(R[t][v][p_idx][i_idx][k_idx]),
+                        )
+
+    # Q[t][v][p][i]
+    for t in range(len(Q)):
+        for v in range(len(Q[t])):
+            for p_idx in range(len(Q[t][v])):
+                for i_idx in range(len(Q[t][v][p_idx])):
+                    _append_records(
+                        records,
+                        file_name_hash,
+                        "Q",
+                        {"t": t, "p": p_idx, "v": v, "i": i_idx},
+                        float(Q[t][v][p_idx][i_idx]),
+                    )
+
+    # P[t][j]
+    if P:
+        for t in range(len(P)):
+            for j in range(len(P[t])):
+                _append_records(
+                    records,
+                    file_name_hash,
+                    "P",
+                    {"t": t, "j": j},
+                    float(P[t][j]),
+                )
+
+    df_parquet = pd.DataFrame.from_records(records)
+    if not df_parquet.empty:
+        first_cols = [c for c in ["hash_file", "var"] if c in df_parquet.columns]
+        other_cols = [c for c in ["t", "p", "v", "i", "k", "j"] if c not in first_cols]
+        last_cols = [c for c in ["value"] if c not in first_cols]
+        df_parquet = df_parquet[first_cols + other_cols + last_cols]
+    df_parquet.to_parquet(parquet_path, index=False)
 
     periods = []
     for t in range(len(routes)):
@@ -163,6 +285,7 @@ def getResults(
     results = {
         "hash": file_name_hash,
         "periods": periods,
+        "P": P,
         "FO": FO,
         "gap": GAP,
         "time": TIME,

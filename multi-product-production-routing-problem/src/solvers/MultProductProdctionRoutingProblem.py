@@ -444,6 +444,7 @@ class MultProductProdctionRoutingProblem:
                 [],
                 [],
                 [],
+                [],
                 0,
                 0,
                 self.time,
@@ -460,6 +461,16 @@ class MultProductProdctionRoutingProblem:
                 epsilon = float(self.lambda_.solution_value)
         except Exception:
             epsilon = None
+
+        P = []
+        try:
+            for t in range(self.t):
+                p_t = []
+                for j in range(self.j):
+                    p_t.append(float(self.positive[j, t].solution_value))
+                P.append(p_t)
+        except Exception:
+            P = []
 
         """self.log.info("*******************************")
         self.log.info("============ Z ================")
@@ -608,6 +619,7 @@ class MultProductProdctionRoutingProblem:
             I,
             R,
             Q,
+            P,
             self.model.objective_value,
             self.model.solve_details.mip_relative_gap,
             self.time,
