@@ -11,6 +11,7 @@
 
 import time
 
+import numpy as np
 from config import Config
 from constants import ALPHA
 
@@ -205,36 +206,55 @@ class MultProductProdctionRoutingProblem:
             + self.weight[3] * sum(self.f4)
             + self.weight[4] * sum(self.f5)
         )
+        # Initialize new_targets as a copy of targets
+        self.new_targets = {}
+        for t in range(self.t):
+            self.new_targets[t] = self.targets[t].copy()
+
+        # Calculate mean for each objective function and replace zero values
+        for k in ["f1_target", "f2_target", "f3_target", "f4_target", "f5_target"]:
+            values_k = [self.targets[t][k] for t in range(self.t)]
+            if values_k:  # Only calculate mean if there are non-zero values
+                mean_val = np.mean(values_k)
+                for t in range(self.t):
+                    if self.targets[t][k] == 0:
+                        self.log.info(
+                            f">> Adjusting target {t}_{k} from {self.targets[t][k]} to {mean_val}"
+                        )
+                        self.new_targets[t][k] = mean_val
         if Config.get_nested("postprocessing", "build_target"):
+            self.log.info(">> FO build_target.")
             self.model.minimize(objExpr)
         else:
             if Config.get_nested("solver", "multiobjective"):
+                self.log.info(">> FO multiobjective.")
                 self.model.minimize(
                     self.model.sum(
                         self.alpha[0] * self.lambda_
                         + (1 - self.alpha[0])
                         * (self.weight[0] * self.positive[0, t])
-                        / self.targets[t]["f1_target"]
+                        / self.new_targets[t]["f1_target"]
                         + self.alpha[0] * self.lambda_
                         + (1 - self.alpha[0])
                         * (self.weight[1] * self.positive[1, t])
-                        / self.targets[t]["f2_target"]
+                        / self.new_targets[t]["f2_target"]
                         + self.alpha[0] * self.lambda_
                         + (1 - self.alpha[0])
                         * (self.weight[2] * self.positive[2, t])
-                        / self.targets[t]["f3_target"]
+                        / self.new_targets[t]["f3_target"]
                         + self.alpha[0] * self.lambda_
                         + (1 - self.alpha[0])
                         * (self.weight[3] * self.positive[3, t])
-                        / self.targets[t]["f4_target"]
+                        / self.new_targets[t]["f4_target"]
                         + self.alpha[0] * self.lambda_
                         + (1 - self.alpha[0])
                         * (self.weight[4] * self.positive[4, t])
-                        / self.targets[t]["f5_target"]
+                        / self.new_targets[t]["f5_target"]
                         for t in range(self.t)
                     )
                 )
             else:
+                self.log.info(">> FO singleobjective.")
                 self.model.minimize(self.f1 + self.f2 + self.f3 + self.f4 + self.f5)
 
     def createEstablishInvetoryBalanceAtPlant(self):
@@ -420,15 +440,15 @@ class MultProductProdctionRoutingProblem:
             self.model.add_constraints(
                 [
                     self.weight[0] * self.positive[0, t]
-                    <= self.lambda_ * self.targets[t]["f1_target"],
+                    <= self.lambda_ * self.new_targets[t]["f1_target"],
                     self.weight[1] * self.positive[1, t]
-                    <= self.lambda_ * self.targets[t]["f2_target"],
+                    <= self.lambda_ * self.new_targets[t]["f2_target"],
                     self.weight[2] * self.positive[2, t]
-                    <= self.lambda_ * self.targets[t]["f3_target"],
+                    <= self.lambda_ * self.new_targets[t]["f3_target"],
                     self.weight[3] * self.positive[3, t]
-                    <= self.lambda_ * self.targets[t]["f4_target"],
+                    <= self.lambda_ * self.new_targets[t]["f4_target"],
                     self.weight[4] * self.positive[4, t]
-                    <= self.lambda_ * self.targets[t]["f5_target"],
+                    <= self.lambda_ * self.new_targets[t]["f5_target"],
                 ]
             )
 
