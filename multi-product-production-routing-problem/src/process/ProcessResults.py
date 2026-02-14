@@ -190,16 +190,17 @@ def getResults(
                     )
 
     # P[t][j]
-    if P:
-        for t in range(len(P)):
-            for j in range(len(P[t])):
-                _append_records(
-                    records,
-                    file_name_hash,
-                    "P",
-                    {"t": t, "j": j},
-                    float(P[t][j]),
-                )
+    if not P:
+        P = np.zeros((data["num_periods"], 5))
+    for t in range(len(P)):
+        for j in range(len(P[t])):
+            _append_records(
+                records,
+                file_name_hash,
+                "P",
+                {"t": t, "j": j},
+                float(P[t][j]),
+            )
 
     df_parquet = pd.DataFrame.from_records(records)
     if not df_parquet.empty:
@@ -295,14 +296,14 @@ def getResults(
         "objBound": OBJ_BOUND,
     }
 
-    caminho_arquivo = os.path.join(dir, "result.json")
-    with open(caminho_arquivo, "w", encoding="utf-8") as arquivo:
-        json.dump(
-            results,
-            arquivo,
-            indent=4,
-            ensure_ascii=False,
-        )
+    # caminho_arquivo = os.path.join(dir, "result.json")
+    # with open(caminho_arquivo, "w", encoding="utf-8") as arquivo:
+    #     json.dump(
+    #         results,
+    #         arquivo,
+    #         indent=4,
+    #         ensure_ascii=False,
+    #     )
 
     return results
 

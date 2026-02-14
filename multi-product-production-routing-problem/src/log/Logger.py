@@ -17,12 +17,14 @@ class Logger:
     def _timestamp(self):
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    def _write(self, level, message):
+    def _write(self, level, message, only_file=False):
         log_message = f"[{self._timestamp()}] [{level}] {message}\n"
 
-        with open(self.log_path, "a", encoding="utf-8") as f:
-            # print(log_message)
-            f.write(log_message)
+        if not only_file:
+            print(log_message)
+        else:
+            with open(self.log_path, "a", encoding="utf-8") as f:
+                f.write(log_message)
 
     def info(self, message):
         self._write(f" INFO [Worker {self.worker_id}]", message)
