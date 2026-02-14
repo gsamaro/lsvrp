@@ -112,7 +112,7 @@ class PostProcessingProcess:
     def build_target(self, union_results_path=None):
         if union_results_path is None:
             union_results_path = os.path.join(self.output, "union_results.xlsx")
-        df = pd.read_excel(union_results_path)
+        df = pd.read_excel(union_results_path, engine="openpyxl")
         ideal_solution = pd.pivot_table(
             df,
             index=["file", "time"],
