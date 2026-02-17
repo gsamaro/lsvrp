@@ -154,6 +154,28 @@ class MultProductProdctionRoutingProblem:
                         )
         self.model.add_mip_start(warm_start)
 
+    def _adjust_targets(self):
+        self.new_targets = {}
+        for t in range(self.t):
+            self.new_targets[t] = self.targets[t].copy()
+
+        for k in [
+            "f1_target",
+            "f2_target",
+            "f3_target",
+            "f4_target",
+            "f5_target",
+        ]:
+            values_k = [self.targets[t][k] for t in range(self.t)]
+            if values_k:  # Only calculate mean if there are non-zero values
+                mean_val = np.mean(values_k)
+                for t in range(self.t):
+                    if self.targets[t][k] == 0:
+                        self.log.info(
+                            f">> Adjusting target {t}_{k} from {self.targets[t][k]} to {mean_val}"
+                        )
+                        self.new_targets[t][k] = mean_val
+
     def crateObjectiveFunction(self):
         objExpr_1 = [
             self.model.sum(self.c_p[p] * self.model.X_p_t[p, t] for p in range(self.p))
@@ -211,26 +233,7 @@ class MultProductProdctionRoutingProblem:
             self.model.minimize(objExpr)
         else:
             if Config.get_nested("solver", "multiobjective"):
-                self.new_targets = {}
-                for t in range(self.t):
-                    self.new_targets[t] = self.targets[t].copy()
-
-                for k in [
-                    "f1_target",
-                    "f2_target",
-                    "f3_target",
-                    "f4_target",
-                    "f5_target",
-                ]:
-                    values_k = [self.targets[t][k] for t in range(self.t)]
-                    if values_k:  # Only calculate mean if there are non-zero values
-                        mean_val = np.mean(values_k)
-                        for t in range(self.t):
-                            if self.targets[t][k] == 0:
-                                self.log.info(
-                                    f">> Adjusting target {t}_{k} from {self.targets[t][k]} to {mean_val}"
-                                )
-                                self.new_targets[t][k] = mean_val
+                self._adjust_targets()
                 self.log.info(">> FO multiobjective.")
                 self.model.minimize(
                     self.model.sum(
@@ -477,6 +480,7 @@ class MultProductProdctionRoutingProblem:
                 self.relaxedModelObjVal,
                 self.nodeCount,
                 self.objBound,
+                None,
             )
 
         epsilon = None
@@ -652,6 +656,7 @@ class MultProductProdctionRoutingProblem:
             self.relaxedModelObjVal,
             self.nodeCount,
             self.objBound,
+            getattr(self, "new_targets", None),
         )
 
     def new_get_results(self):

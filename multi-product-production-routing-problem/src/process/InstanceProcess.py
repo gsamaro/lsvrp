@@ -91,6 +91,7 @@ class InstanceProcess:
             RELAXED_MODEL_OBJE_VAL,
             NODE_COUNT,
             OBJ_BOUND,
+            NEW_TARGETS,
         ) = instance.getResults()
         # FO, f1, f2, f3, f4, GAP, TIME, SOL_COUNT, RELAXED_MODEL_OBJE_VAL, NODE_COUNT, OBJ_BOUND = instance.new_get_results()
 
@@ -112,6 +113,7 @@ class InstanceProcess:
             RELAXED_MODEL_OBJE_VAL,
             NODE_COUNT,
             OBJ_BOUND,
+            NEW_TARGETS,
         )
         self.log.info(f"Resultados gerados.")
         # new_get_results(self.output, FO,f1,f2,f3,f4,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL,NODE_COUNT,OBJ_BOUND)

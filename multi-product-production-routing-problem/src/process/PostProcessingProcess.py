@@ -45,6 +45,17 @@ class PostProcessingProcess:
         try:
             union_df = pd.concat(frames, ignore_index=True, sort=False)
 
+            for c in [
+                "weight_hash",
+                "new_f1_target",
+                "new_f2_target",
+                "new_f3_target",
+                "new_f4_target",
+                "new_f5_target",
+            ]:
+                if c not in union_df.columns:
+                    union_df[c] = pd.NA
+
             # Enrich consolidated results with alpha and targets (if available)
             try:
                 union_df["alpha"] = ALPHA[0]

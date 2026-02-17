@@ -26,10 +26,26 @@ def getResults(
     RELAXED_MODEL_OBJE_VAL,
     NODE_COUNT,
     OBJ_BOUND,
+    NEW_TARGETS,
 ):
     routes = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]
 
     weight = data["weight"]
+
+    try:
+        weight_payload = ",".join(
+            [
+                (
+                    ("{:.10g}".format(float(w)))
+                    if (isinstance(w, (int, float, np.integer, np.floating)))
+                    else str(w)
+                )
+                for w in weight
+            ]
+        )
+    except Exception:
+        weight_payload = str(weight)
+    weight_hash = sha1(weight_payload.encode("utf-8")).hexdigest()[:6]
 
     s_p = np.array(data["s_p"])
     c_p = np.array(data["c_p"])
@@ -74,6 +90,7 @@ def getResults(
             "time": list(range(n)),
             "file": [data["file"]] * n,
             "hash_file": [file_name_hash] * n,
+            "weight_hash": [weight_hash] * n,
             "weight": str(weight),
             "FO": [float(FO)] * n,
             "gap": [float(GAP)] * n,
@@ -93,6 +110,20 @@ def getResults(
             "cprod": [float(x) for x in cprod],
         }
     )
+
+    def _get_new_target(t, key):
+        if not NEW_TARGETS:
+            return np.nan
+        try:
+            return float(NEW_TARGETS[t][key])
+        except Exception:
+            return np.nan
+
+    df_aux["new_f1_target"] = [_get_new_target(t, "f1_target") for t in range(n)]
+    df_aux["new_f2_target"] = [_get_new_target(t, "f2_target") for t in range(n)]
+    df_aux["new_f3_target"] = [_get_new_target(t, "f3_target") for t in range(n)]
+    df_aux["new_f4_target"] = [_get_new_target(t, "f4_target") for t in range(n)]
+    df_aux["new_f5_target"] = [_get_new_target(t, "f5_target") for t in range(n)]
 
     # Generate a unique SHA1 per row based on stable string representation
     def _row_hash(row):
