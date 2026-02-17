@@ -2,6 +2,7 @@ import pdb
 
 from src.helpers.GraphDisplay import graphResults
 from src.helpers.ReadPrpFile import ReadPrpFile as RD
+from src.helpers.TargetsLoader import normalize_instance_file_key
 from src.log.Logger import Logger
 from src.process.ProcessResults import getResults, new_get_results
 from src.solvers.MultProductProdctionRoutingProblem import (
@@ -24,6 +25,7 @@ class InstanceProcess:
         log: Logger = None,
         solver="GRASP",
         weight=None,
+        targets_by_file=None,
     ):
         self.instance = instance
         self.isPloat = isPloat
@@ -34,6 +36,7 @@ class InstanceProcess:
         self.solver = solver
         self.log: Logger = log
         self.weight = weight
+        self.targets_by_file = targets_by_file
 
     def isProcessFinished(self):
         return self.isFinished
@@ -61,6 +64,13 @@ class InstanceProcess:
 
         data = RD(file_path=self.instance, log=self.log).getDataSet()
         data["weight"] = self.weight
+
+        targets = []
+        if self.targets_by_file:
+            key = normalize_instance_file_key(data.get("file"))
+            targets = self.targets_by_file.get(key, [])
+        data["targets"] = targets
+
         instance = self.solverInstancie(data)
 
         instance.solver(timeLimit=self.timeLimit, numThreads=self.numThreads)
@@ -72,9 +82,11 @@ class InstanceProcess:
             I,
             R,
             Q,
+            P,
             FO,
             GAP,
             TIME,
+            EPSILON,
             SOL_COUNT,
             RELAXED_MODEL_OBJE_VAL,
             NODE_COUNT,
@@ -91,9 +103,11 @@ class InstanceProcess:
             I,
             R,
             Q,
+            P,
             FO,
             GAP,
             TIME,
+            EPSILON,
             SOL_COUNT,
             RELAXED_MODEL_OBJE_VAL,
             NODE_COUNT,

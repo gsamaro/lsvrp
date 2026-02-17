@@ -11,7 +11,9 @@
 
 import time
 
+import numpy as np
 from config import Config
+from constants import ALPHA
 
 # Veja a Licença Pública Geral GNU para mais detalhes
 #################################################################################################
@@ -27,6 +29,7 @@ class MultProductProdctionRoutingProblem:
         self.log.info(">> Iniciando MultProductProdctionRoutingProblem.")
         self.model = Model(name="Multi_Product_Prodction_Routing_Problem")
         self.log.info(">> Iniciado model.")
+        self.j = 5
         self.p = map["num_products"]  ##Products
         self.i = map["num_customers"] + 1  ##Customers
         self.k = map["num_customers"] + 1  ##Customers
@@ -47,6 +50,7 @@ class MultProductProdctionRoutingProblem:
         ]  ##Transportation cost for traveling from node 𝑖 to node k;
         self.d_p_i_t = map["d_pit"]  ##Demand of item 𝑝 at customer 𝑖 in period 𝑡.
         self.weight = map["weight"]  ##Weight of the objective function.
+        self.targets = map.get("targets")
         self.model.X_p_t = {}  ##Quantity of item 𝑝 produced in period 𝑡.
         self.model.Y_p_t = {}  ##1, if item 𝑝 is produced in period 𝑡; or 0, otherwise.
         self.model.I_p_i_t = {}  ##Inventory of item 𝑝 at site 𝑖 in the end of period 𝑡.
@@ -67,6 +71,7 @@ class MultProductProdctionRoutingProblem:
         self.nodeCount = 0
         self.log: Logger = log
         self.start = start
+        self.alpha = ALPHA
         self.log.info(">> Finalizado MultProductProdctionRoutingProblem.")
 
     def createDecisionVariables(self):
@@ -101,6 +106,13 @@ class MultProductProdctionRoutingProblem:
                         self.model.Z_v_i_k_t[v, i, k, t] = self.model.binary_var(
                             name=f"Z_{v}_{i}_{k}_{t}"
                         )
+        self.positive = self.model.continuous_var_dict(
+            keys=((j, t) for j in range(self.j) for t in range(self.t)), name=f"p"
+        )
+        self.negative = self.model.continuous_var_dict(
+            keys=((j, t) for j in range(self.j) for t in range(self.t)), name=f"n"
+        )
+        self.lambda_ = self.model.continuous_var(name="lambda")
 
     def startVariables(self):
         warm_start = self.model.new_solution()
@@ -143,54 +155,111 @@ class MultProductProdctionRoutingProblem:
         self.model.add_mip_start(warm_start)
 
     def crateObjectiveFunction(self):
-        objExpr_1 = self.model.sum(
-            self.c_p[p] * self.model.X_p_t[p, t]
-            for p in range(self.p)
+        objExpr_1 = [
+            self.model.sum(self.c_p[p] * self.model.X_p_t[p, t] for p in range(self.p))
             for t in range(self.t)
-        )
+        ]
         self.f1 = objExpr_1
 
-        objExpr_2 = self.model.sum(
-            self.s_p[p] * self.model.Y_p_t[p, t]
-            for p in range(self.p)
+        objExpr_2 = [
+            self.model.sum(self.s_p[p] * self.model.Y_p_t[p, t] for p in range(self.p))
             for t in range(self.t)
-        )
+        ]
         self.f2 = objExpr_2
 
-        objExpr_3 = self.model.sum(
-            self.h_p_i[p][i] * self.model.I_p_i_t[p, i, t]
-            for p in range(self.p)
-            for i in range(self.i)
+        objExpr_3 = [
+            self.model.sum(
+                self.h_p_i[p][i] * self.model.I_p_i_t[p, i, t]
+                for p in range(self.p)
+                for i in range(self.i)
+            )
             for t in range(self.t)
-        )
+        ]
         self.f3 = objExpr_3
 
-        objExpr_4 = self.model.sum(
-            self.f * self.model.Z_v_i_k_t[v, 0, k, t]
-            for v in range(self.v)
-            for k in range(1, self.k)
+        objExpr_4 = [
+            self.model.sum(
+                self.f * self.model.Z_v_i_k_t[v, 0, k, t]
+                for v in range(self.v)
+                for k in range(1, self.k)
+            )
             for t in range(self.t)
-        )
+        ]
         self.f4 = objExpr_4
 
-        objExpr_5 = self.model.sum(
-            self.a_i_k[i][k] * self.model.Z_v_i_k_t[v, i, k, t]
-            for v in range(self.v)
-            for i in range(self.i)
-            for k in range(self.k)
-            if i != k
+        objExpr_5 = [
+            self.model.sum(
+                self.a_i_k[i][k] * self.model.Z_v_i_k_t[v, i, k, t]
+                for v in range(self.v)
+                for i in range(self.i)
+                for k in range(self.k)
+                if i != k
+            )
             for t in range(self.t)
-        )
+        ]
         self.f5 = objExpr_5
 
         objExpr = (
-            self.weight[0] * self.f1
-            + self.weight[1] * self.f2
-            + self.weight[2] * self.f3
-            + self.weight[3] * self.f4
-            + self.weight[4] * self.f5
+            self.weight[0] * sum(self.f1)
+            + self.weight[1] * sum(self.f2)
+            + self.weight[2] * sum(self.f3)
+            + self.weight[3] * sum(self.f4)
+            + self.weight[4] * sum(self.f5)
         )
-        self.model.minimize(objExpr)
+        if Config.get_nested("postprocessing", "build_target"):
+            self.log.info(">> FO build_target.")
+            self.model.minimize(objExpr)
+        else:
+            if Config.get_nested("solver", "multiobjective"):
+                self.new_targets = {}
+                for t in range(self.t):
+                    self.new_targets[t] = self.targets[t].copy()
+
+                for k in [
+                    "f1_target",
+                    "f2_target",
+                    "f3_target",
+                    "f4_target",
+                    "f5_target",
+                ]:
+                    values_k = [self.targets[t][k] for t in range(self.t)]
+                    if values_k:  # Only calculate mean if there are non-zero values
+                        mean_val = np.mean(values_k)
+                        for t in range(self.t):
+                            if self.targets[t][k] == 0:
+                                self.log.info(
+                                    f">> Adjusting target {t}_{k} from {self.targets[t][k]} to {mean_val}"
+                                )
+                                self.new_targets[t][k] = mean_val
+                self.log.info(">> FO multiobjective.")
+                self.model.minimize(
+                    self.model.sum(
+                        self.alpha[0] * self.lambda_
+                        + (1 - self.alpha[0])
+                        * (self.weight[0] * self.positive[0, t])
+                        / self.new_targets[t]["f1_target"]
+                        + self.alpha[0] * self.lambda_
+                        + (1 - self.alpha[0])
+                        * (self.weight[1] * self.positive[1, t])
+                        / self.new_targets[t]["f2_target"]
+                        + self.alpha[0] * self.lambda_
+                        + (1 - self.alpha[0])
+                        * (self.weight[2] * self.positive[2, t])
+                        / self.new_targets[t]["f3_target"]
+                        + self.alpha[0] * self.lambda_
+                        + (1 - self.alpha[0])
+                        * (self.weight[3] * self.positive[3, t])
+                        / self.new_targets[t]["f4_target"]
+                        + self.alpha[0] * self.lambda_
+                        + (1 - self.alpha[0])
+                        * (self.weight[4] * self.positive[4, t])
+                        / self.new_targets[t]["f5_target"]
+                        for t in range(self.t)
+                    )
+                )
+            else:
+                self.log.info(">> FO singleobjective.")
+                self.model.minimize(self.f1 + self.f2 + self.f3 + self.f4 + self.f5)
 
     def createEstablishInvetoryBalanceAtPlant(self):
         for p in range(self.p):
@@ -353,6 +422,40 @@ class MultProductProdctionRoutingProblem:
                 )
                 self.model.add_constraint(r12 <= 1, ctname=f"EQ_12_k_{k}_t_{t}")
 
+    def createGoalProgrammingRestrictions(self):
+        for t in range(self.t):
+            self.model.add_constraints(
+                [
+                    self.f1[t] + self.negative[0, t] - self.positive[0, t]
+                    == self.targets[t]["f1_target"],
+                    self.f2[t] + self.negative[1, t] - self.positive[1, t]
+                    == self.targets[t]["f2_target"],
+                    self.f3[t] + self.negative[2, t] - self.positive[2, t]
+                    == self.targets[t]["f3_target"],
+                    self.f4[t] + self.negative[3, t] - self.positive[3, t]
+                    == self.targets[t]["f4_target"],
+                    self.f5[t] + self.negative[4, t] - self.positive[4, t]
+                    == self.targets[t]["f5_target"],
+                ]
+            )
+
+    def createEpsilonRestricted(self):
+        for t in range(self.t):
+            self.model.add_constraints(
+                [
+                    self.weight[0] * self.positive[0, t]
+                    <= self.lambda_ * self.new_targets[t]["f1_target"],
+                    self.weight[1] * self.positive[1, t]
+                    <= self.lambda_ * self.new_targets[t]["f2_target"],
+                    self.weight[2] * self.positive[2, t]
+                    <= self.lambda_ * self.new_targets[t]["f3_target"],
+                    self.weight[3] * self.positive[3, t]
+                    <= self.lambda_ * self.new_targets[t]["f4_target"],
+                    self.weight[4] * self.positive[4, t]
+                    <= self.lambda_ * self.new_targets[t]["f5_target"],
+                ]
+            )
+
     def outModel(self):
         self.model.export_as_lp(f"{self.dir}modelo.lp")
 
@@ -365,14 +468,33 @@ class MultProductProdctionRoutingProblem:
                 [],
                 [],
                 [],
+                [],
                 0,
                 0,
                 self.time,
+                None,
                 self.solCount,
                 self.relaxedModelObjVal,
                 self.nodeCount,
                 self.objBound,
             )
+
+        epsilon = None
+        try:
+            if Config.get_nested("solver", "multiobjective"):
+                epsilon = float(self.lambda_.solution_value)
+        except Exception:
+            epsilon = None
+
+        P = []
+        try:
+            for t in range(self.t):
+                p_t = []
+                for j in range(self.j):
+                    p_t.append(float(self.positive[j, t].solution_value))
+                P.append(p_t)
+        except Exception:
+            P = []
 
         """self.log.info("*******************************")
         self.log.info("============ Z ================")
@@ -521,9 +643,11 @@ class MultProductProdctionRoutingProblem:
             I,
             R,
             Q,
+            P,
             self.model.objective_value,
             self.model.solve_details.mip_relative_gap,
             self.time,
+            epsilon,
             self.solCount,
             self.relaxedModelObjVal,
             self.nodeCount,
@@ -593,6 +717,9 @@ class MultProductProdctionRoutingProblem:
 
         self.crateObjectiveFunction()
         self.log.info("Objetivo criado")
+        if Config.get_nested("solver", "multiobjective"):
+            self.createGoalProgrammingRestrictions()
+            self.createEpsilonRestricted()
         self.createEstablishInvetoryBalanceAtPlant()
         self.log.info("Balanceamento estoque Planta criado")
         self.creteInventoryBalancingInventoryCustomers()
@@ -615,8 +742,8 @@ class MultProductProdctionRoutingProblem:
         self.log.info("Rota somente entre plantas criado")
         self.createVehicleMostVisitCustomerEachPeriod()
         self.log.info("Veículo visita cliente criado")
-        self.outModel()
-        if Config.get_nested("relaxed_solution", "use"):
+        # self.outModel()
+        if Config.get_nested("postprocessing", "build_target"):
             self.generteRelax(
                 REPLACE_MODEL=Config.get_nested("relaxed_solution", "replace_model")
             )
@@ -632,7 +759,7 @@ class MultProductProdctionRoutingProblem:
 
         start_time = time.time()
         if not Config.get_nested("relaxed_solution", "use"):
-            self.solution = self.model.solve(log_output=True)
+            self.solution = self.model.solve(log_output=False)
         end_time = time.time()
         self.time = end_time - start_time
 

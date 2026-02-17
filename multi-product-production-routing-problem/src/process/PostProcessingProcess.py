@@ -2,6 +2,7 @@ import os
 
 import pandas as pd
 from config import Config
+from constants import ALPHA
 
 
 class PostProcessingProcess:
@@ -14,7 +15,12 @@ class PostProcessingProcess:
         excel_paths = []
         for root, _, files in os.walk(self.output):
             for fname in files:
-                if fname.lower().endswith(".xlsx") and not fname.startswith("~$"):
+                if (
+                    fname.lower().endswith(".xlsx")
+                    and not fname.startswith("~$")
+                    and "target" not in fname
+                    and "union_results" not in fname
+                ):
                     excel_paths.append(os.path.join(root, fname))
 
         if not excel_paths:
@@ -38,6 +44,60 @@ class PostProcessingProcess:
 
         try:
             union_df = pd.concat(frames, ignore_index=True, sort=False)
+
+            # Enrich consolidated results with alpha and targets (if available)
+            try:
+                union_df["alpha"] = ALPHA[0]
+            except Exception:
+                union_df["alpha"] = None
+
+            targets_dir = Config.get_nested("postprocessing", "output")
+            targets_path = (
+                os.path.join(targets_dir, "targets.xlsx") if targets_dir else None
+            )
+
+            if targets_path and os.path.exists(targets_path):
+                try:
+                    targets_df = pd.read_excel(targets_path, engine="openpyxl")
+                    required_cols = [
+                        "file",
+                        "time",
+                        "f1_target",
+                        "f2_target",
+                        "f3_target",
+                        "f4_target",
+                        "f5_target",
+                    ]
+                    if all(c in targets_df.columns for c in required_cols):
+                        targets_df = targets_df[required_cols].copy()
+                        union_df = union_df.merge(
+                            targets_df,
+                            how="left",
+                            on=["file", "time"],
+                            suffixes=("", "_target_file"),
+                        )
+                    else:
+                        missing = [
+                            c for c in required_cols if c not in targets_df.columns
+                        ]
+                        self.log.warning(
+                            f"targets.xlsx encontrado, mas faltam colunas {missing}. Prosseguindo sem merge de targets."
+                        )
+                except Exception as e:
+                    self.log.error(
+                        f"Erro ao carregar/mesclar targets.xlsx ({targets_path}): {e}. Prosseguindo sem targets."
+                    )
+            else:
+                for c in [
+                    "f1_target",
+                    "f2_target",
+                    "f3_target",
+                    "f4_target",
+                    "f5_target",
+                ]:
+                    if c not in union_df.columns:
+                        union_df[c] = pd.NA
+
             if not build_target:
                 out_name = f"{run_tag}-union_results.xlsx"
             else:
@@ -52,7 +112,7 @@ class PostProcessingProcess:
     def build_target(self, union_results_path=None):
         if union_results_path is None:
             union_results_path = os.path.join(self.output, "union_results.xlsx")
-        df = pd.read_excel(union_results_path)
+        df = pd.read_excel(union_results_path, engine="openpyxl")
         ideal_solution = pd.pivot_table(
             df,
             index=["file", "time"],

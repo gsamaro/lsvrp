@@ -1,10 +1,12 @@
+import os
 import queue
 import threading
 import time
 import traceback
 from multiprocessing import Pool
 
-from constants import WEIGHTS
+from config import Config
+from src.helpers.TargetsLoader import load_targets_by_file
 from src.log.Logger import Logger
 from src.process.InstanceProcess import InstanceProcess
 
@@ -17,6 +19,13 @@ except:
     print("mpi4py not running")
     MPI_BOOL = False
 
+from constants import WEIGHTS_OPTIMIZE, WEIGHTS_TARGET
+
+if Config.get_nested("postprocessing", "build_target"):
+    WEIGHTS = WEIGHTS_TARGET
+else:
+    WEIGHTS = WEIGHTS_OPTIMIZE
+
 
 class WorkerProcess:
 
@@ -26,6 +35,19 @@ class WorkerProcess:
         self.timeSupervisor = timeSupervisor
         self.dirLogs = log["dirLogs"]
         self.log: Logger = log["instancia"]
+        self.targets_by_file = None
+
+    def _ensure_targets_loaded(self):
+        if self.targets_by_file is not None:
+            return
+
+        post_out = Config.get_nested("postprocessing", "output")
+        if not post_out:
+            self.targets_by_file = {}
+            return
+
+        targets_path = os.path.join(post_out, "targets.xlsx")
+        self.targets_by_file = load_targets_by_file(targets_path, log=self.log)
 
     def supervisor(self):
         while True:
@@ -37,6 +59,7 @@ class WorkerProcess:
                 break
 
     def worker(self, worker_id, solver):
+        self._ensure_targets_loaded()
         while True:
             try:
                 task = self.taskQueue.get(timeout=2)
@@ -62,6 +85,7 @@ class WorkerProcess:
                     numThreads=task["instancie"]["numThreads"],
                     log=log,
                     solver=solver,
+                    targets_by_file=self.targets_by_file,
                 ).process()
 
             except Exception as e:
@@ -97,21 +121,27 @@ class WorkerProcess:
 
     def run_parallel(self, instancies=[], solver="GUROBY"):
         self.log.info(">> Iniciando processamento paralelo.")
+        self._ensure_targets_loaded()
         if MPI_BOOL:
             self.log.info(">> Iniciando processamento paralelo com MPI.")
             with MPIPoolExecutor() as executor:
                 futures = executor.starmap(
-                    process, ((self.log, i, w) for i in instancies for w in WEIGHTS)
+                    process,
+                    (
+                        (self.log, i, w, self.targets_by_file)
+                        for i in instancies
+                        for w in WEIGHTS
+                    ),
                 )
                 executor.shutdown(wait=True)
         else:
             for i in instancies:
                 for w in WEIGHTS:
-                    process(self.log, i, w)
+                    process(self.log, i, w, self.targets_by_file)
         self.log.info(">> Fim do processamento paralelo.")
 
 
-def process(log, instancie, w):
+def process(log, instancie, w, targets_by_file):
     log.info(">> Processando instância.")
     InstanceProcess(
         instancie["file"],
@@ -122,4 +152,5 @@ def process(log, instancie, w):
         log=log,
         solver="GUROBY",
         weight=w,
+        targets_by_file=targets_by_file,
     ).process()

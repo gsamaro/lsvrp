@@ -73,6 +73,12 @@ if __name__ == "__main__":
 
     log = Logger(log_dir=f"{output}logs", log_file=f"Worker_0.log", worker_id=0, task=0)
 
+    if Config.get_nested("postprocessing", "build_target") & Config.get_nested(
+        "solver", "multiobjective"
+    ):
+        log.error("Build target not supported for multiobjective.")
+        raise Exception("Build target not supported for multiobjective.")
+
     datas = []
     for file in files:
         if ".dat" in file:
