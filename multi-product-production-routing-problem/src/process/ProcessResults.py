@@ -6,6 +6,7 @@ import numpy as np
 import orjson
 import pandas as pd
 from src.helpers.Converter import toStopPoint
+from src.helpers.InstanceMetadata import enrich_with_instance_metadata
 
 
 def getResults(
@@ -110,6 +111,8 @@ def getResults(
             "cprod": [float(x) for x in cprod],
         }
     )
+
+    df_aux = enrich_with_instance_metadata(df_aux, file_col="file")
 
     def _get_new_target(t, key):
         if not NEW_TARGETS:

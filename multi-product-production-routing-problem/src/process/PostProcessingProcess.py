@@ -3,6 +3,7 @@ import os
 import pandas as pd
 from config import Config
 from constants import ALPHA
+from src.helpers.InstanceMetadata import enrich_with_instance_metadata
 
 
 class PostProcessingProcess:
@@ -42,82 +43,89 @@ class PostProcessingProcess:
             self.log.error("Nenhum DataFrame lido.")
             return None
 
+        union_df = pd.concat(frames, ignore_index=True, sort=False)
+
+        if not any(
+            col in union_df.columns
+            for col in [
+                "instancia",
+                "clientes",
+                "produtos",
+                "veiculos",
+                "periodos",
+                "seeds",
+            ]
+        ):
+            union_df = enrich_with_instance_metadata(union_df, file_col="file")
+
+        for c in [
+            "weight_hash",
+            "new_f1_target",
+            "new_f2_target",
+            "new_f3_target",
+            "new_f4_target",
+            "new_f5_target",
+        ]:
+            if c not in union_df.columns:
+                union_df[c] = pd.NA
+
+        # Enrich consolidated results with alpha and targets (if available)
         try:
-            union_df = pd.concat(frames, ignore_index=True, sort=False)
+            union_df["alpha"] = ALPHA[0]
+        except Exception:
+            union_df["alpha"] = None
 
-            for c in [
-                "weight_hash",
-                "new_f1_target",
-                "new_f2_target",
-                "new_f3_target",
-                "new_f4_target",
-                "new_f5_target",
-            ]:
-                if c not in union_df.columns:
-                    union_df[c] = pd.NA
+        targets_dir = Config.get_nested("postprocessing", "output")
+        targets_path = (
+            os.path.join(targets_dir, "targets.xlsx") if targets_dir else None
+        )
 
-            # Enrich consolidated results with alpha and targets (if available)
+        if targets_path and os.path.exists(targets_path):
             try:
-                union_df["alpha"] = ALPHA[0]
-            except Exception:
-                union_df["alpha"] = None
-
-            targets_dir = Config.get_nested("postprocessing", "output")
-            targets_path = (
-                os.path.join(targets_dir, "targets.xlsx") if targets_dir else None
-            )
-
-            if targets_path and os.path.exists(targets_path):
-                try:
-                    targets_df = pd.read_excel(targets_path, engine="openpyxl")
-                    required_cols = [
-                        "file",
-                        "time",
-                        "f1_target",
-                        "f2_target",
-                        "f3_target",
-                        "f4_target",
-                        "f5_target",
-                    ]
-                    if all(c in targets_df.columns for c in required_cols):
-                        targets_df = targets_df[required_cols].copy()
-                        union_df = union_df.merge(
-                            targets_df,
-                            how="left",
-                            on=["file", "time"],
-                            suffixes=("", "_target_file"),
-                        )
-                    else:
-                        missing = [
-                            c for c in required_cols if c not in targets_df.columns
-                        ]
-                        self.log.warning(
-                            f"targets.xlsx encontrado, mas faltam colunas {missing}. Prosseguindo sem merge de targets."
-                        )
-                except Exception as e:
-                    self.log.error(
-                        f"Erro ao carregar/mesclar targets.xlsx ({targets_path}): {e}. Prosseguindo sem targets."
-                    )
-            else:
-                for c in [
+                targets_df = pd.read_excel(targets_path, engine="openpyxl")
+                required_cols = [
+                    "file",
+                    "time",
                     "f1_target",
                     "f2_target",
                     "f3_target",
                     "f4_target",
                     "f5_target",
-                ]:
-                    if c not in union_df.columns:
-                        union_df[c] = pd.NA
+                ]
+                if all(c in targets_df.columns for c in required_cols):
+                    targets_df = targets_df[required_cols].copy()
+                    union_df = union_df.merge(
+                        targets_df,
+                        how="left",
+                        on=["file", "time"],
+                        suffixes=("", "_target_file"),
+                    )
+                else:
+                    missing = [c for c in required_cols if c not in targets_df.columns]
+                    self.log.warning(
+                        f"targets.xlsx encontrado, mas faltam colunas {missing}. Prosseguindo sem merge de targets."
+                    )
+            except Exception as e:
+                self.log.error(
+                    f"Erro ao carregar/mesclar targets.xlsx ({targets_path}): {e}. Prosseguindo sem targets."
+                )
+        else:
+            for c in [
+                "f1_target",
+                "f2_target",
+                "f3_target",
+                "f4_target",
+                "f5_target",
+            ]:
+                if c not in union_df.columns:
+                    union_df[c] = pd.NA
 
-            if not build_target:
-                out_name = f"{run_tag}-union_results.xlsx"
-            else:
-                out_name = "union_results.xlsx"
-            out_path = os.path.join(self.output, out_name)
-            union_df.to_excel(out_path, index=False, engine="openpyxl")
-        except Exception as e:
-            self.log.error(f"Erro ao salvar arquivo {out_path}: {e}")
-            return None
+        if not build_target:
+            out_name = f"{run_tag}-union_results.xlsx"
+        else:
+            out_name = "union_results.xlsx"
+        out_path = os.path.join(self.output, out_name)
+        union_df.to_excel(out_path, index=False, engine="openpyxl")
         return out_path
 
     def build_target(self, union_results_path=None):
