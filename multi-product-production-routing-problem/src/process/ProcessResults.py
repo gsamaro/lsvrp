@@ -74,7 +74,9 @@ def getResults(
         f5.append(sum_f5)
         f4.append(sum_f4)
 
-    file_name_hash = sha1((data["file"] + str(weight)).encode()).hexdigest()
+    file_name_hash = sha1(
+        (data["file"] + str(weight) + str(data["alpha"])).encode()
+    ).hexdigest()
     # Build one row per period with consistent native types
     n = len(f1)
 
