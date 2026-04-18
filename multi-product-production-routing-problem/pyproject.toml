@@ -1,0 +1,25 @@
+[project]
+name = "multi-product-production-routing-problem"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Gabriel"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "docplex (>=2.32.264,<3.0.0)",
+    "cplex (>=22.1.2.1,<23.0.0.0)",
+    "matplotlib (>=3.8.0,<4.0.0)",
+    "numpy (>=2.0.0,<3.0.0)",
+    "openpyxl (>=3.1.2,<4.0.0)",
+    "orjson (>=3.9.0,<4.0.0)",
+    "pandas (>=2.2.0,<3.0.0)",
+    "pyarrow (>=15.0.0,<20.0.0)",
+    "tabulate (>=0.9.0,<0.10.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
