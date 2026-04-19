@@ -460,33 +460,30 @@ python-dateutil = ">=2.7"
 dev = ["meson-python (>=0.13.1,<0.17.0)", "pybind11 (>=2.13.2,!=2.13.3)", "setuptools (>=64)", "setuptools_scm (>=7)"]
 
 [[package]]
-name = "mpi4py"
-version = "3.1.6"
-description = "Python bindings for MPI"
+name = "narwhals"
+version = "2.19.0"
+description = "Extremely lightweight compatibility layer between dataframe libraries"
 optional = false
-python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
+python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "mpi4py-3.1.6-cp27-cp27m-win32.whl", hash = "sha256:95f27e00f3951f9c1533cd99ffeae2f384f7ba53cc3870ee06c3c88f9e5bd6c3"},
-    {file = "mpi4py-3.1.6-cp27-cp27m-win_amd64.whl", hash = "sha256:ea8a65f74707e1be5a0125ae3f4f6c0c475c3d845d623b9f5686a919c1119439"},
-    {file = "mpi4py-3.1.6-cp310-cp310-win32.whl", hash = "sha256:57cb8cc5e4f5730ca2116b4918fddb158bdac3852b57b0fb799278bcd2f9df03"},
-    {file = "mpi4py-3.1.6-cp310-cp310-win_amd64.whl", hash = "sha256:242459fcfd18c50b2ad6cd15f433efbaad1f12f4a343bdff5fa1720f4797317d"},
-    {file = "mpi4py-3.1.6-cp311-cp311-win32.whl", hash = "sha256:33d16f85d827417fd451ae61c304a26f5a1c3e881d9555c58fc8d5c7ac171034"},
-    {file = "mpi4py-3.1.6-cp311-cp311-win_amd64.whl", hash = "sha256:542fa0b3caa69fbb8f5e8ea60fea3414eef1444d93af28b4ee6486a3f8f27640"},
-    {file = "mpi4py-3.1.6-cp312-cp312-win32.whl", hash = "sha256:6662ffa622ee21041dcfd95bffd4b81906349e22d993239cc0abd17ebca6bed0"},
-    {file = "mpi4py-3.1.6-cp312-cp312-win_amd64.whl", hash = "sha256:606264e22c315de6250745fa84267c18a7370a16bd6c51acf226cbb977d0a10b"},
-    {file = "mpi4py-3.1.6-cp35-cp35m-win32.whl", hash = "sha256:1de7f6bd22ea6c9b1d6cb42e9d8092217552ffc8267f81df884b61f46aef557c"},
-    {file = "mpi4py-3.1.6-cp35-cp35m-win_amd64.whl", hash = "sha256:8dfadb2d7b50bda0f5c8538f8b5af5b2f830babc7c43a267102407a29616c38f"},
-    {file = "mpi4py-3.1.6-cp36-cp36m-win32.whl", hash = "sha256:757e324084c41f84b257b6d03850e73803bafea1b5e94dd6f9ebb3a149764299"},
-    {file = "mpi4py-3.1.6-cp36-cp36m-win_amd64.whl", hash = "sha256:76ecc87605193ef906597cadef571cabc8731ed1848a8c92320385c10ed41168"},
-    {file = "mpi4py-3.1.6-cp37-cp37m-win32.whl", hash = "sha256:67d28b5e5102a9d44eac6bc2765c2e28966b6b79cd54e0ea432403e054c70946"},
-    {file = "mpi4py-3.1.6-cp37-cp37m-win_amd64.whl", hash = "sha256:c0dfd9dbbcfa2fe61031eaba714f1f814e59439188b0a5ac063b2edc42daa234"},
-    {file = "mpi4py-3.1.6-cp38-cp38-win32.whl", hash = "sha256:8f9810decd319110b7dcf7a210a76d7db6a39d4c2b33c750ac4dc4638d7ce012"},
-    {file = "mpi4py-3.1.6-cp38-cp38-win_amd64.whl", hash = "sha256:ac671aa8c512fff432e0c1670c94eabd5571f5085c61579fee534b5b9e41bcf4"},
-    {file = "mpi4py-3.1.6-cp39-cp39-win32.whl", hash = "sha256:e8bd3fd0056580b1aaa4966ab9e54566bf6d6b35ff94c0ee7ceba83d55d039ac"},
-    {file = "mpi4py-3.1.6-cp39-cp39-win_amd64.whl", hash = "sha256:f9a35e23deadf7de9063523f19863957f379d0f13afc2b9787eafc9d570ab868"},
-    {file = "mpi4py-3.1.6.tar.gz", hash = "sha256:c8fa625e0f92b082ef955bfb52f19fa6691d29273d7d71135d295aa143dee6cb"},
+    {file = "narwhals-2.19.0-py3-none-any.whl", hash = "sha256:1f8dfa4a33a6dbff878c3e9be4c3b455dfcaf2a9322f1357db00e4e92e95b84b"},
+    {file = "narwhals-2.19.0.tar.gz", hash = "sha256:14fd7040b5ff211d415a82e4827b9d04c354e213e72a6d0730205ffd72e3b7ff"},
 ]
+
+[package.extras]
+cudf = ["cudf-cu12 (>=24.10.0)"]
+dask = ["dask[dataframe] (>=2024.8)"]
+duckdb = ["duckdb (>=1.1)"]
+ibis = ["ibis-framework (>=6.0.0)", "packaging", "pyarrow-hotfix", "rich"]
+modin = ["modin"]
+pandas = ["pandas (>=1.1.3)"]
+polars = ["polars (>=0.20.4)"]
+pyarrow = ["pyarrow (>=13.0.0)"]
+pyspark = ["pyspark (>=3.5.0)"]
+pyspark-connect = ["pyspark[connect] (>=3.5.0)"]
+sql = ["duckdb (>=1.1)", "sqlparse"]
+sqlframe = ["sqlframe (>=3.22.0,!=3.39.3)"]
 
 [[package]]
 name = "numpy"
@@ -887,6 +884,30 @@ tests = ["check-manifest", "coverage (>=7.4.2)", "defusedxml", "markdown2", "ole
 xmp = ["defusedxml"]
 
 [[package]]
+name = "plotly"
+version = "6.7.0"
+description = "An open-source interactive data visualization library for Python"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "plotly-6.7.0-py3-none-any.whl", hash = "sha256:ac8aca1c25c663a59b5b9140a549264a5badde2e057d79b8c772ae2920e32ff0"},
+    {file = "plotly-6.7.0.tar.gz", hash = "sha256:45eea0ff27e2a23ccd62776f77eb43aa1ca03df4192b76036e380bb479b892c6"},
+]
+
+[package.dependencies]
+narwhals = ">=1.15.1"
+packaging = "*"
+
+[package.extras]
+dev = ["anywidget", "build", "colorcet", "fiona (<=1.9.6) ; python_version <= \"3.8\"", "geopandas", "inflect", "jupyterlab", "kaleido (>=1.1.0)", "numpy (>=1.22)", "orjson", "pandas", "pdfrw", "pillow", "plotly-geo", "polars[timezone]", "pyarrow", "pyshp", "pytest", "pytz", "requests", "ruff (==0.11.12)", "scikit-image", "scipy", "shapely", "statsmodels", "vaex ; python_version <= \"3.9\"", "xarray"]
+dev-build = ["build", "jupyterlab", "pytest", "requests", "ruff (==0.11.12)"]
+dev-core = ["pytest", "requests", "ruff (==0.11.12)"]
+dev-optional = ["anywidget", "build", "colorcet", "fiona (<=1.9.6) ; python_version <= \"3.8\"", "geopandas", "inflect", "jupyterlab", "kaleido (>=1.1.0)", "numpy (>=1.22)", "orjson", "pandas", "pdfrw", "pillow", "plotly-geo", "polars[timezone]", "pyarrow", "pyshp", "pytest", "pytz", "requests", "ruff (==0.11.12)", "scikit-image", "scipy", "shapely", "statsmodels", "vaex ; python_version <= \"3.9\"", "xarray"]
+express = ["numpy (>=1.22)"]
+kaleido = ["kaleido (>=1.1.0)"]
+
+[[package]]
 name = "pyarrow"
 version = "19.0.1"
 description = "Python library for Apache Arrow"
@@ -984,6 +1005,28 @@ files = [
 ]
 
 [[package]]
+name = "seaborn"
+version = "0.13.2"
+description = "Statistical data visualization"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "seaborn-0.13.2-py3-none-any.whl", hash = "sha256:636f8336facf092165e27924f223d3c62ca560b1f2bb5dff7ab7fad265361987"},
+    {file = "seaborn-0.13.2.tar.gz", hash = "sha256:93e60a40988f4d65e9f4885df477e2fdaff6b73a9ded434c1ab356dd57eefff7"},
+]
+
+[package.dependencies]
+matplotlib = ">=3.4,<3.6.1 || >3.6.1"
+numpy = ">=1.20,<1.24.0 || >1.24.0"
+pandas = ">=1.2"
+
+[package.extras]
+dev = ["flake8", "flit", "mypy", "pandas-stubs", "pre-commit", "pytest", "pytest-cov", "pytest-xdist"]
+docs = ["ipykernel", "nbconvert", "numpydoc", "pydata_sphinx_theme (==0.10.0rc2)", "pyyaml", "sphinx (<6.0.0)", "sphinx-copybutton", "sphinx-design", "sphinx-issues"]
+stats = ["scipy (>=1.7)", "statsmodels (>=0.12)"]
+
+[[package]]
 name = "six"
 version = "1.17.0"
 description = "Python 2 and 3 compatibility utilities"
@@ -1025,4 +1068,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13"
-content-hash = "e24ef655c090b6cf99991f44778f7290e401de85c60e4484414fca3e13b494da"
+content-hash = "1f185053bc7965fc6b53705f25e97fd242aa881a8108e515a6307b8950b629c4"
