@@ -19,7 +19,7 @@ except:
     print("mpi4py not running")
     MPI_BOOL = False
 
-from constants import WEIGHTS_OPTIMIZE, WEIGHTS_TARGET
+from constants import WEIGHTS_OPTIMIZE, WEIGHTS_TARGET, ALPHA
 
 if Config.get_nested("postprocessing", "build_target"):
     WEIGHTS = WEIGHTS_TARGET
@@ -128,20 +128,22 @@ class WorkerProcess:
                 futures = executor.starmap(
                     process,
                     (
-                        (self.log, i, w, self.targets_by_file)
+                        (self.log, i, w, self.targets_by_file, alpha)
                         for i in instancies
                         for w in WEIGHTS
+                        for alpha in ALPHA
                     ),
                 )
                 executor.shutdown(wait=True)
         else:
             for i in instancies:
                 for w in WEIGHTS:
-                    process(self.log, i, w, self.targets_by_file)
+                    for alpha in ALPHA: 
+                        process(self.log, i, w, self.targets_by_file, alpha)
         self.log.info(">> Fim do processamento paralelo.")
 
 
-def process(log, instancie, w, targets_by_file):
+def process(log, instancie, w, targets_by_file, alpha):
     log.info(">> Processando instância.")
     InstanceProcess(
         instancie["file"],
@@ -153,4 +155,5 @@ def process(log, instancie, w, targets_by_file):
         solver="GUROBY",
         weight=w,
         targets_by_file=targets_by_file,
+        alpha=alpha,
     ).process()

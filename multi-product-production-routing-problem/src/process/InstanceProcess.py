@@ -26,6 +26,7 @@ class InstanceProcess:
         solver="GRASP",
         weight=None,
         targets_by_file=None,
+        alpha=None,
     ):
         self.instance = instance
         self.isPloat = isPloat
@@ -37,6 +38,7 @@ class InstanceProcess:
         self.log: Logger = log
         self.weight = weight
         self.targets_by_file = targets_by_file
+        self.alpha = alpha
 
     def isProcessFinished(self):
         return self.isFinished
@@ -64,6 +66,7 @@ class InstanceProcess:
 
         data = RD(file_path=self.instance, log=self.log).getDataSet()
         data["weight"] = self.weight
+        data["alpha"] = self.alpha
 
         targets = []
         if self.targets_by_file:

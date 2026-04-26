@@ -13,7 +13,6 @@ import time
 
 import numpy as np
 from config import Config
-from constants import ALPHA
 
 # Veja a Licença Pública Geral GNU para mais detalhes
 #################################################################################################
@@ -71,7 +70,7 @@ class MultProductProdctionRoutingProblem:
         self.nodeCount = 0
         self.log: Logger = log
         self.start = start
-        self.alpha = ALPHA
+        self.alpha = map["alpha"] if "alpha" in map else None
         self.log.info(">> Finalizado MultProductProdctionRoutingProblem.")
 
     def createDecisionVariables(self):
@@ -237,24 +236,24 @@ class MultProductProdctionRoutingProblem:
                 self.log.info(">> FO multiobjective.")
                 self.model.minimize(
                     self.model.sum(
-                        self.alpha[0] * self.lambda_
-                        + (1 - self.alpha[0])
+                        self.alpha * self.lambda_
+                        + (1 - self.alpha)
                         * (self.weight[0] * self.positive[0, t])
                         / self.new_targets[t]["f1_target"]
-                        + self.alpha[0] * self.lambda_
-                        + (1 - self.alpha[0])
+                        + self.alpha * self.lambda_
+                        + (1 - self.alpha)
                         * (self.weight[1] * self.positive[1, t])
                         / self.new_targets[t]["f2_target"]
-                        + self.alpha[0] * self.lambda_
-                        + (1 - self.alpha[0])
+                        + self.alpha * self.lambda_
+                        + (1 - self.alpha)
                         * (self.weight[2] * self.positive[2, t])
                         / self.new_targets[t]["f3_target"]
-                        + self.alpha[0] * self.lambda_
-                        + (1 - self.alpha[0])
+                        + self.alpha * self.lambda_
+                        + (1 - self.alpha)
                         * (self.weight[3] * self.positive[3, t])
                         / self.new_targets[t]["f4_target"]
-                        + self.alpha[0] * self.lambda_
-                        + (1 - self.alpha[0])
+                        + self.alpha * self.lambda_
+                        + (1 - self.alpha)
                         * (self.weight[4] * self.positive[4, t])
                         / self.new_targets[t]["f5_target"]
                         for t in range(self.t)
