@@ -11,6 +11,7 @@ from src.solvers.MultProductProdctionRoutingProblem import (
 from src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic import (
     MultProductProdctionRoutingProblemGreedyConstructiveHeuristic as MPPRPG,
 )
+import gc
 
 
 class InstanceProcess:
@@ -64,64 +65,87 @@ class InstanceProcess:
 
     def process(self):
 
-        data = RD(file_path=self.instance, log=self.log).getDataSet()
-        data["weight"] = self.weight
-        data["alpha"] = self.alpha
+        data = None
+        instance = None
+        results = None
+        Z = X = Y = I = R = Q = P = None
+        FO = GAP = TIME = EPSILON = SOL_COUNT = RELAXED_MODEL_OBJE_VAL = None
+        NODE_COUNT = OBJ_BOUND = NEW_TARGETS = None
 
-        targets = []
-        if self.targets_by_file:
-            key = normalize_instance_file_key(data.get("file"))
-            targets = self.targets_by_file.get(key, [])
-        data["targets"] = targets
+        try:
+            data = RD(file_path=self.instance, log=self.log).getDataSet()
+            data["weight"] = self.weight
+            data["alpha"] = self.alpha
 
-        instance = self.solverInstancie(data)
+            targets = []
+            if self.targets_by_file:
+                key = normalize_instance_file_key(data.get("file"))
+                targets = self.targets_by_file.get(key, [])
+            data["targets"] = targets
 
-        instance.solver(timeLimit=self.timeLimit, numThreads=self.numThreads)
+            instance = self.solverInstancie(data)
 
-        (
-            Z,
-            X,
-            Y,
-            I,
-            R,
-            Q,
-            P,
-            FO,
-            GAP,
-            TIME,
-            EPSILON,
-            SOL_COUNT,
-            RELAXED_MODEL_OBJE_VAL,
-            NODE_COUNT,
-            OBJ_BOUND,
-            NEW_TARGETS,
-        ) = instance.getResults()
-        # FO, f1, f2, f3, f4, GAP, TIME, SOL_COUNT, RELAXED_MODEL_OBJE_VAL, NODE_COUNT, OBJ_BOUND = instance.new_get_results()
+            instance.solver(timeLimit=self.timeLimit, numThreads=self.numThreads)
 
-        results = getResults(
-            data,
-            self.output,
-            Z,
-            X,
-            Y,
-            I,
-            R,
-            Q,
-            P,
-            FO,
-            GAP,
-            TIME,
-            EPSILON,
-            SOL_COUNT,
-            RELAXED_MODEL_OBJE_VAL,
-            NODE_COUNT,
-            OBJ_BOUND,
-            NEW_TARGETS,
-        )
-        self.log.info(f"Resultados gerados.")
-        # new_get_results(self.output, FO,f1,f2,f3,f4,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL,NODE_COUNT,OBJ_BOUND)
+            (
+                Z,
+                X,
+                Y,
+                I,
+                R,
+                Q,
+                P,
+                FO,
+                GAP,
+                TIME,
+                EPSILON,
+                SOL_COUNT,
+                RELAXED_MODEL_OBJE_VAL,
+                NODE_COUNT,
+                OBJ_BOUND,
+                NEW_TARGETS,
+            ) = instance.getResults()
+            # FO, f1, f2, f3, f4, GAP, TIME, SOL_COUNT, RELAXED_MODEL_OBJE_VAL, NODE_COUNT, OBJ_BOUND = instance.new_get_results()
 
-        # if(self.isPloat=='true'):
-        #     graphResults(results['periods'],{'coordsX':data['coordXY']['x'],'coordsY':data['coordXY']['y']},self.output)
+            results = getResults(
+                data,
+                self.output,
+                Z,
+                X,
+                Y,
+                I,
+                R,
+                Q,
+                P,
+                FO,
+                GAP,
+                TIME,
+                EPSILON,
+                SOL_COUNT,
+                RELAXED_MODEL_OBJE_VAL,
+                NODE_COUNT,
+                OBJ_BOUND,
+                NEW_TARGETS,
+            )
+            self.log.info(f"Resultados gerados.")
+            # new_get_results(self.output, FO,f1,f2,f3,f4,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL,NODE_COUNT,OBJ_BOUND)
 
-        self.isFinished = True
+            # if(self.isPloat=='true'):
+            #     graphResults(results['periods'],{'coordsX':data['coordXY']['x'],'coordsY':data['coordXY']['y']},self.output)
+
+            self.isFinished = True
+        finally:
+            if instance is not None and hasattr(instance, "terminate"):
+                try:
+                    instance.terminate()
+                except Exception as e:
+                    if self.log:
+                        self.log.error(f"Erro ao liberar modelo: {e}")
+
+            del results
+            del Z, X, Y, I, R, Q, P
+            del FO, GAP, TIME, EPSILON, SOL_COUNT, RELAXED_MODEL_OBJE_VAL
+            del NODE_COUNT, OBJ_BOUND, NEW_TARGETS
+            del instance
+            del data
+            gc.collect()

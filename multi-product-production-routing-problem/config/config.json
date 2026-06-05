@@ -6,7 +6,7 @@
     "multiobjective":true
   },
   "workers":{
-    "num":1,
+    "num":"auto",
     "timeSupervisor":10
   },
   "instance":{

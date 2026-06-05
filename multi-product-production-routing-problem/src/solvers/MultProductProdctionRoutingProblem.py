@@ -675,7 +675,12 @@ class MultProductProdctionRoutingProblem:
         )
 
     def terminate(self):
-        self.model.end()
+        model = getattr(self, "model", None)
+        if model is not None:
+            model.end()
+            self.model = None
+        if hasattr(self, "solution"):
+            self.solution = None
 
     def generteRelax(self, REPLACE_MODEL=True):
         # Create a linear relaxation of the model using docplex
@@ -686,13 +691,19 @@ class MultProductProdctionRoutingProblem:
             return
         if REPLACE_MODEL:
             self.log.info("Relaxation model replaced")
+            original_model = self.model
             self.model = relaxed
+            original_model.end()
 
-        solution = relaxed.solve()
-        if solution:
-            self.relaxedModelObjVal = solution.objective_value
-        else:
-            self.relaxedModelObjVal = 0
+        try:
+            solution = relaxed.solve()
+            if solution:
+                self.relaxedModelObjVal = solution.objective_value
+            else:
+                self.relaxedModelObjVal = 0
+        finally:
+            if not REPLACE_MODEL:
+                relaxed.end()
 
     def processInformationsSolver(self):
         if self.model.solve_details:
