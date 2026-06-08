@@ -80,6 +80,36 @@ class WorkerProcess:
 
         return max(1, min(int(configured), total_tasks))
 
+    def _format_weight(self, weight):
+        if weight is None:
+            return "[]"
+
+        formatted = []
+        for value in weight:
+            if isinstance(value, float):
+                formatted.append(f"{value:g}")
+            else:
+                formatted.append(str(value))
+        return "[" + ", ".join(formatted) + "]"
+
+    def _build_task_context(self, instancie, weight, alpha, mpi_batch=1, task_number=None):
+        context = {
+            "file": instancie["file"],
+            "weight": self._format_weight(weight),
+            "alpha": alpha,
+            "mpi_batch": mpi_batch,
+        }
+        if task_number is not None:
+            context["task_number"] = task_number
+
+        context["label"] = (
+            f"arquivo: {context['file']} | "
+            f"peso: {context['weight']} | "
+            f"alpha: {context['alpha']} | "
+            f"lote MPI: {context['mpi_batch']}"
+        )
+        return context
+
     def supervisor(self):
         while True:
             time.sleep(self.timeSupervisor)
@@ -153,47 +183,103 @@ class WorkerProcess:
     def run_parallel(self, instancies=[], solver="GUROBY"):
         self.log.info(">> Iniciando processamento paralelo.")
         self._ensure_targets_loaded()
-        tasks = [
-            (self.log, i, w, self.targets_by_file, alpha)
-            for i in instancies
-            for w in WEIGHTS
-            for alpha in ALPHA
-        ]
+        tasks = []
+        task_number = 1
+        for instancie in instancies:
+            for weight in WEIGHTS:
+                for alpha in ALPHA:
+                    tasks.append(
+                        {
+                            "log": self.log,
+                            "instancie": instancie,
+                            "weight": weight,
+                            "targets_by_file": self.targets_by_file,
+                            "alpha": alpha,
+                            "task_number": task_number,
+                        }
+                    )
+                    task_number += 1
+
         if MPI_BOOL:
             self.log.info(">> Iniciando processamento paralelo com MPI.")
             batch_size = self._resolve_num_workers(len(tasks))
             self.log.info(f">> Workers MPI por lote: {batch_size}.")
             for start in range(0, len(tasks), batch_size):
                 batch = tasks[start : start + batch_size]
+                mpi_batch = start // batch_size + 1
                 self.log.info(
-                    f">> Processando lote MPI {start // batch_size + 1} com {len(batch)} tarefa(s)."
+                    f">> Processando lote MPI {mpi_batch} com {len(batch)} tarefa(s)."
                 )
                 with MPIPoolExecutor(max_workers=batch_size) as executor:
-                    futures = [executor.submit(process, *task) for task in batch]
-                    for future in as_completed(futures):
+                    future_contexts = {}
+                    for task in batch:
+                        context = self._build_task_context(
+                            task["instancie"],
+                            task["weight"],
+                            task["alpha"],
+                            mpi_batch=mpi_batch,
+                            task_number=task["task_number"],
+                        )
+                        future = executor.submit(
+                            process,
+                            task["log"],
+                            task["instancie"],
+                            task["weight"],
+                            task["targets_by_file"],
+                            task["alpha"],
+                            context,
+                        )
+                        future_contexts[future] = context
+
+                    for future in as_completed(future_contexts):
                         try:
                             future.result()
                         except Exception as e:
+                            context = future_contexts.get(future)
+                            context_label = (
+                                context["label"] if context else "contexto indisponivel"
+                            )
                             self.log.error(
-                                f"Erro em tarefa MPI: {e}: stack: {traceback.format_exc()}"
+                                f"Erro em tarefa MPI ({context_label}): {e}: stack: {traceback.format_exc()}"
                             )
         else:
             for task in tasks:
-                process(*task)
+                context = self._build_task_context(
+                    task["instancie"],
+                    task["weight"],
+                    task["alpha"],
+                    mpi_batch=1,
+                    task_number=task["task_number"],
+                )
+                process(
+                    task["log"],
+                    task["instancie"],
+                    task["weight"],
+                    task["targets_by_file"],
+                    task["alpha"],
+                    context,
+                )
         self.log.info(">> Fim do processamento paralelo.")
 
 
-def process(log, instancie, w, targets_by_file, alpha):
-    log.info(">> Processando instância.")
-    InstanceProcess(
-        instancie["file"],
-        instancie["output"],
-        isPloat=False,
-        timeLimit=instancie["timeLimit"],
-        numThreads=instancie["numThreads"],
-        log=log,
-        solver="GUROBY",
-        weight=w,
-        targets_by_file=targets_by_file,
-        alpha=alpha,
-    ).process()
+def process(log, instancie, w, targets_by_file, alpha, context=None):
+    context_label = context["label"] if context else instancie["file"]
+    log.info(f">> Processando instância ({context_label}).")
+    try:
+        InstanceProcess(
+            instancie["file"],
+            instancie["output"],
+            isPloat=False,
+            timeLimit=instancie["timeLimit"],
+            numThreads=instancie["numThreads"],
+            log=log,
+            solver="GUROBY",
+            weight=w,
+            targets_by_file=targets_by_file,
+            alpha=alpha,
+        ).process()
+    except Exception as e:
+        log.error(
+            f"Erro ao processar instância ({context_label}): {e}: stack: {traceback.format_exc()}"
+        )
+        raise RuntimeError(f"Falha na execução da instância ({context_label})") from e
