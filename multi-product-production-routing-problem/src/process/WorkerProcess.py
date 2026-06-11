@@ -202,13 +202,14 @@ class WorkerProcess:
 
         if MPI_BOOL:
             self.log.info(">> Iniciando processamento paralelo com MPI.")
-            batch_size = self._resolve_num_workers(len(tasks))
+            batch_size = 8*self._resolve_num_workers(len(tasks))
             self.log.info(f">> Workers MPI por lote: {batch_size}.")
+            total_batches = len(list(range(0, len(tasks), batch_size)))
             for start in range(0, len(tasks), batch_size):
                 batch = tasks[start : start + batch_size]
                 mpi_batch = start // batch_size + 1
                 self.log.info(
-                    f">> Processando lote MPI {mpi_batch} com {len(batch)} tarefa(s)."
+                    f">> Processando lote MPI {mpi_batch}/{total_batches} com {len(batch)} tarefa(s)."
                 )
                 with MPIPoolExecutor(max_workers=batch_size) as executor:
                     future_contexts = {}
