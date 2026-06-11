@@ -79,6 +79,16 @@ if __name__ == "__main__":
         log.error("Build target not supported for multiobjective.")
         raise Exception("Build target not supported for multiobjective.")
 
+    def _should_include_prp_file(file_name):
+        if not file_name.startswith("PRP"):
+            return True
+
+        instance_part = file_name[3:].split("_", 1)[0]
+        if not instance_part.isdigit():
+            return True
+
+        return int(instance_part) < 31
+
     datas = []
     for file in files:
         if ".dat" in file:
@@ -99,6 +109,8 @@ if __name__ == "__main__":
     instancies = []
     for data in datas:
         for file in data["files"]:
+            if not _should_include_prp_file(file):
+                continue
 
             outFile = f"{output}{data['data']}/{file[:-4]}/"
             # if os.path.exists(outFile):
