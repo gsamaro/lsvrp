@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import datetime
 
 
@@ -20,11 +21,13 @@ class Logger:
     def _write(self, level, message, only_file=False):
         log_message = f"[{self._timestamp()}] [{level}] {message}\n"
 
+        with open(self.log_path, "a", encoding="utf-8") as f:
+            f.write(log_message)
+            f.flush()
+
         if not only_file:
-            print(log_message)
-        else:
-            with open(self.log_path, "a", encoding="utf-8") as f:
-                f.write(log_message)
+            print(log_message, end="", flush=True)
+            sys.stdout.flush()
 
     def info(self, message):
         self._write(f" INFO [Worker {self.worker_id}]", message)

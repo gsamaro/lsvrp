@@ -1,6 +1,8 @@
 import pdb
+import time
 
 from src.helpers.GraphDisplay import graphResults
+from src.helpers.JobGuardrails import JobGuardrails
 from src.helpers.ReadPrpFile import ReadPrpFile as RD
 from src.helpers.TargetsLoader import normalize_instance_file_key
 from src.log.Logger import Logger
@@ -28,6 +30,7 @@ class InstanceProcess:
         weight=None,
         targets_by_file=None,
         alpha=None,
+        guardrail_runtime=None,
     ):
         self.instance = instance
         self.isPloat = isPloat
@@ -40,9 +43,26 @@ class InstanceProcess:
         self.weight = weight
         self.targets_by_file = targets_by_file
         self.alpha = alpha
+        self.guardrails = JobGuardrails.from_config(runtime_context=guardrail_runtime)
 
     def isProcessFinished(self):
         return self.isFinished
+
+    def _log_phase(self, phase, started_at):
+        if not self.guardrails.is_enabled() or not self.guardrails.log_solver_phase_timing:
+            return
+
+        snapshot = self.guardrails.snapshot()
+        self.log.info(
+            self.guardrails.format_snapshot(
+                snapshot,
+                context={
+                    "event": f"phase_{phase}",
+                    "instance_file": self.instance,
+                },
+            )
+            + f" phase_elapsed={time.time() - started_at:.2f}s"
+        )
 
     def solverInstancie(self, data):
         # Python 3.8-compatible replacement for match-case
@@ -73,7 +93,9 @@ class InstanceProcess:
         NODE_COUNT = OBJ_BOUND = NEW_TARGETS = None
 
         try:
+            phase_started_at = time.time()
             data = RD(file_path=self.instance, log=self.log).getDataSet()
+            self._log_phase("read_instance", phase_started_at)
             data["weight"] = self.weight
             data["alpha"] = self.alpha
 
@@ -83,10 +105,15 @@ class InstanceProcess:
                 targets = self.targets_by_file.get(key, [])
             data["targets"] = targets
 
+            phase_started_at = time.time()
             instance = self.solverInstancie(data)
+            self._log_phase("build_solver", phase_started_at)
 
+            phase_started_at = time.time()
             instance.solver(timeLimit=self.timeLimit, numThreads=self.numThreads)
+            self._log_phase("solve", phase_started_at)
 
+            phase_started_at = time.time()
             (
                 Z,
                 X,
@@ -105,8 +132,10 @@ class InstanceProcess:
                 OBJ_BOUND,
                 NEW_TARGETS,
             ) = instance.getResults()
+            self._log_phase("extract_results", phase_started_at)
             # FO, f1, f2, f3, f4, GAP, TIME, SOL_COUNT, RELAXED_MODEL_OBJE_VAL, NODE_COUNT, OBJ_BOUND = instance.new_get_results()
 
+            phase_started_at = time.time()
             results = getResults(
                 data,
                 self.output,
@@ -127,6 +156,7 @@ class InstanceProcess:
                 OBJ_BOUND,
                 NEW_TARGETS,
             )
+            self._log_phase("write_results", phase_started_at)
             self.log.info(f"Resultados gerados.")
             # new_get_results(self.output, FO,f1,f2,f3,f4,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL,NODE_COUNT,OBJ_BOUND)
 

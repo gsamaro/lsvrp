@@ -8,6 +8,7 @@ from hashlib import sha1
 import pandas as pd
 from config import Config
 from src.helpers.Outputs import _union_results
+from src.helpers.JobGuardrails import JobGuardrails
 from src.log.Logger import Logger
 from src.process.PostProcessingProcess import PostProcessingProcess
 from src.process.WorkerProcess import WorkerProcess
@@ -37,6 +38,8 @@ def _build_run_tag(now: datetime):
 if __name__ == "__main__":
 
     run_tag = _build_run_tag(datetime.now())
+    guardrail_runtime = JobGuardrails.build_runtime_context()
+    guardrails = JobGuardrails.from_config(runtime_context=guardrail_runtime)
 
     config = Config.get_nested("solver", "threadsLimit")
     if config == "None":
@@ -72,6 +75,15 @@ if __name__ == "__main__":
         shutil.rmtree(f"{output}/logs")
 
     log = Logger(log_dir=f"{output}logs", log_file=f"Worker_0.log", worker_id=0, task=0)
+    log.info(f"Iniciando job run_tag={run_tag}.")
+    if guardrails.is_enabled():
+        snapshot = guardrails.snapshot()
+        log.info(
+            guardrails.format_snapshot(
+                snapshot,
+                context={"event": "job_start"},
+            )
+        )
 
     if Config.get_nested("postprocessing", "build_target") & Config.get_nested(
         "solver", "multiobjective"
@@ -127,9 +139,13 @@ if __name__ == "__main__":
                 }
             )
 
-    WorkerProcess(
-        workers, timeSupervisor, {"instancia": log, "dirLogs": f"{output}logs"}
-    ).run_parallel(instancies=instancies, solver=method)
+    worker_process = WorkerProcess(
+        workers,
+        timeSupervisor,
+        {"instancia": log, "dirLogs": f"{output}logs"},
+        guardrail_runtime=guardrail_runtime,
+    )
+    worker_process.run_parallel(instancies=instancies, solver=method)
 
     postprocessing = PostProcessingProcess(log=log, output=output)
     build_target = Config.get_nested("postprocessing", "build_target")
@@ -138,6 +154,15 @@ if __name__ == "__main__":
     )
     if build_target:
         postprocessing.build_target(union_results_path=union_path)
+
+    if guardrails.is_enabled():
+        snapshot = guardrails.snapshot()
+        log.info(
+            guardrails.format_snapshot(
+                snapshot,
+                context={"event": "job_end"},
+            )
+        )
 
     """
 Explored 11164 nodes (448772 simplex iterations) in 30.82 seconds (21.64 work units)

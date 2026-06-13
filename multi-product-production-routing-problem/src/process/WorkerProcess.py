@@ -7,6 +7,7 @@ from concurrent.futures import as_completed
 from multiprocessing import Pool
 
 from config import Config
+from src.helpers.JobGuardrails import JobGuardrails
 from src.helpers.TargetsLoader import load_targets_by_file
 from src.log.Logger import Logger
 from src.process.InstanceProcess import InstanceProcess
@@ -30,13 +31,18 @@ else:
 
 class WorkerProcess:
 
-    def __init__(self, numWorkers=1, timeSupervisor=1, log: Logger = None):
+    def __init__(
+        self, numWorkers=1, timeSupervisor=1, log: Logger = None, guardrail_runtime=None
+    ):
         self.taskQueue = queue.Queue()
         self.numWorkers = numWorkers
         self.timeSupervisor = timeSupervisor
         self.dirLogs = log["dirLogs"]
         self.log: Logger = log["instancia"]
         self.targets_by_file = None
+        self.guardrail_runtime = guardrail_runtime or JobGuardrails.build_runtime_context()
+        self.guardrails = JobGuardrails.from_config(runtime_context=self.guardrail_runtime)
+        self.preventive_stop = False
 
     def _ensure_targets_loaded(self):
         if self.targets_by_file is not None:
@@ -91,6 +97,39 @@ class WorkerProcess:
             else:
                 formatted.append(str(value))
         return "[" + ", ".join(formatted) + "]"
+
+    def _log_guardrail(self, event, force=False, **context):
+        if not self.guardrails.is_enabled():
+            return None
+
+        if not self.guardrails.should_emit_log(force=force) and not force:
+            return None
+
+        snapshot = self.guardrails.snapshot()
+        message = self.guardrails.format_snapshot(snapshot, context={"event": event, **context})
+        if snapshot.should_stop:
+            self.log.error(message)
+        elif snapshot.should_warn:
+            self.log.warning(message)
+        else:
+            self.log.info(message)
+        return snapshot
+
+    def _stop_before_new_batch(self, mpi_batch, completed, total_tasks):
+        snapshot = self._log_guardrail(
+            "pre_batch_check",
+            force=True,
+            mpi_batch=mpi_batch,
+            completed=completed,
+            total=total_tasks,
+        )
+        if snapshot and snapshot.should_stop:
+            self.preventive_stop = True
+            self.log.warning(
+                f"Guardrail preventivo acionado antes do lote MPI {mpi_batch}. Nenhum novo lote sera iniciado."
+            )
+            return True
+        return False
 
     def _build_task_context(self, instancie, weight, alpha, mpi_batch=1, task_number=None):
         context = {
@@ -200,16 +239,23 @@ class WorkerProcess:
                     )
                     task_number += 1
 
+        total_tasks = len(tasks)
+        completed_tasks = 0
+        failed_tasks = 0
+        self._log_guardrail("run_parallel_start", force=True, completed=0, total=total_tasks)
+
         if MPI_BOOL:
             self.log.info(">> Iniciando processamento paralelo com MPI.")
-            batch_size = 8*self._resolve_num_workers(len(tasks))
+            batch_size = 8 * self._resolve_num_workers(len(tasks))
             self.log.info(f">> Workers MPI por lote: {batch_size}.")
             total_batches = len(list(range(0, len(tasks), batch_size)))
             for start in range(0, len(tasks), batch_size):
                 batch = tasks[start : start + batch_size]
                 mpi_batch = start // batch_size + 1
+                if self._stop_before_new_batch(mpi_batch, completed_tasks, total_tasks):
+                    break
                 self.log.info(
-                    f">> Processando lote MPI {mpi_batch}/{total_batches} com {len(batch)} tarefa(s)."
+                    f"MPI_BATCH_START batch={mpi_batch}/{total_batches} tasks={len(batch)} completed={completed_tasks} failed={failed_tasks} pending={total_tasks - completed_tasks - failed_tasks}"
                 )
                 with MPIPoolExecutor(max_workers=batch_size) as executor:
                     future_contexts = {}
@@ -229,13 +275,16 @@ class WorkerProcess:
                             task["targets_by_file"],
                             task["alpha"],
                             context,
+                            self.guardrail_runtime,
                         )
                         future_contexts[future] = context
 
                     for future in as_completed(future_contexts):
                         try:
                             future.result()
+                            completed_tasks += 1
                         except Exception as e:
+                            failed_tasks += 1
                             context = future_contexts.get(future)
                             context_label = (
                                 context["label"] if context else "contexto indisponivel"
@@ -243,8 +292,34 @@ class WorkerProcess:
                             self.log.error(
                                 f"Erro em tarefa MPI ({context_label}): {e}: stack: {traceback.format_exc()}"
                             )
+                        finally:
+                            pending = total_tasks - completed_tasks - failed_tasks
+                            self._log_guardrail(
+                                "task_completion",
+                                mpi_batch=mpi_batch,
+                                completed=completed_tasks,
+                                total=total_tasks,
+                            )
+                    self.log.info(
+                        f"MPI_BATCH_END batch={mpi_batch}/{total_batches} completed={completed_tasks} failed={failed_tasks} pending={pending}"
+                    )
+                    snapshot = self._log_guardrail(
+                        "post_batch_check",
+                        force=True,
+                        mpi_batch=mpi_batch,
+                        completed=completed_tasks,
+                        total=total_tasks,
+                    )
+                    if snapshot and snapshot.should_stop:
+                        self.preventive_stop = True
+                        self.log.warning(
+                            f"Guardrail preventivo acionado apos o lote MPI {mpi_batch}. Nenhum novo lote sera iniciado."
+                        )
+                        break
         else:
             for task in tasks:
+                if self._stop_before_new_batch(1, completed_tasks, total_tasks):
+                    break
                 context = self._build_task_context(
                     task["instancie"],
                     task["weight"],
@@ -259,12 +334,43 @@ class WorkerProcess:
                     task["targets_by_file"],
                     task["alpha"],
                     context,
+                    self.guardrail_runtime,
                 )
+                completed_tasks += 1
+                self._log_guardrail(
+                    "task_completion",
+                    completed=completed_tasks,
+                    total=total_tasks,
+                )
+        self._log_guardrail(
+            "run_parallel_end",
+            force=True,
+            completed=completed_tasks,
+            total=total_tasks,
+        )
+        if self.preventive_stop:
+            self.log.warning(
+                f"Processamento encerrado preventivamente. completed={completed_tasks} failed={failed_tasks} total={total_tasks}"
+            )
         self.log.info(">> Fim do processamento paralelo.")
 
 
-def process(log, instancie, w, targets_by_file, alpha, context=None):
+def process(log, instancie, w, targets_by_file, alpha, context=None, guardrail_runtime=None):
     context_label = context["label"] if context else instancie["file"]
+    guardrails = JobGuardrails.from_config(runtime_context=guardrail_runtime)
+    if guardrails.is_enabled():
+        start_snapshot = guardrails.snapshot()
+        log.info(
+            guardrails.format_snapshot(
+                start_snapshot,
+                context={
+                    "event": "instance_start",
+                    "mpi_batch": context.get("mpi_batch") if context else None,
+                    "task_number": context.get("task_number") if context else None,
+                    "instance_file": instancie["file"],
+                },
+            )
+        )
     log.info(f">> Processando instância ({context_label}).")
     try:
         InstanceProcess(
@@ -278,9 +384,24 @@ def process(log, instancie, w, targets_by_file, alpha, context=None):
             weight=w,
             targets_by_file=targets_by_file,
             alpha=alpha,
+            guardrail_runtime=guardrail_runtime,
         ).process()
     except Exception as e:
         log.error(
             f"Erro ao processar instância ({context_label}): {e}: stack: {traceback.format_exc()}"
         )
         raise RuntimeError(f"Falha na execução da instância ({context_label})") from e
+    finally:
+        if guardrails.is_enabled():
+            end_snapshot = guardrails.snapshot()
+            log.info(
+                guardrails.format_snapshot(
+                    end_snapshot,
+                    context={
+                        "event": "instance_end",
+                        "mpi_batch": context.get("mpi_batch") if context else None,
+                        "task_number": context.get("task_number") if context else None,
+                        "instance_file": instancie["file"],
+                    },
+                )
+            )

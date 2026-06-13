@@ -1,0 +1,68 @@
+import tempfile
+import time
+import unittest
+from unittest.mock import patch
+
+from src.helpers.JobGuardrails import JobGuardrails
+
+
+class JobGuardrailsTestCase(unittest.TestCase):
+    def test_walltime_stop_threshold(self):
+        guardrails = JobGuardrails(
+            config={
+                "enabled": True,
+                "walltime_seconds": 100,
+                "walltime_warning_ratio": 0.5,
+                "walltime_stop_ratio": 0.8,
+                "memory_per_node_gb": 1000,
+            },
+            runtime_context={"job_start_time": time.time() - 90},
+        )
+
+        snapshot = guardrails.snapshot()
+
+        self.assertEqual(snapshot.status, "stop")
+        self.assertIn("walltime", snapshot.reasons)
+
+    def test_memory_warning_threshold(self):
+        guardrails = JobGuardrails(
+            config={
+                "enabled": True,
+                "walltime_seconds": 1000,
+                "memory_per_node_gb": 2,
+                "memory_warning_ratio": 0.2,
+                "memory_stop_ratio": 0.9,
+            },
+            runtime_context={"job_start_time": time.time()},
+        )
+
+        with patch.object(guardrails, "_memory_usage_gb", return_value=(0.6, 0.8, False)):
+            snapshot = guardrails.snapshot()
+
+        self.assertEqual(snapshot.status, "warning")
+        self.assertIn("memory", snapshot.reasons)
+
+    def test_build_runtime_context_reads_pbs_nodefile(self):
+        with tempfile.NamedTemporaryFile("w", delete=True) as handle:
+            handle.write("nodeA\nnodeA\nnodeB\n")
+            handle.flush()
+            with patch.dict("os.environ", {"PBS_NODEFILE": handle.name}, clear=False):
+                self.assertEqual(JobGuardrails._discover_mpi_size(), 3)
+
+    def test_missing_proc_status_falls_back_to_resource(self):
+        guardrails = JobGuardrails(
+            config={"enabled": True},
+            runtime_context={"job_start_time": time.time()},
+        )
+
+        with patch("src.helpers.JobGuardrails.os.path.exists", return_value=False):
+            with patch.object(guardrails, "_memory_usage_gb") as memory_mock:
+                memory_mock.return_value = (0.1, 0.2, True)
+                snapshot = guardrails.snapshot()
+
+        self.assertTrue(snapshot.approximate_memory)
+        self.assertGreaterEqual(snapshot.peak_rss_gb, snapshot.rss_gb)
+
+
+if __name__ == "__main__":
+    unittest.main()

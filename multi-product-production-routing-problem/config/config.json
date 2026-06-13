@@ -21,5 +21,16 @@
   "postprocessing": {
     "build_target": false,
     "output": "./out/target/"
+  },
+  "guardrails": {
+    "enabled": true,
+    "walltime_seconds": 259200,
+    "walltime_warning_ratio": 0.85,
+    "walltime_stop_ratio": 0.95,
+    "memory_per_node_gb": 488,
+    "memory_warning_ratio": 0.85,
+    "memory_stop_ratio": 0.95,
+    "check_interval_seconds": 60,
+    "log_solver_phase_timing": true
   }
 }
