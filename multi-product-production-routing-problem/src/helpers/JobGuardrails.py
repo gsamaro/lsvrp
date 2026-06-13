@@ -2,6 +2,7 @@ import os
 import resource
 import socket
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 
 from config import Config
@@ -71,6 +72,9 @@ class GuardrailSnapshot:
     job_id: str
     host: str
     mpi_size: int
+    mpi_rank: str
+    pid: int
+    ppid: int
 
 
 class JobGuardrails:
@@ -79,6 +83,7 @@ class JobGuardrails:
     DEFAULT_WARNING_RATIO = 0.85
     DEFAULT_STOP_RATIO = 0.95
     DEFAULT_CHECK_INTERVAL_SECONDS = 60
+    DEFAULT_SOLVE_WATCHDOG_INTERVAL_SECONDS = 60
 
     def __init__(self, config=None, runtime_context=None):
         cfg = config or {}
@@ -107,11 +112,21 @@ class JobGuardrails:
             cfg.get("check_interval_seconds"), self.DEFAULT_CHECK_INTERVAL_SECONDS
         )
         self.log_solver_phase_timing = bool(cfg.get("log_solver_phase_timing", True))
+        self.solve_watchdog_enabled = bool(cfg.get("solve_watchdog_enabled", True))
+        self.solve_watchdog_interval_seconds = _safe_int(
+            cfg.get("solve_watchdog_interval_seconds"),
+            self.DEFAULT_SOLVE_WATCHDOG_INTERVAL_SECONDS,
+        )
+        self.log_memory_checkpoints = bool(cfg.get("log_memory_checkpoints", True))
+        self.log_rank_identity = bool(cfg.get("log_rank_identity", True))
 
         self.job_start_time = _safe_float(runtime.get("job_start_time"), time.time())
         self.job_id = runtime.get("job_id") or os.environ.get("PBS_JOBID") or "local"
         self.host = runtime.get("host") or socket.gethostname()
         self.mpi_size = _safe_int(runtime.get("mpi_size"), self._detect_mpi_size())
+        self.mpi_rank = str(runtime.get("mpi_rank") or self._detect_mpi_rank())
+        self.pid = _safe_int(runtime.get("pid"), os.getpid())
+        self.ppid = _safe_int(runtime.get("ppid"), os.getppid())
         self.last_logged_at = 0.0
 
     @classmethod
@@ -125,6 +140,9 @@ class JobGuardrails:
             "job_id": os.environ.get("PBS_JOBID") or "local",
             "host": socket.gethostname(),
             "mpi_size": cls._discover_mpi_size(),
+            "mpi_rank": cls._discover_mpi_rank(),
+            "pid": os.getpid(),
+            "ppid": os.getppid(),
         }
 
     @staticmethod
@@ -146,6 +164,30 @@ class JobGuardrails:
 
     def _detect_mpi_size(self):
         return self._discover_mpi_size()
+
+    @staticmethod
+    def _discover_mpi_rank():
+        for env_name in (
+            "OMPI_COMM_WORLD_RANK",
+            "PMI_RANK",
+            "PMIX_RANK",
+            "SLURM_PROCID",
+            "MPI_RANK",
+        ):
+            value = os.environ.get(env_name)
+            if value is not None:
+                return str(value)
+
+        with suppress(Exception):
+            from mpi4py import MPI
+
+            if MPI.Is_initialized():
+                return str(MPI.COMM_WORLD.Get_rank())
+
+        return "unknown"
+
+    def _detect_mpi_rank(self):
+        return self._discover_mpi_rank()
 
     def is_enabled(self):
         return self.enabled
@@ -217,6 +259,9 @@ class JobGuardrails:
             job_id=self.job_id,
             host=self.host,
             mpi_size=self.mpi_size,
+            mpi_rank=self.mpi_rank,
+            pid=self.pid,
+            ppid=self.ppid,
         )
 
     def should_emit_log(self, force=False):
@@ -233,7 +278,17 @@ class JobGuardrails:
     def format_snapshot(self, snapshot, context=None):
         context_bits = []
         context = context or {}
-        for key in ("event", "mpi_batch", "task_number", "instance_file", "completed", "total"):
+        for key in (
+            "event",
+            "mpi_batch",
+            "task_number",
+            "instance_file",
+            "completed",
+            "total",
+            "phase",
+            "checkpoint",
+            "watchdog_seq",
+        ):
             value = context.get(key)
             if value is not None:
                 context_bits.append(f"{key}={value}")
@@ -244,6 +299,9 @@ class JobGuardrails:
                 f"job_id={snapshot.job_id}",
                 f"host={snapshot.host}",
                 f"mpi_size={snapshot.mpi_size}",
+                f"mpi_rank={snapshot.mpi_rank}",
+                f"pid={snapshot.pid}",
+                f"ppid={snapshot.ppid}",
                 f"elapsed={snapshot.elapsed_seconds:.1f}s",
                 f"walltime={snapshot.walltime_seconds}s",
                 f"walltime_ratio={snapshot.walltime_ratio:.3f}",
@@ -258,4 +316,3 @@ class JobGuardrails:
         if snapshot.reasons:
             context_bits.append(f"reasons={','.join(snapshot.reasons)}")
         return "guardrail " + " ".join(context_bits)
-

@@ -28,7 +28,30 @@ def getResults(
     NODE_COUNT,
     OBJ_BOUND,
     NEW_TARGETS,
+    log=None,
+    guardrails=None,
+    task_context=None,
 ):
+    task_context = task_context or {}
+
+    def _log_memory_checkpoint(checkpoint):
+        if not log or not guardrails or not guardrails.is_enabled():
+            return
+        if not guardrails.log_memory_checkpoints:
+            return
+        snapshot = guardrails.snapshot()
+        log.info(
+            guardrails.format_snapshot(
+                snapshot,
+                context={
+                    **task_context,
+                    "event": "memory_checkpoint",
+                    "phase": "write_results",
+                    "checkpoint": checkpoint,
+                },
+            )
+        )
+
     routes = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]
 
     weight = data["weight"]
@@ -88,6 +111,7 @@ def getResults(
         else:
             p_cols[col] = [np.nan] * n
 
+    _log_memory_checkpoint("before_build_df_aux")
     df_aux = pd.DataFrame(
         {
             "time": list(range(n)),
@@ -139,7 +163,9 @@ def getResults(
 
     excel_base_name = f"{file_name_hash[:6]}_fobs"
     excel_path = os.path.join(dir, f"{excel_base_name}.xlsx")
+    _log_memory_checkpoint("before_to_excel")
     df_aux.to_excel(excel_path, index=False)
+    _log_memory_checkpoint("after_to_excel")
 
     parquet_dir = os.path.join(dir, "parquets")
     os.makedirs(parquet_dir, exist_ok=True)
@@ -149,6 +175,7 @@ def getResults(
         rec = {"hash_file": hash_file, "var": var, **idx, "value": value}
         records.append(rec)
 
+    _log_memory_checkpoint("before_build_records")
     records = []
 
     # Z[t][v][i][k]
@@ -238,13 +265,17 @@ def getResults(
                 float(P[t][j]),
             )
 
+    _log_memory_checkpoint("before_dataframe_from_records")
     df_parquet = pd.DataFrame.from_records(records)
+    _log_memory_checkpoint("after_dataframe_from_records")
     if not df_parquet.empty:
         first_cols = [c for c in ["hash_file", "var"] if c in df_parquet.columns]
         other_cols = [c for c in ["t", "p", "v", "i", "k", "j"] if c not in first_cols]
         last_cols = [c for c in ["value"] if c not in first_cols]
         df_parquet = df_parquet[first_cols + other_cols + last_cols]
+    _log_memory_checkpoint("before_to_parquet")
     df_parquet.to_parquet(parquet_path, index=False)
+    _log_memory_checkpoint("after_to_parquet")
 
     periods = []
     for t in range(len(routes)):

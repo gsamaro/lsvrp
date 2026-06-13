@@ -385,6 +385,7 @@ def process(log, instancie, w, targets_by_file, alpha, context=None, guardrail_r
             targets_by_file=targets_by_file,
             alpha=alpha,
             guardrail_runtime=guardrail_runtime,
+            task_context=context,
         ).process()
     except Exception as e:
         log.error(

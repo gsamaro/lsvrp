@@ -31,6 +31,10 @@
     "memory_warning_ratio": 0.85,
     "memory_stop_ratio": 0.95,
     "check_interval_seconds": 60,
-    "log_solver_phase_timing": true
+    "log_solver_phase_timing": true,
+    "solve_watchdog_enabled": true,
+    "solve_watchdog_interval_seconds": 60,
+    "log_memory_checkpoints": true,
+    "log_rank_identity": true
   }
 }

@@ -49,6 +49,10 @@ class JobGuardrailsTestCase(unittest.TestCase):
             with patch.dict("os.environ", {"PBS_NODEFILE": handle.name}, clear=False):
                 self.assertEqual(JobGuardrails._discover_mpi_size(), 3)
 
+    def test_discover_mpi_rank_from_env(self):
+        with patch.dict("os.environ", {"OMPI_COMM_WORLD_RANK": "7"}, clear=False):
+            self.assertEqual(JobGuardrails._discover_mpi_rank(), "7")
+
     def test_missing_proc_status_falls_back_to_resource(self):
         guardrails = JobGuardrails(
             config={"enabled": True},
@@ -62,6 +66,35 @@ class JobGuardrailsTestCase(unittest.TestCase):
 
         self.assertTrue(snapshot.approximate_memory)
         self.assertGreaterEqual(snapshot.peak_rss_gb, snapshot.rss_gb)
+
+    def test_format_snapshot_includes_rank_and_pid(self):
+        guardrails = JobGuardrails(
+            config={"enabled": True},
+            runtime_context={
+                "job_start_time": time.time(),
+                "mpi_rank": "3",
+                "pid": 123,
+                "ppid": 45,
+            },
+        )
+
+        with patch.object(guardrails, "_memory_usage_gb", return_value=(0.1, 0.2, False)):
+            snapshot = guardrails.snapshot()
+
+        message = guardrails.format_snapshot(
+            snapshot,
+            context={
+                "event": "solve_watchdog",
+                "phase": "solve",
+                "checkpoint": "before_solve",
+                "watchdog_seq": 2,
+            },
+        )
+
+        self.assertIn("mpi_rank=3", message)
+        self.assertIn("pid=123", message)
+        self.assertIn("ppid=45", message)
+        self.assertIn("watchdog_seq=2", message)
 
 
 if __name__ == "__main__":
