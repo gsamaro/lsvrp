@@ -145,6 +145,13 @@ class JobGuardrails:
             "ppid": os.getppid(),
         }
 
+    @classmethod
+    def current_runtime_context(cls, job_start_time=None):
+        context = cls.build_runtime_context()
+        if job_start_time is not None:
+            context["job_start_time"] = job_start_time
+        return context
+
     @staticmethod
     def _discover_mpi_size():
         for env_name in ("PBS_NP", "OMPI_COMM_WORLD_SIZE", "PMI_SIZE", "SLURM_NTASKS"):
@@ -191,6 +198,30 @@ class JobGuardrails:
 
     def is_enabled(self):
         return self.enabled
+
+    def refresh_runtime_context(self):
+        runtime = self.current_runtime_context(job_start_time=self.job_start_time)
+        self.job_id = runtime["job_id"]
+        self.host = runtime["host"]
+        self.mpi_size = runtime["mpi_size"]
+        self.mpi_rank = str(runtime["mpi_rank"])
+        self.pid = runtime["pid"]
+        self.ppid = runtime["ppid"]
+        return runtime
+
+    def runtime_context(self, refresh=False):
+        if refresh:
+            return self.refresh_runtime_context()
+
+        return {
+            "job_start_time": self.job_start_time,
+            "job_id": self.job_id,
+            "host": self.host,
+            "mpi_size": self.mpi_size,
+            "mpi_rank": self.mpi_rank,
+            "pid": self.pid,
+            "ppid": self.ppid,
+        }
 
     def elapsed_seconds(self):
         return max(0.0, time.time() - self.job_start_time)

@@ -7,7 +7,11 @@
   },
   "workers":{
     "num":"auto",
-    "timeSupervisor":10
+    "timeSupervisor":10,
+    "mpi_batch_multiplier":1,
+    "mpi_batch_max_tasks":256,
+    "mpi_submit_guardrail_enabled":true,
+    "mpi_heavy_instance_cap":32
   },
   "instance":{
     "is_plot": "true",

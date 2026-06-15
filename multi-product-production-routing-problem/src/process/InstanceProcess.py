@@ -46,6 +46,7 @@ class InstanceProcess:
         self.targets_by_file = targets_by_file
         self.alpha = alpha
         self.guardrails = JobGuardrails.from_config(runtime_context=guardrail_runtime)
+        self.guardrails.refresh_runtime_context()
         self.task_context = task_context or {}
         self._solve_watchdog_stop = None
         self._solve_watchdog_thread = None

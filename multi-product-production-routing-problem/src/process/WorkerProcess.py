@@ -5,6 +5,7 @@ import time
 import traceback
 from concurrent.futures import as_completed
 from multiprocessing import Pool
+from math import ceil
 
 from config import Config
 from src.helpers.JobGuardrails import JobGuardrails
@@ -43,6 +44,22 @@ class WorkerProcess:
         self.guardrail_runtime = guardrail_runtime or JobGuardrails.build_runtime_context()
         self.guardrails = JobGuardrails.from_config(runtime_context=self.guardrail_runtime)
         self.preventive_stop = False
+        self.mpi_batch_multiplier = max(
+            1, int(Config.get_nested("workers", "mpi_batch_multiplier", default=1) or 1)
+        )
+        self.mpi_batch_max_tasks = Config.get_nested(
+            "workers", "mpi_batch_max_tasks", default=None
+        )
+        if self.mpi_batch_max_tasks is not None:
+            self.mpi_batch_max_tasks = max(1, int(self.mpi_batch_max_tasks))
+        self.mpi_submit_guardrail_enabled = bool(
+            Config.get_nested("workers", "mpi_submit_guardrail_enabled", default=True)
+        )
+        self.mpi_heavy_instance_cap = Config.get_nested(
+            "workers", "mpi_heavy_instance_cap", default=None
+        )
+        if self.mpi_heavy_instance_cap is not None:
+            self.mpi_heavy_instance_cap = max(1, int(self.mpi_heavy_instance_cap))
 
     def _ensure_targets_loaded(self):
         if self.targets_by_file is not None:
@@ -149,6 +166,102 @@ class WorkerProcess:
         )
         return context
 
+    def _is_heavy_instance_file(self, instance_file):
+        normalized = os.path.normpath(instance_file)
+        path_parts = normalized.split(os.sep)
+        return "DATA_PRP_30C" in path_parts
+
+    def _batch_contains_heavy_instances(self, batch):
+        return any(self._is_heavy_instance_file(task["instancie"]["file"]) for task in batch)
+
+    def _effective_workers_for_tasks(self, total_tasks):
+        return self._resolve_num_workers(total_tasks)
+
+    def _compute_mpi_batch_size(self, total_tasks):
+        effective_workers = self._effective_workers_for_tasks(total_tasks)
+        batch_size = self.mpi_batch_multiplier * effective_workers
+        if self.mpi_batch_max_tasks is not None:
+            batch_size = min(batch_size, self.mpi_batch_max_tasks)
+        batch_size = min(total_tasks, batch_size)
+        return max(1, batch_size), effective_workers
+
+    def _compute_batch_execution_plan(self, batch, total_tasks):
+        effective_workers = self._effective_workers_for_tasks(total_tasks)
+        batch_size = len(batch)
+        heavy_batch = self._batch_contains_heavy_instances(batch)
+        heavy_instance_cap = self.mpi_heavy_instance_cap if heavy_batch else None
+        executor_workers = effective_workers
+        if heavy_instance_cap is not None:
+            executor_workers = min(executor_workers, heavy_instance_cap)
+        executor_workers = max(1, min(executor_workers, batch_size))
+        submission_window = batch_size
+        if self.mpi_submit_guardrail_enabled:
+            submission_window = executor_workers
+
+        return {
+            "effective_workers": effective_workers,
+            "batch_size": batch_size,
+            "executor_workers": executor_workers,
+            "heavy_batch": heavy_batch,
+            "heavy_instance_cap": heavy_instance_cap,
+            "submission_window": submission_window,
+        }
+
+    def _iter_batches(self, tasks, batch_size):
+        for start in range(0, len(tasks), batch_size):
+            yield start, tasks[start : start + batch_size]
+
+    def _log_mpi_batch_plan(
+        self,
+        mpi_batch,
+        total_batches,
+        batch,
+        total_tasks,
+        completed_tasks,
+        failed_tasks,
+        plan,
+    ):
+        pending = total_tasks - completed_tasks - failed_tasks
+        self.log.info(
+            "MPI_BATCH_PLAN "
+            f"batch={mpi_batch}/{total_batches} "
+            f"effective_workers={plan['effective_workers']} "
+            f"batch_size={plan['batch_size']} "
+            f"executor_workers={plan['executor_workers']} "
+            f"submitted_tasks={len(batch)} "
+            f"remaining_tasks={pending} "
+            f"total_tasks={total_tasks} "
+            f"heavy_batch={str(plan['heavy_batch']).lower()} "
+            f"heavy_instance_cap={plan['heavy_instance_cap']} "
+            f"submission_window={plan['submission_window']}"
+        )
+
+    def _submit_mpi_batch(self, executor, batch, mpi_batch, plan):
+        future_contexts = {}
+        submission_window = max(1, plan["submission_window"])
+        for start in range(0, len(batch), submission_window):
+            window = batch[start : start + submission_window]
+            for task in window:
+                context = self._build_task_context(
+                    task["instancie"],
+                    task["weight"],
+                    task["alpha"],
+                    mpi_batch=mpi_batch,
+                    task_number=task["task_number"],
+                )
+                future = executor.submit(
+                    process,
+                    task["log"],
+                    task["instancie"],
+                    task["weight"],
+                    task["targets_by_file"],
+                    task["alpha"],
+                    context,
+                    self.guardrail_runtime,
+                )
+                future_contexts[future] = context
+        return future_contexts
+
     def supervisor(self):
         while True:
             time.sleep(self.timeSupervisor)
@@ -246,76 +359,77 @@ class WorkerProcess:
 
         if MPI_BOOL:
             self.log.info(">> Iniciando processamento paralelo com MPI.")
-            batch_size = 8 * self._resolve_num_workers(len(tasks))
-            self.log.info(f">> Workers MPI por lote: {batch_size}.")
-            total_batches = len(list(range(0, len(tasks), batch_size)))
-            for start in range(0, len(tasks), batch_size):
-                batch = tasks[start : start + batch_size]
+            batch_size, effective_workers = self._compute_mpi_batch_size(total_tasks)
+            self.log.info(
+                f">> Workers MPI disponíveis: {effective_workers}. Tamanho planejado do lote: {batch_size}."
+            )
+            total_batches = ceil(len(tasks) / batch_size)
+            for start, batch in self._iter_batches(tasks, batch_size):
                 mpi_batch = start // batch_size + 1
                 if self._stop_before_new_batch(mpi_batch, completed_tasks, total_tasks):
                     break
+                plan = self._compute_batch_execution_plan(batch, total_tasks)
+                self._log_mpi_batch_plan(
+                    mpi_batch,
+                    total_batches,
+                    batch,
+                    total_tasks,
+                    completed_tasks,
+                    failed_tasks,
+                    plan,
+                )
                 self.log.info(
                     f"MPI_BATCH_START batch={mpi_batch}/{total_batches} tasks={len(batch)} completed={completed_tasks} failed={failed_tasks} pending={total_tasks - completed_tasks - failed_tasks}"
                 )
-                with MPIPoolExecutor(max_workers=batch_size) as executor:
-                    future_contexts = {}
-                    for task in batch:
-                        context = self._build_task_context(
-                            task["instancie"],
-                            task["weight"],
-                            task["alpha"],
-                            mpi_batch=mpi_batch,
-                            task_number=task["task_number"],
-                        )
-                        future = executor.submit(
-                            process,
-                            task["log"],
-                            task["instancie"],
-                            task["weight"],
-                            task["targets_by_file"],
-                            task["alpha"],
-                            context,
-                            self.guardrail_runtime,
-                        )
-                        future_contexts[future] = context
+                pending = total_tasks - completed_tasks - failed_tasks
+                try:
+                    with MPIPoolExecutor(max_workers=plan["executor_workers"]) as executor:
+                        future_contexts = self._submit_mpi_batch(executor, batch, mpi_batch, plan)
 
-                    for future in as_completed(future_contexts):
-                        try:
-                            future.result()
-                            completed_tasks += 1
-                        except Exception as e:
-                            failed_tasks += 1
-                            context = future_contexts.get(future)
-                            context_label = (
-                                context["label"] if context else "contexto indisponivel"
-                            )
-                            self.log.error(
-                                f"Erro em tarefa MPI ({context_label}): {e}: stack: {traceback.format_exc()}"
-                            )
-                        finally:
-                            pending = total_tasks - completed_tasks - failed_tasks
-                            self._log_guardrail(
-                                "task_completion",
-                                mpi_batch=mpi_batch,
-                                completed=completed_tasks,
-                                total=total_tasks,
-                            )
-                    self.log.info(
-                        f"MPI_BATCH_END batch={mpi_batch}/{total_batches} completed={completed_tasks} failed={failed_tasks} pending={pending}"
+                        for future in as_completed(future_contexts):
+                            try:
+                                future.result()
+                                completed_tasks += 1
+                            except Exception as e:
+                                failed_tasks += 1
+                                context = future_contexts.get(future)
+                                context_label = (
+                                    context["label"] if context else "contexto indisponivel"
+                                )
+                                self.log.error(
+                                    f"Erro em tarefa MPI ({context_label}): {e}: stack: {traceback.format_exc()}"
+                                )
+                            finally:
+                                pending = total_tasks - completed_tasks - failed_tasks
+                                self._log_guardrail(
+                                    "task_completion",
+                                    mpi_batch=mpi_batch,
+                                    completed=completed_tasks,
+                                    total=total_tasks,
+                                )
+                except Exception as e:
+                    pending = total_tasks - completed_tasks - failed_tasks
+                    self.log.error(
+                        f"guardrail event=mpi_batch_abort batch={mpi_batch}/{total_batches} submitted={len(batch)} completed={completed_tasks} failed={failed_tasks} pending={pending} error={e}"
                     )
-                    snapshot = self._log_guardrail(
-                        "post_batch_check",
-                        force=True,
-                        mpi_batch=mpi_batch,
-                        completed=completed_tasks,
-                        total=total_tasks,
+                    raise
+
+                self.log.info(
+                    f"MPI_BATCH_END batch={mpi_batch}/{total_batches} completed={completed_tasks} failed={failed_tasks} pending={pending}"
+                )
+                snapshot = self._log_guardrail(
+                    "post_batch_check",
+                    force=True,
+                    mpi_batch=mpi_batch,
+                    completed=completed_tasks,
+                    total=total_tasks,
+                )
+                if snapshot and snapshot.should_stop:
+                    self.preventive_stop = True
+                    self.log.warning(
+                        f"Guardrail preventivo acionado apos o lote MPI {mpi_batch}. Nenhum novo lote sera iniciado."
                     )
-                    if snapshot and snapshot.should_stop:
-                        self.preventive_stop = True
-                        self.log.warning(
-                            f"Guardrail preventivo acionado apos o lote MPI {mpi_batch}. Nenhum novo lote sera iniciado."
-                        )
-                        break
+                    break
         else:
             for task in tasks:
                 if self._stop_before_new_batch(1, completed_tasks, total_tasks):
@@ -358,6 +472,8 @@ class WorkerProcess:
 def process(log, instancie, w, targets_by_file, alpha, context=None, guardrail_runtime=None):
     context_label = context["label"] if context else instancie["file"]
     guardrails = JobGuardrails.from_config(runtime_context=guardrail_runtime)
+    guardrails.refresh_runtime_context()
+    current_runtime = guardrails.runtime_context()
     if guardrails.is_enabled():
         start_snapshot = guardrails.snapshot()
         log.info(
@@ -384,7 +500,7 @@ def process(log, instancie, w, targets_by_file, alpha, context=None, guardrail_r
             weight=w,
             targets_by_file=targets_by_file,
             alpha=alpha,
-            guardrail_runtime=guardrail_runtime,
+            guardrail_runtime=current_runtime,
             task_context=context,
         ).process()
     except Exception as e:

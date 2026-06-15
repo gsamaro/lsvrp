@@ -96,6 +96,33 @@ class JobGuardrailsTestCase(unittest.TestCase):
         self.assertIn("ppid=45", message)
         self.assertIn("watchdog_seq=2", message)
 
+    def test_refresh_runtime_context_updates_local_identity(self):
+        guardrails = JobGuardrails(
+            config={"enabled": True},
+            runtime_context={
+                "job_start_time": time.time(),
+                "mpi_rank": "0",
+                "pid": 1,
+                "ppid": 2,
+                "host": "master",
+            },
+        )
+
+        with patch("src.helpers.JobGuardrails.socket.gethostname", return_value="worker-a"):
+            with patch("src.helpers.JobGuardrails.os.getpid", return_value=333):
+                with patch("src.helpers.JobGuardrails.os.getppid", return_value=222):
+                    with patch.dict("os.environ", {"OMPI_COMM_WORLD_RANK": "17"}, clear=False):
+                        runtime = guardrails.refresh_runtime_context()
+
+        self.assertEqual(runtime["host"], "worker-a")
+        self.assertEqual(runtime["pid"], 333)
+        self.assertEqual(runtime["ppid"], 222)
+        self.assertEqual(runtime["mpi_rank"], "17")
+        self.assertEqual(guardrails.host, "worker-a")
+        self.assertEqual(guardrails.pid, 333)
+        self.assertEqual(guardrails.ppid, 222)
+        self.assertEqual(guardrails.mpi_rank, "17")
+
 
 if __name__ == "__main__":
     unittest.main()
