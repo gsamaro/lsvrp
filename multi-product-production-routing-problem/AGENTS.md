@@ -1,3 +1,53 @@
+# INSTRUÇÕES GLOBAIS
+
+## Otimização de Tokens
+
+- Utilize leitura parcial (`offset`/`limit`) em arquivos grandes. Nunca leia um arquivo inteiro quando apenas uma seção for necessária.
+- Evite reler arquivos que já foram lidos durante a sessão após uma edição. O ambiente já rastreia o estado dos arquivos modificados.
+- Não utilize subagentes para tarefas que possam ser resolvidas com uma ou duas chamadas de ferramenta diretas.
+- Prefira buscas locais (`grep`, `find`, `rg`) antes de recorrer a agentes exploratórios para pesquisas simples.
+- Mantenha as respostas objetivas. Evite explicações extensas, exceto quando solicitadas explicitamente.
+- Evite executar chamadas de ferramentas em paralelo quando houver dependência entre elas. Aguarde o resultado da primeira operação antes de iniciar a próxima.
+
+## Seleção de Modelo
+
+Antes de iniciar qualquer tarefa que não seja trivial, avalie se o modelo atual é adequado.
+
+### Guia de Referência
+
+- **5.4-mini** → buscas rápidas, consultas pontuais, edições simples, consultas SQL/BigQuery básicas e resumos curtos.
+- **5.4** → desenvolvimento de código, correção de bugs, tarefas de complexidade média e análises moderadas.
+- **5.5** → arquitetura complexa, refatorações envolvendo múltiplos arquivos, análises profundas e design de sistemas.
+
+Se o modelo atual não for o mais indicado para a tarefa, informe ao usuário antes de prosseguir:
+
+> Esta tarefa é mais adequada para o modelo **[modelo recomendado]**. Modelo atual: **[modelo atual]**. Execute `/model [modelo recomendado]` e me avise, ou confirme que deseja continuar com o modelo atual.
+
+Não execute a tarefa até que o usuário confirme a troca ou decida prosseguir com o modelo atual.
+
+## Memória de Sessão e Compactação
+
+Mantenha um contador interno de chamadas de ferramentas realizadas durante a sessão.
+
+A cada aproximadamente 40 chamadas de ferramenta:
+
+1. Gere um resumo da sessão contendo:
+   - Objetivo da sessão;
+   - Decisões tomadas;
+   - Arquivos modificados;
+   - Estado atual do trabalho;
+   - Próximos passos pendentes.
+
+2. Salve o resumo em:
+
+   `memory/session-current.md`
+
+3. Informe o usuário:
+
+> Sessão longa detectada (~40 chamadas de ferramenta). Um resumo foi salvo em `memory/session-current.md`. Após concluir a tarefa atual, recomenda-se executar `/compact` para reduzir o consumo de contexto.
+
+Nunca interrompa a tarefa em andamento para gerar o resumo. Faça isso apenas ao final da resposta atual.
+
 # CONTEXTO
 
 Para execuções no sandbox que realmente testem o código do projeto, usar `main.py` por meio de `./run_with_zshrc.sh` como ponto de entrada, para garantir que `~/.zshrc` seja carregado antes do Python/Poetry e que o ambiente do CPLEX fique igual ao do bash/zsh local.
