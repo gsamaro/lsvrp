@@ -292,8 +292,12 @@ def getResults(
     _log_memory_checkpoint("after_dataframe_from_records")
     if not df_parquet.empty:
         first_cols = [c for c in ["hash_file", "var"] if c in df_parquet.columns]
-        other_cols = [c for c in ["t", "p", "v", "i", "k", "j"] if c not in first_cols]
-        last_cols = [c for c in ["value"] if c not in first_cols]
+        other_cols = [
+            c
+            for c in ["t", "p", "v", "i", "k", "j"]
+            if c in df_parquet.columns and c not in first_cols
+        ]
+        last_cols = [c for c in ["value"] if c in df_parquet.columns and c not in first_cols]
         df_parquet = df_parquet[first_cols + other_cols + last_cols]
     _log_memory_checkpoint("before_to_parquet")
     df_parquet.to_parquet(parquet_path, index=False)

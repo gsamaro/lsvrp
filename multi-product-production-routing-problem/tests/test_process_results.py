@@ -32,6 +32,9 @@ class FakeDataFrame:
 
     def __getitem__(self, key):
         if isinstance(key, list):
+            missing = [column for column in key if column not in self.columns]
+            if missing:
+                raise KeyError(f"{missing} not in index")
             subset = {column: self._data.get(column, []) for column in key}
             return FakeDataFrame(subset)
         return FakeSeries(self._data.get(key, []))
@@ -175,6 +178,56 @@ class ProcessResultsTestCase(unittest.TestCase):
             self.assertTrue(
                 any("event=no_solution_results" in message for _, message in logger.messages)
             )
+
+    def test_get_results_writes_parquet_even_when_some_index_columns_are_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logger = DummyLogger()
+            guardrails = DummyGuardrails()
+            data = {
+                "file": "./data/DATA_PRP_30C/PRP22_C30_P10_V5_T12_S2.dat",
+                "weight": [0.2, 0.2, 0.2, 0.2, 0.2],
+                "alpha": 0.01,
+                "s_p": [1.0],
+                "c_p": [2.0],
+                "h_pi": [[0.0]],
+                "f": [[0.0]],
+                "a_ik": [[0.0]],
+                "num_periods": 1,
+                "coordXY": {"x": [0.0], "y": [0.0]},
+                "I_pi0": [[0.0]],
+                "d_pit": [[[0.0]]],
+            }
+
+            results = getResults(
+                data,
+                tmpdir,
+                [],
+                [],
+                [],
+                [],
+                [],
+                [],
+                [[0.0]],
+                0,
+                0,
+                12.5,
+                None,
+                0,
+                0,
+                0,
+                0,
+                None,
+                log=logger,
+                guardrails=guardrails,
+                task_context={"mpi_batch": 1, "task_number": 1},
+            )
+
+            parquet_dir = os.path.join(tmpdir, "parquets")
+            parquet_files = os.listdir(parquet_dir)
+            self.assertEqual(results["periods"], [])
+            self.assertEqual(len(parquet_files), 1)
+            with open(os.path.join(parquet_dir, parquet_files[0]), encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), "hash_file,var,t,j,value")
 
 
 if __name__ == "__main__":
