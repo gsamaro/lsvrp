@@ -9,6 +9,13 @@ from src.helpers.Converter import toStopPoint
 from src.helpers.InstanceMetadata import enrich_with_instance_metadata
 
 
+def _build_hash_rows(file_name_hash, times):
+    return [
+        sha1(f"{file_name_hash}|{time_value}|".encode("utf-8")).hexdigest()
+        for time_value in times
+    ]
+
+
 def getResults(
     data,
     dir,
@@ -51,6 +58,24 @@ def getResults(
                 },
             )
         )
+
+    def _log_no_solution_results():
+        if not log:
+            return
+        if guardrails and guardrails.is_enabled():
+            snapshot = guardrails.snapshot()
+            log.info(
+                guardrails.format_snapshot(
+                    snapshot,
+                    context={
+                        **task_context,
+                        "event": "no_solution_results",
+                        "phase": "write_results",
+                    },
+                )
+            )
+            return
+        log.info("event=no_solution_results phase=write_results")
 
     routes = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]
 
@@ -102,6 +127,8 @@ def getResults(
     ).hexdigest()
     # Build one row per period with consistent native types
     n = len(f1)
+    if n == 0:
+        _log_no_solution_results()
 
     p_cols = {}
     for j in range(5):
@@ -154,12 +181,7 @@ def getResults(
     df_aux["new_f4_target"] = [_get_new_target(t, "f4_target") for t in range(n)]
     df_aux["new_f5_target"] = [_get_new_target(t, "f5_target") for t in range(n)]
 
-    # Generate a unique SHA1 per row based on stable string representation
-    def _row_hash(row):
-        payload = f"{file_name_hash}|{row['time']}|"
-        return sha1(payload.encode("utf-8")).hexdigest()
-
-    df_aux["hash_row"] = df_aux.apply(_row_hash, axis=1)
+    df_aux["hash_row"] = _build_hash_rows(file_name_hash, list(range(n)))
 
     excel_base_name = f"{file_name_hash[:6]}_fobs"
     excel_path = os.path.join(dir, f"{excel_base_name}.xlsx")
