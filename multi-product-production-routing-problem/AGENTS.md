@@ -1,6 +1,8 @@
 # CONTEXTO
 
-Para execuções no sandbox, sempre usar `./run_with_zshrc.sh` como ponto de entrada, para garantir que `~/.zshrc` seja carregado antes do Python/Poetry e que o ambiente do CPLEX fique igual ao do bash/zsh local.
+Para execuções no sandbox que realmente testem o código do projeto, usar `main.py` por meio de `./run_with_zshrc.sh` como ponto de entrada, para garantir que `~/.zshrc` seja carregado antes do Python/Poetry e que o ambiente do CPLEX fique igual ao do bash/zsh local.
+
+Para outras execuções no sandbox, como `git commit`, revisão de arquivos, leitura de status ou tarefas de manutenção que não executem o solver, não é necessário passar por `main.py` nem pelo wrapper `./run_with_zshrc.sh`.
 
 This repository uses `poetry` for Python dependency and environment management.
 
@@ -129,4 +131,3 @@ Além disso, o primeiro grupo de instâncias possui apenas 1 veículo, o segundo
 Assim como em Archetti et al. (2011), dividimos os grupos em quatro classes de acordo com a Tabela 4. A Classe I (instâncias de 1 a 10) possui a configuração básica de custos de produção, estoque e transporte, servindo como base para a geração das demais. A Classe II (11 a 20) possui altos custos de produção, equivalentes aos custos da Classe I multiplicados por 10. A Classe III (21 a 30) apresenta altos custos de transporte, ou seja, os custos serão 5 vezes maiores do que na Classe I. Por fim, a Classe IV (31 a 40) não possui custos de estoque no cliente. Cada classe possui 10 instâncias com 5 sementes cada; portanto, temos 200 instâncias para cada grupo, totalizando 800 novas instâncias no conjunto como um todo.
 
 A Classe IV é ignorada no contexto desse repositório.
-
