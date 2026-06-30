@@ -1,183 +1,353 @@
-# INSTRUÇÕES GLOBAIS
+# AGENTS.md
 
-## Otimização de Tokens
+Regra central: não invente comportamento. Ao modificar este projeto, confirme cada afirmação nos arquivos citados e preserve as convenções existentes, mesmo quando houver nomes com erros de digitação.
 
-- Utilize leitura parcial (`offset`/`limit`) em arquivos grandes. Nunca leia um arquivo inteiro quando apenas uma seção for necessária.
-- Evite reler arquivos que já foram lidos durante a sessão após uma edição. O ambiente já rastreia o estado dos arquivos modificados.
-- Não utilize subagentes para tarefas que possam ser resolvidas com uma ou duas chamadas de ferramenta diretas.
-- Prefira buscas locais (`grep`, `find`, `rg`) antes de recorrer a agentes exploratórios para pesquisas simples.
-- Mantenha as respostas objetivas. Evite explicações extensas, exceto quando solicitadas explicitamente.
-- Evite executar chamadas de ferramentas em paralelo quando houver dependência entre elas. Aguarde o resultado da primeira operação antes de iniciar a próxima.
+## Objetivo do projeto
 
-## Seleção de Modelo
+O repositório implementa experimentos para o **Multi Product Production Routing Problem**, combinando produção, estoque e roteamento de veículos em um modelo de otimização. O sistema lê instâncias `.dat`, executa o solver para combinações de pesos e valores de `alpha`, grava resultados em Excel/Parquet, consolida saídas e gera relatórios.
 
-Antes de iniciar qualquer tarefa que não seja trivial, avalie se o modelo atual é adequado.
+| Evidência | Arquivos |
+|---|---|
+| Parser de instâncias `.dat` com clientes, produtos, veículos, períodos, custos, estoque, demanda e coordenadas | `src/helpers/ReadPrpFile.py` |
+| Modelo DOcplex/CPLEX com variáveis de produção, estoque, entrega e rota | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| Execução por instância, peso e alpha | `src/process/WorkerProcess.py`, `constants.py` |
+| Persistência de resultados em `.xlsx` e `.parquet` | `src/process/ProcessResults.py` |
+| Consolidação e criação de targets | `src/process/PostProcessingProcess.py` |
+| Contexto original do problema PRP e classes de instâncias | `README.md`, `AGENTS.md` |
 
-### Guia de Referência
+Não foi possível determinar a partir do código a formulação matemática acadêmica completa, a fonte externa das instâncias ou o significado científico de todos os cenários experimentais.
 
-- **5.4-mini** → buscas rápidas, consultas pontuais, edições simples, consultas SQL/BigQuery básicas e resumos curtos.
-- **5.4** → desenvolvimento de código, correção de bugs, tarefas de complexidade média e análises moderadas.
-- **5.5** → arquitetura complexa, refatorações envolvendo múltiplos arquivos, análises profundas e design de sistemas.
+## Arquitetura
 
-Se o modelo atual não for o mais indicado para a tarefa, informe ao usuário antes de prosseguir:
-
-> Esta tarefa é mais adequada para o modelo **[modelo recomendado]**. Modelo atual: **[modelo atual]**. Execute `/model [modelo recomendado]` e me avise, ou confirme que deseja continuar com o modelo atual.
-
-Não execute a tarefa até que o usuário confirme a troca ou decida prosseguir com o modelo atual.
-
-## Memória de Sessão e Compactação
-
-Mantenha um contador interno de chamadas de ferramentas realizadas durante a sessão.
-
-A cada aproximadamente 40 chamadas de ferramenta:
-
-1. Gere um resumo da sessão contendo:
-   - Objetivo da sessão;
-   - Decisões tomadas;
-   - Arquivos modificados;
-   - Estado atual do trabalho;
-   - Próximos passos pendentes.
-
-2. Salve o resumo em:
-
-   `memory/session-current.md`
-
-3. Informe o usuário:
-
-> Sessão longa detectada (~40 chamadas de ferramenta). Um resumo foi salvo em `memory/session-current.md`. Após concluir a tarefa atual, recomenda-se executar `/compact` para reduzir o consumo de contexto.
-
-Nunca interrompa a tarefa em andamento para gerar o resumo. Faça isso apenas ao final da resposta atual.
-
-# CONTEXTO
-
-Para execuções no sandbox que realmente testem o código do projeto, usar `main.py` por meio de `./run_with_zshrc.sh` como ponto de entrada, para garantir que `~/.zshrc` seja carregado antes do Python/Poetry e que o ambiente do CPLEX fique igual ao do bash/zsh local.
-
-Para outras execuções no sandbox, como `git commit`, revisão de arquivos, leitura de status ou tarefas de manutenção que não executem o solver, não é necessário passar por `main.py` nem pelo wrapper `./run_with_zshrc.sh`.
-
-This repository uses `poetry` for Python dependency and environment management.
-
-Esse é um repositório de implementação de um problema de pesquisa operacional usando a biblioteca docplex e resolvido através do solver cplex. Localmene, o problema é resolvido em paralelo e no cluster, em produção, o problema é paralelizado com MPI (não é possível testar a execução MPI localmente).
-
-O Problema de Roteamento de Produção (PRP, do inglês Production Routing Problem), que combina dois problemas clássicos da pesquisa operacional: o Problema de Dimensionamento de Lotes (PDL) e o Problema de Roteamento de Veículos (PRV). O PDL responde à pergunta: quanto e quando produzir cada item, levando em conta custos de preparação de máquina (setup), custos de produção e limites de capacidade fabril. O PRV, por sua vez, determina quais clientes visitar, em qual ordem e com quais veículos, respeitando a capacidade de carga da frota e minimizando os custos de transporte. A integração desses dois problemas em um único modelo de otimização caracteriza o PRP.
-
----
-
-```
-Directory structure:
-└── multi-product-production-routing-problem/
-    ├── README.md
-    ├── constants.py
-    ├── main.py
-    ├── pyproject.toml
-    ├── script_memlong.sh
-    ├── script_memshort.sh
-    ├── script_paralela.sh
-    ├── script_parexp.sh
-    ├── script_testes.sh
-    ├── .gitingestignore
-    ├── .pre-commit-config.yaml
-    ├── .python-version
-    ├── analysis/
-    │   ├── example_vars.ipynb
-    │   ├── gap analysis.ipynb
-    │   ├── performance profile fob.ipynb
-    │   ├── performance profile weights.ipynb
-    │   └── sensitivity analysis.ipynb
-    ├── config/
-    │   ├── __init__.py
-    │   ├── config.json
-    │   └── config.py
-    ├── scripts/
-    │   └── generate_reports.py
-    └── src/
-        ├── helpers/
-        │   ├── Converter.py
-        │   ├── GraphDisplay.py
-        │   ├── InstanceMetadata.py
-        │   ├── Outputs.py
-        │   ├── ReadPrpFile.py
-        │   └── TargetsLoader.py
-        ├── log/
-        │   └── Logger.py
-        ├── process/
-        │   ├── InstanceProcess.py
-        │   ├── PostProcessingProcess.py
-        │   ├── ProcessResults.py
-        │   ├── TablesResult.py
-        │   └── WorkerProcess.py
-        ├── reports/
-        │   ├── __init__.py
-        │   ├── gap_analysis.py
-        │   ├── performance_fob.py
-        │   ├── performance_weights.py
-        │   ├── sensitivity.py
-        │   └── utils.py
-        └── solvers/
-            ├── GreedyRandomizedConstructionRoute.py
-            ├── MultProductProdctionRoutingProblem.py
-            ├── MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py
-            └── TwoOptOnRoute.py
+```mermaid
+flowchart TD
+    CFG["config/config.json"] --> MAIN["main.py"]
+    MAIN --> DISC["Descoberta de instâncias .dat"]
+    DISC --> WP["WorkerProcess"]
+    WP -->|cria tarefas instância x peso x alpha| TASKS["Tarefas"]
+    TASKS -->|MPI se disponível| MPI["MPIPoolExecutor"]
+    TASKS -->|fallback| SEQ["Execução sequencial"]
+    MPI --> IP["InstanceProcess"]
+    SEQ --> IP
+    IP --> READ["ReadPrpFile"]
+    READ --> MODEL["MultProductProdctionRoutingProblem"]
+    MODEL --> CPLEX["DOcplex/CPLEX"]
+    CPLEX --> RES["ProcessResults"]
+    RES --> XLSX["*_fobs.xlsx"]
+    RES --> PARQ["parquets/*.parquet"]
+    MAIN --> POST["PostProcessingProcess"]
+    POST --> UNION["union_results.xlsx"]
+    POST --> TARGETS["targets.xlsx"]
+    REPORTS["scripts/generate_reports.py"] --> RPT["src/reports"]
+    RPT --> FIGS["out/figs"]
+    RPT --> TEX["out/latex"]
 ```
 
----
-# FILE: README.md
+| Camada | Responsabilidade | Arquivos |
+|---|---|---|
+| Configuração | Carregar `config.json` com cache estático | `config/config.py`, `config/config.json` |
+| Entrada principal | Montar run, logs, instâncias e pós-processamento | `main.py` |
+| Orquestração | Expandir instâncias por pesos/alpha e executar em paralelo ou sequencial | `src/process/WorkerProcess.py` |
+| Execução unitária | Ler uma instância, instanciar solver, resolver, extrair e salvar resultados | `src/process/InstanceProcess.py` |
+| Modelo | Criar variáveis, objetivo, restrições, resolver e extrair solução | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| Heurística | Construir solução heurística e opcionalmente warm start | `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py`, `src/solvers/GreedyRandomizedConstructionRoute.py`, `src/solvers/TwoOptOnRoute.py` |
+| Resultados | Escrever métricas por período e variáveis detalhadas | `src/process/ProcessResults.py` |
+| Pós-processamento | Unir planilhas e gerar targets | `src/process/PostProcessingProcess.py` |
+| Relatórios | Gerar figuras Plotly e tabelas LaTeX | `scripts/generate_reports.py`, `src/reports/*.py` |
+| Guardrails | Monitorar walltime, memória, rank MPI e logs de progresso | `src/helpers/JobGuardrails.py` |
 
-## Exemplos de config.json
+## Convenções de código
 
-Para Executar todas as instancias de uma pasta
+| Convenção observada | Como agir | Evidência |
+|---|---|---|
+| Configuração global via `Config.get_nested(...)` | Antes de passar novos parâmetros, verifique se o padrão do projeto é buscar em `config/config.json` | `config/config.py`, `main.py`, `WorkerProcess.py`, `MultProductProdctionRoutingProblem.py` |
+| Logging por classe `Logger` própria | Use `log.info`, `log.warning`, `log.error`; não substitua por logging padrão sem análise | `src/log/Logger.py` |
+| Escrita de resultados tabulares com pandas | Preserve colunas existentes, hashes e formatos `.xlsx`/`.parquet` | `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py` |
+| Testes com `unittest` e mocks | Ao adicionar testes, siga o padrão dos arquivos em `tests/` | `tests/test_*.py` |
+| Guardrails como parte do fluxo de execução | Não remova checkpoints ou snapshots sem avaliar impacto em execuções longas/HPC | `src/helpers/JobGuardrails.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py` |
+| Uso de constantes globais para pesos e alpha | Alterar pesos muda o espaço experimental inteiro | `constants.py`, `src/process/WorkerProcess.py` |
 
-    {
-        "solver":{
-            "threadsLimit":1,
-            "timeLimit":10,
-            "method":"GUROBY"
-        },
-        "workers":{
-            "num":4,
-            "timeSupervisor":1
-        },
-        "instance":{
-            "is_plot": "false",
-            "dir": "./data/",
-            "output": "./out/",
-            "files": ["DATA_PRP_5C"]
-        }
-    }
+Não foi possível determinar a partir do código um padrão formal obrigatório de formatação além de `.pre-commit-config.yaml`, porque o conteúdo empacotado não foi suficiente para inferir política completa de estilo.
 
-Para uma instancia expecifica
+## Convenções de nomenclatura
 
-    {
-        "solver":{
-            "threadsLimit":1,
-            "timeLimit":10,
-            "method":"GUROBY"
-        },
-        "workers":{
-            "num":4,
-            "timeSupervisor":1
-        },
-        "instance":{
-            "is_plot": "false",
-            "dir": "./data/",
-            "output": "./out/",
-            "files": ["DATA_PRP_5C/PRP1_C5_P2_V1_T2_S1.dat","DATA_PRP_5C/PRP1_C5_P3_V1_T6_S1.dat"]
-        }
-    }
+Preserve nomes existentes, inclusive erros de grafia, para evitar quebrar imports e chamadas internas.
 
+| Nome existente | Significado no código | Arquivos |
+|---|---|---|
+| `MultProductProdctionRoutingProblem` | Solver principal DOcplex/CPLEX | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `MultProductProdctionRoutingProblemGreedyConstructiveHeuristic` | Heurística construtiva | `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py` |
+| `Instancie`, `instancie`, `instancies` | Instância/problema a processar | `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py` |
+| `isPloat`, `ploat` | Plot/geração de gráficos; chamada principal está comentada | `main.py`, `src/helpers/GraphDisplay.py`, `src/process/InstanceProcess.py` |
+| `crateObjectiveFunction` | Criação da função objetivo | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `generteRelax` | Geração de relaxação linear | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `FO`, `GAP`, `TIME`, `EPSILON` | Métricas de solver e objetivo | `src/process/InstanceProcess.py`, `src/process/ProcessResults.py` |
+| `f1`..`f5` | Componentes da função objetivo | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py` |
 
-## Instancias
+## Fluxo esperado para adicionar funcionalidades
 
-Descrições dos Tipos de Classes
+```mermaid
+flowchart TD
+    A["Entender pedido"] --> B["Localizar camada afetada"]
+    B --> C["Ler arquivos centrais relacionados, inclusive pasta docs"]
+    C --> D["Confirmar contratos de dados"]
+    D --> E["Definir menor alteração possível"]
+    E --> F["Adicionar/ajustar testes"]
+    F --> G["Executar testes unitários relevantes"]
+    G --> H["Se tocar solver, avaliar execução via run_with_zshrc.sh"]
+    H --> I["Documentar impactos em config/resultados"]
+```
 
-| Classes    |  Tipo   |   Descrição                                      |
-| ---------- | ------- | -------------------------------------------------|
-| Classe I   |  1–10   |   Instâncias padrão                              |
-| Classe II  |  11–20  |   Custos de produção elevados (Classe I × 10)    |
-| Classe III |  21–30  |   Custos de transporte elevados (Classe I × 5)   |
-| Classe IV  |  31–40  |   Sem custos de estoque no cliente               |
+Checklist operacional:
 
-Além disso, o primeiro grupo de instâncias possui apenas 1 veículo, o segundo grupo tem 2 veículos e os dois seguintes possuem 5 veículos. As demandas são variáveis e os estoques iniciais dos clientes não são zero. A capacidade de produção da planta é limitada, e a capacidade de armazenamento é ilimitada, mas os estoques iniciais são zero.
+| Passo | Pergunta | Arquivos prováveis |
+|---|---|---|
+| 1 | A funcionalidade muda configuração? | `config/config.json`, `config/config.py` |
+| 2 | Muda expansão de tarefas? | `constants.py`, `src/process/WorkerProcess.py` |
+| 3 | Muda leitura de dados? | `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.py` |
+| 4 | Muda formulação matemática? | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| 5 | Muda formato de saída? | `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/reports/utils.py` |
+| 6 | Muda execução longa/HPC? | `src/helpers/JobGuardrails.py`, `src/process/WorkerProcess.py`, `script_*.sh` |
+| 7 | Muda relatórios? | `src/reports/*.py`, `scripts/generate_reports.py`, `constants.py` |
 
-Assim como em Archetti et al. (2011), dividimos os grupos em quatro classes de acordo com a Tabela 4. A Classe I (instâncias de 1 a 10) possui a configuração básica de custos de produção, estoque e transporte, servindo como base para a geração das demais. A Classe II (11 a 20) possui altos custos de produção, equivalentes aos custos da Classe I multiplicados por 10. A Classe III (21 a 30) apresenta altos custos de transporte, ou seja, os custos serão 5 vezes maiores do que na Classe I. Por fim, a Classe IV (31 a 40) não possui custos de estoque no cliente. Cada classe possui 10 instâncias com 5 sementes cada; portanto, temos 200 instâncias para cada grupo, totalizando 800 novas instâncias no conjunto como um todo.
+## Fluxo esperado para corrigir bugs
 
-A Classe IV é ignorada no contexto desse repositório.
+1. Reproduza o bug com a menor entrada possível.
+2. Identifique se o erro acontece em leitura, montagem de tarefas, solver, serialização, pós-processamento ou relatório.
+3. Use logs e guardrails existentes antes de adicionar novos mecanismos.
+4. Preserve o formato de saída salvo, salvo se o bug for justamente no contrato de saída.
+5. Adicione teste que falhe antes da correção quando isso for possível sem CPLEX/MPI real.
+6. Se o bug envolver MPI, use os testes de batching e mocks como guia; execução MPI local pode não ser possível conforme `AGENTS.md` original.
+
+## Arquivos que nunca devem ser alterados sem análise
+
+| Arquivo | Por que exige análise | O que verificar antes |
+|---|---|---|
+| `src/solvers/MultProductProdctionRoutingProblem.py` | Contém a formulação principal, variáveis, objetivo e restrições | Impacto matemático, CPLEX, resultados, testes |
+| `src/process/ProcessResults.py` | Define contrato de saída Excel/Parquet e nomes de colunas usados por relatórios | Compatibilidade com `PostProcessingProcess` e `src/reports` |
+| `constants.py` | Define pesos, alpha e arquivo base de relatórios | Impacto em todas as combinações experimentais |
+| `config/config.json` | Controla solver, workers, diretórios, multiobjetivo, guardrails | Execução local, HPC, targets |
+| `src/process/WorkerProcess.py` | Controla paralelismo, MPI, batching e seleção de pesos | Execução sequencial/MPI e guardrails |
+| `main.py` | Orquestra execução completa e filtro de instâncias | Descoberta de arquivos, logs, pós-processamento |
+| `src/helpers/ReadPrpFile.py` | Parser do formato `.dat` | Compatibilidade com instâncias existentes |
+| `src/helpers/JobGuardrails.py` | Segurança operacional de execuções longas | Walltime, memória, logs, HPC |
+| `src/process/PostProcessingProcess.py` | Consolida resultados e gera targets | Esquema de colunas e `targets.xlsx` |
+| `script_*.sh` | Scripts de produção/HPC | Filas, módulos, ambiente virtual, MPI |
+
+## Arquivos centrais do projeto
+
+| Prioridade | Arquivo | Papel |
+|---:|---|---|
+| 1 | `main.py` | Entrada principal |
+| 2 | `config/config.json` | Configuração de execução |
+| 3 | `constants.py` | Pesos, alpha e arquivo de relatório |
+| 4 | `src/process/WorkerProcess.py` | Orquestração de tarefas |
+| 5 | `src/process/InstanceProcess.py` | Pipeline de uma instância |
+| 6 | `src/solvers/MultProductProdctionRoutingProblem.py` | Modelo de otimização |
+| 7 | `src/process/ProcessResults.py` | Persistência de resultados |
+| 8 | `src/process/PostProcessingProcess.py` | União e targets |
+| 9 | `src/helpers/ReadPrpFile.py` | Parser de instâncias |
+| 10 | `src/helpers/JobGuardrails.py` | Monitoramento operacional |
+
+## Fluxo de execução
+
+```mermaid
+sequenceDiagram
+    participant Main as main.py
+    participant Guard as JobGuardrails
+    participant Worker as WorkerProcess
+    participant Inst as InstanceProcess
+    participant Parser as ReadPrpFile
+    participant Solver as MPPRP
+    participant Results as ProcessResults
+    participant Post as PostProcessingProcess
+
+    Main->>Guard: build_runtime_context()
+    Main->>Main: monta lista de instâncias
+    Main->>Worker: run_parallel(instancies, solver)
+    Worker->>Worker: expande WEIGHTS x ALPHA
+    Worker->>Inst: process()
+    Inst->>Parser: getDataSet()
+    Parser-->>Inst: dados da instância
+    Inst->>Solver: solverInstancie(data)
+    Solver->>Solver: createDecisionVariables()
+    Solver->>Solver: crateObjectiveFunction()
+    Solver->>Solver: cria restrições
+    Solver->>Solver: model.solve()
+    Solver-->>Inst: getResults()
+    Inst->>Results: getResults(...)
+    Results-->>Inst: xlsx/parquet
+    Main->>Post: union_results()
+    Post-->>Main: arquivo consolidado
+    Main->>Post: build_target() se configurado
+```
+
+Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/helpers/ReadPrpFile.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`.
+
+## Responsabilidades de cada diretório
+
+| Diretório | Responsabilidade | Observações |
+|---|---|---|
+| `config/` | Configuração JSON e classe `Config` | `config.json` é lido uma vez e cacheado |
+| `scripts/` | Runners auxiliares | `generate_reports.py` roda relatórios |
+| `src/helpers/` | Utilitários compartilhados | Parser, metadata, targets, guardrails, gráficos |
+| `src/log/` | Logger próprio | Grava arquivo e stdout |
+| `src/process/` | Orquestração e persistência | Worker, instância, pós-processamento, resultados |
+| `src/reports/` | Relatórios científicos/analíticos | Lê Excel consolidado em `out/<constants.FILE>` |
+| `src/solvers/` | Formulação e heurísticas | DOcplex/CPLEX e heurísticas de rota |
+| `tests/` | Testes unitários | Usa `unittest`, mocks e stubs |
+| raiz | Entradas, constantes, scripts PBS e metadados | `main.py`, `constants.py`, `pyproject.toml`, `script_*.sh` |
+
+## Classes principais
+
+| Classe | Responsabilidade | Arquivo |
+|---|---|---|
+| `Config` | Carregar e consultar `config.json` | `config/config.py` |
+| `Logger` | Logging em arquivo/stdout | `src/log/Logger.py` |
+| `GuardrailSnapshot` | Snapshot imutável de estado operacional | `src/helpers/JobGuardrails.py` |
+| `JobGuardrails` | Monitorar walltime/memória/MPI | `src/helpers/JobGuardrails.py` |
+| `ReadPrpFile` | Ler instâncias `.dat` | `src/helpers/ReadPrpFile.py` |
+| `WorkerProcess` | Orquestrar tarefas | `src/process/WorkerProcess.py` |
+| `InstanceProcess` | Processar uma instância | `src/process/InstanceProcess.py` |
+| `PostProcessingProcess` | Unir resultados e criar targets | `src/process/PostProcessingProcess.py` |
+| `TablesResult` | Gerar tabelas tabuladas | `src/process/TablesResult.py` |
+| `MultProductProdctionRoutingProblem` | Modelo principal | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `MultProductProdctionRoutingProblemGreedyConstructiveHeuristic` | Heurística construtiva/warm start | `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py` |
+| `GreedyRandomizedConstructionRoute` | Construção greedy randomizada de rotas | `src/solvers/GreedyRandomizedConstructionRoute.py` |
+| `TwoOptOnRoute` | Melhoria 2-opt | `src/solvers/TwoOptOnRoute.py` |
+
+## Funções principais
+
+| Função | Papel | Arquivo |
+|---|---|---|
+| `_get_git_commit_hash6()` | Obter hash curto para `run_tag` | `main.py` |
+| `_build_run_tag(now)` | Criar identificador da execução | `main.py` |
+| `WorkerProcess.run_parallel()` | Criar e executar tarefas | `src/process/WorkerProcess.py` |
+| `process(...)` | Função submetida ao executor/fallback | `src/process/WorkerProcess.py` |
+| `InstanceProcess.process()` | Pipeline de uma instância | `src/process/InstanceProcess.py` |
+| `InstanceProcess.solverInstancie()` | Selecionar solver por string | `src/process/InstanceProcess.py` |
+| `ReadPrpFile.read()` | Parsear arquivo `.dat` | `src/helpers/ReadPrpFile.py` |
+| `load_targets_by_file()` | Ler `targets.xlsx` | `src/helpers/TargetsLoader.py` |
+| `normalize_instance_file_key()` | Normalizar chave de arquivo para targets | `src/helpers/TargetsLoader.py` |
+| `MultProductProdctionRoutingProblem.solver()` | Montar e resolver modelo | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `MultProductProdctionRoutingProblem.getResults()` | Extrair variáveis e métricas | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `getResults(...)` | Gravar resultados | `src/process/ProcessResults.py` |
+| `PostProcessingProcess.union_results()` | Consolidar Excel | `src/process/PostProcessingProcess.py` |
+| `PostProcessingProcess.build_target()` | Gerar `targets.xlsx` | `src/process/PostProcessingProcess.py` |
+| `generate_*` | Gerar relatórios | `src/reports/*.py`, `scripts/generate_reports.py` |
+
+## Checklist antes de criar código novo
+
+- A mudança é suportada por evidência do código ou por pedido explícito do usuário?
+- Existe uma função/classe próxima que deve ser estendida em vez de criar uma nova?
+- A nova lógica afeta colunas de Excel/Parquet?
+- A nova lógica afeta `targets.xlsx`?
+- A nova lógica precisa funcionar em MPI e sequencial?
+- A nova lógica deve respeitar guardrails?
+- Há teste unitário existente que pode ser expandido?
+- A execução com solver exige ambiente CPLEX? Se sim, considere teste unitário com mock.
+- O nome novo segue o vocabulário existente sem quebrar imports?
+- Gere os devidos testes unitários e de integração.
+- Atualize o arquivo @docs/mathematical-mode.md, quando atualizar a formulação matemática.
+
+## Checklist antes de remover código
+
+- O código é referenciado por imports, chamadas dinâmicas ou scripts?
+- Algum relatório depende de colunas produzidas por esse código?
+- Algum teste mocka esse símbolo?
+- Algum script HPC depende do comportamento?
+- O código é parte do fluxo `build_target`?
+- O código é parte do fluxo multiobjetivo?
+- A remoção altera hashes, nomes de arquivos ou diretórios?
+- A remoção afeta logs/guardrails de execução longa?
+- Foi feita busca global com `rg`?
+- Foi documentado por que a remoção é segura?
+- Atualize o arquivo @docs/mathematical-mode.md, quando atualizar a formulação matemática.
+
+## Checklist antes de refatorar
+
+- Refatoração preserva nomes públicos usados em outros arquivos?
+- Refatoração preserva colunas de saída?
+- Refatoração preserva semântica de `WEIGHTS`, `ALPHA` e `build_target`?
+- Refatoração preserva comportamento sequencial e MPI?
+- Refatoração preserva cleanup de modelo (`terminate`, `model.end`, `gc.collect`)?
+- Refatoração preserva logs necessários para execução longa?
+- Há testes antes/depois?
+- Se tocar solver, há validação com instância pequena?
+- Se tocar relatórios, há validação com arquivo Excel esperado?
+- Se tocar config, há defaults para chaves ausentes?
+- Atualize os devidos testes unitários e de integração.
+- Atualize o arquivo @docs/mathematical-mode.md, quando atualizar a formulação matemática.
+
+## Boas práticas específicas deste projeto
+
+| Prática | Justificativa | Evidência |
+|---|---|---|
+| Use `./run_with_zshrc.sh` para testar execução real do solver localmente | Carrega `~/.zshrc` e ambiente CPLEX/Poetry segundo instrução existente | `AGENTS.md`, `run_with_zshrc.sh` |
+| Prefira testes unitários com mocks para solver/MPI | CPLEX e MPI podem não estar disponíveis localmente | `tests/test_*.py`, `AGENTS.md` |
+| Preserve logs de guardrail | Execuções são longas e podem rodar em cluster | `src/helpers/JobGuardrails.py`, `script_*.sh` |
+| Trate `mpi4py` como opcional no código | Import é condicional e há fallback sequencial | `src/process/WorkerProcess.py` |
+| Mantenha compatibilidade de colunas | Relatórios dependem de `weight_hash`, `alpha`, `f1`..`f5`, `p1`..`p5`, targets e metadados | `src/process/ProcessResults.py`, `src/reports/utils.py`, `src/reports/*.py` |
+| Ao mexer em nomes de instância, verifique regex | Metadados dependem do formato `PRP...` | `src/helpers/InstanceMetadata.py` |
+| Ao mexer em targets, verifique normalização de caminhos | Matching depende de `normalize_instance_file_key` | `src/helpers/TargetsLoader.py` |
+
+## Armadilhas encontradas
+
+| Armadilha | Risco | Arquivos |
+|---|---|---|
+| `method` configurado como `"GUROBY"` mas solver usa DOcplex/CPLEX | IA pode procurar integração com Gurobi inexistente | `config/config.json`, `src/process/InstanceProcess.py`, `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `mpi4py` usado mas não declarado em `pyproject.toml` | Ambiente local pode falhar ou cair no fallback sequencial | `pyproject.toml`, `src/process/WorkerProcess.py` |
+| Classe IV filtrada por `main.py` | Alterar filtro muda escopo experimental | `main.py`, `README.md` |
+| `relaxed_solution.use` é consultado, mas não aparece no `config.json` empacotado | Default ausente pode alterar se `model.solve()` roda | `config/config.json`, `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `WEIGHTS` é escolhido no import de `WorkerProcess.py` | Mudar `postprocessing.build_target` em runtime depois do import pode não afetar `WEIGHTS` | `src/process/WorkerProcess.py` |
+| Gráficos existem, mas chamada está comentada | `is_plot` pode não produzir gráficos no fluxo atual | `src/helpers/GraphDisplay.py`, `src/process/InstanceProcess.py` |
+| Nomes com erros de digitação são usados como API interna | Renomear pode quebrar imports/chamadas | `src/solvers/*.py`, `src/process/*.py` |
+| Relatórios leem `out/<constants.FILE>`, não necessariamente o último `union_results` | IA pode gerar relatório sobre arquivo errado | `constants.py`, `src/reports/utils.py` |
+| `targets.xlsx` exige colunas específicas | Merge pode ser silenciosamente ignorado com warning | `src/process/PostProcessingProcess.py`, `src/helpers/TargetsLoader.py` |
+| `TablesResult.py` existe, mas uso no pipeline principal não foi identificado | Evite assumir que é parte ativa da execução | `src/process/TablesResult.py`, buscas por referência |
+
+## Decisões arquiteturais importantes
+
+| Decisão observada | Impacto | Evidência |
+|---|---|---|
+| Pipeline centrado em `main.py` | Execução completa começa em um único script | `main.py` |
+| Configuração JSON cacheada | Mudanças em `config.json` durante o processo podem não ser recarregadas | `config/config.py` |
+| Execução por produto cartesiano de instâncias, pesos e `ALPHA` | Número de tarefas cresce rapidamente | `src/process/WorkerProcess.py`, `constants.py` |
+| MPI opcional com fallback sequencial | Código deve funcionar sem `mpi4py` | `src/process/WorkerProcess.py` |
+| Guardrails embutidos no pipeline | Execuções longas têm monitoramento de tempo/memória | `src/helpers/JobGuardrails.py`, `src/process/*.py` |
+| Saídas por hash | Nomes de arquivos dependem de instância, peso e alpha | `src/process/ProcessResults.py` |
+| Multiobjetivo por targets e desvios positivos | `targets` são parte do modelo quando `solver.multiobjective` está ativo | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/helpers/TargetsLoader.py` |
+| `build_target` incompatível com `multiobjective` na entrada principal | `main.py` lança exceção quando ambos são verdadeiros | `main.py` |
+| Relatórios separados do pipeline principal | São executados por script próprio | `scripts/generate_reports.py`, `src/reports/*.py` |
+
+## Glossário técnico
+
+| Termo | Significado neste repositório | Arquivos |
+|---|---|---|
+| PRP | Production Routing Problem; problema que combina produção e roteamento | `AGENTS.md`, `README.md` |
+| `.dat` | Arquivo de instância lido pelo parser | `src/helpers/ReadPrpFile.py` |
+| Planta/depósito | Nó `0` usado em rotas e estoque inicial | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py` |
+| Cliente | Nós `1..i-1` nas restrições e demandas | `src/helpers/ReadPrpFile.py`, `src/solvers/MultProductProdctionRoutingProblem.py` |
+| Período | Índice temporal `t` usado em produção, estoque, entrega e rota | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| Produto | Índice `p` usado em produção, estoque, demanda e transporte | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| Veículo | Índice `v` usado em rotas e entregas | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `X` | Quantidade produzida do produto por período | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `Y` | Variável binária de setup/produção | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `I` | Estoque por produto, local e período | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `Z` | Arco de rota usado por veículo | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `R` | Quantidade transportada em arco por produto/veículo | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `Q` | Quantidade entregue por produto/veículo/cliente/período | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `f1` | Custo de produção | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py` |
+| `f2` | Custo de setup | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py` |
+| `f3` | Custo de estoque | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py` |
+| `f4` | Custo fixo de transporte | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py` |
+| `f5` | Custo variável de rota/transporte | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py` |
+| `FO` | Valor da função objetivo | `src/process/InstanceProcess.py`, `src/process/ProcessResults.py` |
+| `GAP` | Gap relativo MIP reportado pelo solver | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| `ALPHA` | Valores globais `[0.01, 0.99]` para execução | `constants.py`, `src/process/WorkerProcess.py` |
+| `WEIGHTS_OPTIMIZE` | Pesos usados na execução normal | `constants.py`, `src/process/WorkerProcess.py` |
+| `WEIGHTS_TARGET` | Pesos unitários usados em `build_target` | `constants.py`, `src/process/WorkerProcess.py` |
+| `targets.xlsx` | Planilha de metas por arquivo/período | `src/helpers/TargetsLoader.py`, `src/process/PostProcessingProcess.py` |
+| Guardrail | Monitoramento preventivo de walltime/memória/MPI | `src/helpers/JobGuardrails.py` |
+| MPI batch | Lote de tarefas submetido ao `MPIPoolExecutor` | `src/process/WorkerProcess.py` |
+
