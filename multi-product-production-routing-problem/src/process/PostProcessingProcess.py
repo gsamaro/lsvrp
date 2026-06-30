@@ -59,6 +59,7 @@ class PostProcessingProcess:
             union_df = enrich_with_instance_metadata(union_df, file_col="file")
 
         for c in [
+            "alpha",
             "weight_hash",
             "new_f1_target",
             "new_f2_target",
@@ -68,12 +69,6 @@ class PostProcessingProcess:
         ]:
             if c not in union_df.columns:
                 union_df[c] = pd.NA
-
-        # Enrich consolidated results with alpha and targets (if available)
-        try:
-            union_df["alpha"] = ALPHA[0]
-        except Exception:
-            union_df["alpha"] = None
 
         targets_dir = Config.get_nested("postprocessing", "output")
         targets_path = (

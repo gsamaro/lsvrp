@@ -146,6 +146,7 @@ def getResults(
             "hash_file": [file_name_hash] * n,
             "weight_hash": [weight_hash] * n,
             "weight": str(weight),
+            "alpha": [float(data['alpha'])] * n,
             "FO": [float(FO)] * n,
             "gap": [float(GAP)] * n,
             "solver_time": [float(TIME)] * n,
