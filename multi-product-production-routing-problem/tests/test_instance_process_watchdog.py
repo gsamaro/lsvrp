@@ -9,6 +9,7 @@ graph_display_module.graphResults = lambda *args, **kwargs: None
 sys.modules.setdefault("src.helpers.GraphDisplay", graph_display_module)
 
 targets_loader_module = types.ModuleType("src.helpers.TargetsLoader")
+targets_loader_module.load_targets_by_file = lambda *args, **kwargs: {}
 targets_loader_module.normalize_instance_file_key = lambda value: value
 sys.modules.setdefault("src.helpers.TargetsLoader", targets_loader_module)
 

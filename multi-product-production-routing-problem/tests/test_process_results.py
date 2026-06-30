@@ -4,6 +4,8 @@ import tempfile
 import types
 import unittest
 
+import numpy as np
+
 
 class FakeSeries(list):
     def tolist(self):
@@ -61,21 +63,6 @@ class FakeDataFrame:
         return cls(data)
 
 
-def _recursive_sum(value):
-    if isinstance(value, (list, tuple)):
-        return sum(_recursive_sum(item) for item in value)
-    return value
-
-
-fake_numpy = types.ModuleType("numpy")
-fake_numpy.nan = float("nan")
-fake_numpy.integer = int
-fake_numpy.floating = float
-fake_numpy.array = lambda value: value
-fake_numpy.sum = _recursive_sum
-fake_numpy.zeros = lambda shape: [[0.0 for _ in range(shape[1])] for _ in range(shape[0])]
-sys.modules.setdefault("numpy", fake_numpy)
-
 fake_orjson = types.ModuleType("orjson")
 sys.modules.setdefault("orjson", fake_orjson)
 
@@ -83,15 +70,11 @@ fake_pandas = types.ModuleType("pandas")
 fake_pandas.DataFrame = FakeDataFrame
 sys.modules.setdefault("pandas", fake_pandas)
 
-converter_module = types.ModuleType("src.helpers.Converter")
-converter_module.toStopPoint = lambda matrix: matrix
-sys.modules.setdefault("src.helpers.Converter", converter_module)
-
 instance_metadata_module = types.ModuleType("src.helpers.InstanceMetadata")
 instance_metadata_module.enrich_with_instance_metadata = lambda df, file_col="file": df
 sys.modules.setdefault("src.helpers.InstanceMetadata", instance_metadata_module)
 
-from src.process.ProcessResults import _build_hash_rows, getResults
+from src.process.ProcessResults import _build_hash_rows, _build_routes_from_Z, getResults
 
 
 class DummyLogger:
@@ -121,6 +104,37 @@ class DummyGuardrails:
 
 
 class ProcessResultsTestCase(unittest.TestCase):
+    def test_build_routes_from_z_reconstructs_sequence(self):
+        z = [
+            [
+                [
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                    [0.0, 0.0, 0.0],
+                ]
+            ]
+        ]
+
+        self.assertEqual(_build_routes_from_Z(z), [[[0, 1, 2]]])
+
+    def test_build_routes_from_z_handles_empty_vehicle(self):
+        z = [[[ [0.0, 0.0], [0.0, 0.0] ]]]
+
+        self.assertEqual(_build_routes_from_Z(z), [[[]]])
+
+    def test_build_routes_from_z_stops_on_incomplete_cycle(self):
+        z = [
+            [
+                [
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                    [1.0, 0.0, 0.0],
+                ]
+            ]
+        ]
+
+        self.assertEqual(_build_routes_from_Z(z), [[[0, 1, 2, 0]]])
+
     def test_build_hash_rows_returns_one_hash_per_time(self):
         hashes = _build_hash_rows("abc123", [0, 1, 2])
 
@@ -134,17 +148,17 @@ class ProcessResultsTestCase(unittest.TestCase):
             guardrails = DummyGuardrails()
             data = {
                 "file": "./data/DATA_PRP_30C/PRP22_C30_P10_V5_T12_S2.dat",
-                "weight": [0.2, 0.2, 0.2, 0.2, 0.2],
+                "weight": np.array([0.2, 0.2, 0.2, 0.2, 0.2]),
                 "alpha": 0.01,
-                "s_p": [1.0],
-                "c_p": [2.0],
-                "h_pi": [[0.0]],
-                "f": [[0.0]],
-                "a_ik": [[0.0]],
+                "s_p": np.array([1.0]),
+                "c_p": np.array([2.0]),
+                "h_pi": np.array([[0.0]]),
+                "f": np.array([[0.0]]),
+                "a_ik": np.array([[0.0]]),
                 "num_periods": 2,
                 "coordXY": {"x": [0.0], "y": [0.0]},
-                "I_pi0": [[0.0]],
-                "d_pit": [[[0.0, 0.0]]],
+                "I_pi0": np.array([[0.0]]),
+                "d_pit": np.array([[[0.0, 0.0]]]),
             }
 
             results = getResults(
@@ -185,17 +199,17 @@ class ProcessResultsTestCase(unittest.TestCase):
             guardrails = DummyGuardrails()
             data = {
                 "file": "./data/DATA_PRP_30C/PRP22_C30_P10_V5_T12_S2.dat",
-                "weight": [0.2, 0.2, 0.2, 0.2, 0.2],
+                "weight": np.array([0.2, 0.2, 0.2, 0.2, 0.2]),
                 "alpha": 0.01,
-                "s_p": [1.0],
-                "c_p": [2.0],
-                "h_pi": [[0.0]],
-                "f": [[0.0]],
-                "a_ik": [[0.0]],
+                "s_p": np.array([1.0]),
+                "c_p": np.array([2.0]),
+                "h_pi": np.array([[0.0]]),
+                "f": np.array([[0.0]]),
+                "a_ik": np.array([[0.0]]),
                 "num_periods": 1,
                 "coordXY": {"x": [0.0], "y": [0.0]},
-                "I_pi0": [[0.0]],
-                "d_pit": [[[0.0]]],
+                "I_pi0": np.array([[0.0]]),
+                "d_pit": np.array([[[0.0]]]),
             }
 
             results = getResults(
@@ -228,6 +242,61 @@ class ProcessResultsTestCase(unittest.TestCase):
             self.assertEqual(len(parquet_files), 1)
             with open(os.path.join(parquet_dir, parquet_files[0]), encoding="utf-8") as handle:
                 self.assertEqual(handle.read(), "hash_file,var,t,j,value")
+
+    def test_get_results_reconstructs_routes_without_converter(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logger = DummyLogger()
+            guardrails = DummyGuardrails()
+            data = {
+                "file": "./data/DATA_PRP_30C/PRP22_C30_P10_V5_T12_S2.dat",
+                "weight": np.array([0.2, 0.2, 0.2, 0.2, 0.2]),
+                "alpha": 0.01,
+                "s_p": np.array([1.0]),
+                "c_p": np.array([2.0]),
+                "h_pi": np.array([[0.0]]),
+                "f": np.array([[0.0, 0.0], [0.0, 0.0]]),
+                "a_ik": np.array([[0.0, 1.0], [1.0, 0.0]]),
+                "num_periods": 1,
+                "num_customers": 1,
+                "coordXY": {"x": [0.0, 1.0], "y": [0.0, 1.0]},
+                "I_pi0": np.array([[0.0], [0.0]]),
+                "d_pit": np.array([[[0.0]], [[0.0]]]),
+            }
+            z = [
+                [
+                    [
+                        [0.0, 1.0],
+                        [0.0, 0.0],
+                    ]
+                ]
+            ]
+
+            results = getResults(
+                data,
+                tmpdir,
+                z,
+                [[1.0]],
+                [[0.0]],
+                [[[0.0, 0.0]]],
+                [[[[[0.0, 0.0], [0.0, 0.0]]]]],
+                [[[[0.0, 0.0]]]],
+                [[0.0, 0.0, 0.0, 0.0, 0.0]],
+                0,
+                0,
+                12.5,
+                None,
+                0,
+                0,
+                0,
+                0,
+                None,
+                log=logger,
+                guardrails=guardrails,
+                task_context={"mpi_batch": 1, "task_number": 1},
+            )
+
+            self.assertEqual(results["periods"][0]["veicles"][0]["points"][0]["point"], 0)
+            self.assertEqual(results["periods"][0]["veicles"][0]["points"][1]["point"], 1)
 
 
 if __name__ == "__main__":

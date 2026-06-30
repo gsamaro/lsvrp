@@ -1,18 +1,13 @@
-import pdb
 import threading
 import time
 
-from src.helpers.GraphDisplay import graphResults
 from src.helpers.JobGuardrails import JobGuardrails
 from src.helpers.ReadPrpFile import ReadPrpFile as RD
 from src.helpers.TargetsLoader import normalize_instance_file_key
 from src.log.Logger import Logger
-from src.process.ProcessResults import getResults, new_get_results
+from src.process.ProcessResults import getResults
 from src.solvers.MultProductProdctionRoutingProblem import (
     MultProductProdctionRoutingProblem as MPPRP,
-)
-from src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic import (
-    MultProductProdctionRoutingProblemGreedyConstructiveHeuristic as MPPRPG,
 )
 import gc
 
@@ -143,14 +138,6 @@ class InstanceProcess:
             return MPPRP(
                 map=data, dir=self.output, log=self.log, start={"start": False}
             )
-        elif self.solver == "HEURISTICA_CONSTRUTIVA_MIT_START":
-            self.log.info(f" Solver: HEURISTICA_CONSTRUTIVA_MIT_START")
-            instancia = MPPRPG(map=data, dir=self.output, log=self.log)
-            instancia.setMitStart(True)
-            return instancia
-        elif self.solver == "HEURISTICA_CONSTRUTIVA":
-            self.log.info(f" Solver: HEURISTICA_CONSTRUTIVA")
-            return MPPRPG(map=data, dir=self.output, log=self.log)
         else:
             print(" VALOR SETADO COMO DEFAULT ----- SEM SOLVER ")
             return 0

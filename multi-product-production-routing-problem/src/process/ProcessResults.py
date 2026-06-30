@@ -5,7 +5,6 @@ from hashlib import sha1
 import numpy as np
 import orjson
 import pandas as pd
-from src.helpers.Converter import toStopPoint
 from src.helpers.InstanceMetadata import enrich_with_instance_metadata
 
 
@@ -14,6 +13,49 @@ def _build_hash_rows(file_name_hash, times):
         sha1(f"{file_name_hash}|{time_value}|".encode("utf-8")).hexdigest()
         for time_value in times
     ]
+
+
+def _build_routes_from_Z(Z, depot=0):
+    routes = []
+
+    for period_routes in Z:
+        period = []
+        for vehicle_matrix in period_routes:
+            outgoing = {}
+            incoming = {}
+
+            for i_idx, row in enumerate(vehicle_matrix):
+                for k_idx, value in enumerate(row):
+                    if float(value) > 0.5:
+                        outgoing[i_idx] = k_idx
+                        incoming[k_idx] = i_idx
+
+            if not outgoing:
+                period.append([])
+                continue
+
+            start = depot if depot in outgoing else next(
+                (node for node in outgoing if node not in incoming),
+                next(iter(outgoing)),
+            )
+
+            route = [start]
+            visited_edges = set()
+            current = start
+
+            while current in outgoing:
+                nxt = outgoing[current]
+                edge = (current, nxt)
+                if edge in visited_edges:
+                    break
+                visited_edges.add(edge)
+                route.append(nxt)
+                current = nxt
+
+            period.append(route)
+        routes.append(period)
+
+    return routes
 
 
 def getResults(
@@ -77,7 +119,7 @@ def getResults(
             return
         log.info("event=no_solution_results phase=write_results")
 
-    routes = [[toStopPoint(v) for v in Z[t]] for t in range(len(Z))]
+    routes = _build_routes_from_Z(Z)
 
     weight = data["weight"]
 
