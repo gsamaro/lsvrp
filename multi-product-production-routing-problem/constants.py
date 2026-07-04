@@ -28,4 +28,4 @@ WEIGHTS_OPTIMIZE = [
 
 ALPHA = [0.01, 0.99]
 
-FILE = '2026-04-19.xlsx' 
+FILE = '2026-06-30.xlsx' 

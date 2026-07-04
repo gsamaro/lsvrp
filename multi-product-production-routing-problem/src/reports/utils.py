@@ -21,6 +21,9 @@ def read_results_df() -> pd.DataFrame:
         df["instancia"] = df["instancia"].astype(int)
     except Exception:
         pass
+    
+    #TODO: Remover de ter todos os resultados completos.
+    df = df.query("clientes <= 10")
 
     # map weight_hash -> label
     hash_list = df["weight_hash"].unique()
