@@ -17,6 +17,12 @@ O repositório implementa experimentos para o **Multi Product Production Routing
 
 Não foi possível determinar a partir do código a formulação matemática acadêmica completa, a fonte externa das instâncias ou o significado científico de todos os cenários experimentais.
 
+## Execução local
+
+Para execuções no sandbox que realmente testem o código do projeto, usar `./run_with_zshrc.sh` como ponto de entrada, para garantir que `~/.zshrc` seja carregado antes do Python/Poetry e que o ambiente do CPLEX fique igual ao do bash/zsh local.
+
+Para outras execuções no sandbox, como `git commit`, revisão de arquivos, leitura de status ou tarefas de manutenção que não executem o solver, não é necessário passar pelo wrapper `./run_with_zshrc.sh`.
+
 ## Arquitetura
 
 ```mermaid
