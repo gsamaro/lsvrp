@@ -6,20 +6,30 @@ from .utils import read_results_df
 
 
 def _get_ct(df, by):
-    df_f_sum_t = pd.pivot_table(
-        df,
-        index=["hash_file", "weight_label", "alpha", by],
-        values=["f_sum_t"],
-        aggfunc="sum",
-    ).reset_index()
+    key_cols = ["file", "weight_hash", "weight_label", "alpha", by]
+    missing = [col for col in key_cols + ["f_sum_t"] if col not in df.columns]
+    if missing:
+        raise ValueError(f"Missing columns for ct calculation: {missing}")
+
+    df_f_sum_t = (
+        pd.pivot_table(
+            df,
+            index=["file", "weight_hash", "weight_label", "alpha", by],
+            values=["f_sum_t"],
+            aggfunc="sum",
+        )
+        .reset_index()
+    )
     df_f_sum_t_001 = df_f_sum_t.query("alpha == 0.01").drop(columns=["alpha"])
     df_f_sum_t_099 = df_f_sum_t.query("alpha == 0.99").drop(columns=["alpha"])
     df_ct = pd.merge(
         df_f_sum_t_001,
         df_f_sum_t_099,
-        on=["hash_file", "weight_label", by],
+        on=["file", "weight_hash", "weight_label", by],
         suffixes=["_001", "_099"],
     )
+    if df_ct.empty:
+        return pd.DataFrame(columns=["weight_label", by, "ct"])
     df_ct["ct"] = (
         np.abs(df_ct["f_sum_t_099"] - df_ct["f_sum_t_001"]) / df_ct["f_sum_t_001"]
     )
@@ -128,29 +138,39 @@ def generate_sensitivity_tables(out_dir: Path | str = "out") -> None:
         df["f_sum_t"] = df[["f1", "f2", "f3", "f4", "f5"]].sum(axis=1)
 
     df_ct_clientes = _get_ct(df, "clientes")
-    tex1 = df_to_latex_table(
-        df_ct_clientes,
-        caption="Sensitivity (ct) by number of clients",
-        label="tab:sensitivity_ct_clientes",
-        weights_in_columns=True,
-        colname_map={
-            "weight_label": "Weight",
-            "clientes": "Clients",
-            "ct": "$|CT^{(0.99)} - CT^{(0.01)}|/|CT^{(0.01)}|$",
-        },
-    )
-    (latex_dir / "sensitivity_ct_clientes.tex").write_text(tex1)
+    if df_ct_clientes.empty:
+        (latex_dir / "sensitivity_ct_clientes.tex").write_text(
+            "% Sensitivity table skipped: no matched rows for alpha 0.01 and 0.99.\n"
+        )
+    else:
+        tex1 = df_to_latex_table(
+            df_ct_clientes,
+            caption="Sensitivity (ct) by number of clients",
+            label="tab:sensitivity_ct_clientes",
+            weights_in_columns=True,
+            colname_map={
+                "weight_label": "Weight",
+                "clientes": "Clients",
+                "ct": "$|CT^{(0.99)} - CT^{(0.01)}|/|CT^{(0.01)}|$",
+            },
+        )
+        (latex_dir / "sensitivity_ct_clientes.tex").write_text(tex1)
 
     df_ct_classe = _get_ct(df, "classe")
-    tex2 = df_to_latex_table(
-        df_ct_classe,
-        caption="Sensitivity (ct) by class",
-        label="tab:sensitivity_ct_classe",
-        weights_in_columns=True,
-        colname_map={
-            "weight_label": "Weight",
-            "clientes": "Clients",
-            "ct": "$|CT^{(0.99)} - CT^{(0.01)}|/|CT^{(0.01)}|$",
-        },
-    )
-    (latex_dir / "sensitivity_ct_classe.tex").write_text(tex2)
+    if df_ct_classe.empty:
+        (latex_dir / "sensitivity_ct_classe.tex").write_text(
+            "% Sensitivity table skipped: no matched rows for alpha 0.01 and 0.99.\n"
+        )
+    else:
+        tex2 = df_to_latex_table(
+            df_ct_classe,
+            caption="Sensitivity (ct) by class",
+            label="tab:sensitivity_ct_classe",
+            weights_in_columns=True,
+            colname_map={
+                "weight_label": "Weight",
+                "clientes": "Clients",
+                "ct": "$|CT^{(0.99)} - CT^{(0.01)}|/|CT^{(0.01)}|$",
+            },
+        )
+        (latex_dir / "sensitivity_ct_classe.tex").write_text(tex2)
