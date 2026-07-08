@@ -23,7 +23,7 @@ def read_results_df() -> pd.DataFrame:
         pass
     
     #TODO: Remover de ter todos os resultados completos.
-    df = df.query("clientes <= 10")
+    df = df.query("clientes <= 20")
 
     # map weight_hash -> label
     hash_list = df["weight_hash"].unique()

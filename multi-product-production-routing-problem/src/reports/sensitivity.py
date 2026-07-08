@@ -46,6 +46,7 @@ def df_to_latex_table(
     decimal_places=3,
     weights_in_columns=False,
     colname_map=None,
+    font_size=r"\small",
 ):
     if colname_map is None:
         colname_map = {}
@@ -53,7 +54,7 @@ def df_to_latex_table(
     def _header_label(col):
         name = colname_map.get(col, str(col))
         if ("$" not in name) and ("\\" not in name):
-            name = name.replace("_", r"\\_")
+            name = name.replace("_", r"\_")
         return name
 
     if weights_in_columns:
@@ -78,23 +79,21 @@ def df_to_latex_table(
 
         lines = []
         if table_env:
-            lines += [r"\\begin{table}[htbp]", r"\\centering"]
-        if caption:
-            lines.append(rf"\\caption{{{caption}}}")
-        if label:
-            lines.append(rf"\\label{{{label}}}")
-        lines.append(rf"\\begin{{tabular}}{{l{ 'c'*len(df_wide.columns) }}}")
-        lines.append(r"\\toprule")
+            lines += [r"\begin{table}[htbp]", r"\centering"]
+            if font_size:
+                lines.append(font_size)
+        lines.append(rf"\begin{{tabular}}{{l{ 'c'*len(df_wide.columns) }}}")
+        lines.append(r"\toprule")
         ct_title = _header_label("ct")
         lines.append(
-            rf"\\multicolumn{{{len(df_wide.columns) + 1}}}{{c}}{{\\textbf{{{ct_title}}}}} \\"
+            rf"\multicolumn{{{len(df_wide.columns) + 1}}}{{c}}{{\textbf{{{ct_title}}}}} \\"
         )
-        lines.append(r"\\midrule")
-        header = [r"\\multicolumn{1}{c}{\\textbf{}}"] + [
-            rf"\\multicolumn{{1}}{{c}}{{\\textbf{{{str(w)}}}}}" for w in df_wide.columns
+        lines.append(r"\midrule")
+        header = [r"\multicolumn{1}{c}{\textbf{}}"] + [
+            rf"\multicolumn{{1}}{{c}}{{\textbf{{{str(w)}}}}}" for w in df_wide.columns
         ]
         lines.append(" & ".join(header) + r" \\")
-        lines.append(r"\\midrule")
+        lines.append(r"\midrule")
         for idx_val, row in df_wide.iterrows():
             left = str(idx_val)
             out = [left]
@@ -105,29 +104,37 @@ def df_to_latex_table(
                 else:
                     out.append(f"{(val*100):.1f}\\%")
             lines.append(" & ".join(out) + r" \\")
-        lines.append(r"\\bottomrule")
-        lines.append(r"\\end{tabular}")
+        lines.append(r"\bottomrule")
+        lines.append(r"\end{tabular}")
+        if caption:
+            lines.append(rf"\caption{{{caption}}}")
+        if label:
+            lines.append(rf"\label{{{label}}}")
         if table_env:
-            lines.append(r"\\end{table}")
+            lines.append(r"\end{table}")
         return "\n".join(lines)
 
     # fallback: plain table using pandas
     lines = []
     if table_env:
-        lines += [r"\\begin{table}[htbp]", r"\\centering"]
-    if caption:
-        lines.append(rf"\\caption{{{caption}}}")
-    if label:
-        lines.append(rf"\\label{{{label}}}")
+        lines += [r"\begin{table}[htbp]", r"\centering"]
+        if font_size:
+            lines.append(font_size)
     lines.append(
         df.to_latex(index=False, float_format=(lambda x: f"{x:.{decimal_places}f}"))
     )
+    if caption:
+        lines.append(rf"\caption{{{caption}}}")
+    if label:
+        lines.append(rf"\label{{{label}}}")
     if table_env:
-        lines.append(r"\\end{table}")
+        lines.append(r"\end{table}")
     return "\n".join(lines)
 
 
-def generate_sensitivity_tables(out_dir: Path | str = "out") -> None:
+def generate_sensitivity_tables(
+    out_dir: Path | str = "out", font_size=r"\small"
+) -> None:
     out_dir = Path(out_dir)
     latex_dir = out_dir / "latex"
     latex_dir.mkdir(parents=True, exist_ok=True)
@@ -148,6 +155,7 @@ def generate_sensitivity_tables(out_dir: Path | str = "out") -> None:
             caption="Sensitivity (ct) by number of clients",
             label="tab:sensitivity_ct_clientes",
             weights_in_columns=True,
+            font_size=font_size,
             colname_map={
                 "weight_label": "Weight",
                 "clientes": "Clients",
@@ -167,6 +175,7 @@ def generate_sensitivity_tables(out_dir: Path | str = "out") -> None:
             caption="Sensitivity (ct) by class",
             label="tab:sensitivity_ct_classe",
             weights_in_columns=True,
+            font_size=font_size,
             colname_map={
                 "weight_label": "Weight",
                 "clientes": "Clients",

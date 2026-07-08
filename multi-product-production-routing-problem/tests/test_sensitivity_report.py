@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from src.reports.sensitivity import _get_ct, generate_sensitivity_tables
+from src.reports.sensitivity import df_to_latex_table
 
 
 class SensitivityReportTestCase(unittest.TestCase):
@@ -150,6 +151,61 @@ class SensitivityReportTestCase(unittest.TestCase):
 
             self.assertIn("Sensitivity table skipped", clientes_tex)
             self.assertIn("Sensitivity table skipped", classe_tex)
+
+    def test_df_to_latex_table_places_font_size_before_tabular_and_caption_after(self):
+        df = pd.DataFrame(
+            [
+                {"group": "A", "weight_label": "$w_{1}$", "ct": 0.1},
+                {"group": "B", "weight_label": "$w_{2}$", "ct": 0.2},
+            ]
+        )
+
+        tex = df_to_latex_table(
+            df,
+            caption="Caption text",
+            label="tab:test",
+            table_env=True,
+            weights_in_columns=True,
+            font_size=r"\tiny",
+        )
+
+        self.assertIn(r"\begin{table}", tex)
+        self.assertIn(r"\tiny", tex)
+        self.assertIn(r"\begin{tabular}", tex)
+        self.assertIn(r"\end{tabular}", tex)
+        self.assertIn(r"\caption{Caption text}", tex)
+        self.assertIn(r"\label{tab:test}", tex)
+        self.assertLess(tex.index(r"\tiny"), tex.index(r"\begin{tabular}"))
+        self.assertLess(tex.index(r"\end{tabular}"), tex.index(r"\caption{Caption text}"))
+        self.assertLess(tex.index(r"\caption{Caption text}"), tex.index(r"\label{tab:test}"))
+
+    def test_df_to_latex_table_uses_single_backslash_latex_commands(self):
+        df = pd.DataFrame(
+            [
+                {"group": "A", "weight_label": "$w_{1}$", "ct": 0.1},
+                {"group": "B", "weight_label": "$w_{2}$", "ct": 0.2},
+            ]
+        )
+
+        tex = df_to_latex_table(
+            df,
+            caption="Caption text",
+            label="tab:test",
+            table_env=True,
+            weights_in_columns=True,
+            font_size=r"\tiny",
+        )
+
+        self.assertIn(r"\begin{table}", tex)
+        self.assertIn(r"\begin{tabular}", tex)
+        self.assertIn(r"\toprule", tex)
+        self.assertIn(r"\midrule", tex)
+        self.assertIn(r"\bottomrule", tex)
+        self.assertIn(r"\multicolumn", tex)
+        self.assertNotIn(r"\\begin{table}", tex)
+        self.assertNotIn(r"\\begin{tabular}", tex)
+        self.assertNotIn(r"\\toprule", tex)
+        self.assertNotIn(r"\\multicolumn", tex)
 
 
 if __name__ == "__main__":

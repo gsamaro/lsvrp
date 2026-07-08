@@ -70,6 +70,7 @@ def _wins_table_to_latex(
     caption=None,
     label=None,
     table_env=True,
+    font_size=r"\small",
 ):
     wc = win_counts.copy()
     wc["clientes"] = pd.to_numeric(wc["clientes"], errors="ignore")
@@ -127,10 +128,8 @@ def _wins_table_to_latex(
     lines = []
     if table_env:
         lines += [r"\begin{table}[t]", r"\centering"]
-    if caption:
-        lines.append(rf"\caption{{{caption}}}")
-    if label:
-        lines.append(rf"\label{{{label}}}")
+        if font_size:
+            lines.append(font_size)
 
     lines.append(rf"\begin{{tabular}}{{{colspec}}}")
     lines.append(r"\toprule")
@@ -198,6 +197,10 @@ def _wins_table_to_latex(
 
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
+    if caption:
+        lines.append(rf"\caption{{{caption}}}")
+    if label:
+        lines.append(rf"\label{{{label}}}")
     if table_env:
         lines.append(r"\end{table}")
 
@@ -211,6 +214,7 @@ def _winners2_to_latex_alpha_cols_tau_rows(
     caption=None,
     label=None,
     table_env=True,
+    font_size=r"\small",
 ):
     w = winners2.copy()
     w["alpha"] = pd.to_numeric(w["alpha"], errors="coerce")
@@ -236,10 +240,8 @@ def _winners2_to_latex_alpha_cols_tau_rows(
     lines = []
     if table_env:
         lines += [r"\begin{table}[t]", r"\centering"]
-    if caption:
-        lines.append(rf"\caption{{{caption}}}")
-    if label:
-        lines.append(rf"\label{{{label}}}")
+        if font_size:
+            lines.append(font_size)
 
     lines.append(rf"\begin{{tabular}}{{{colspec}}}")
     lines.append(r"\toprule")
@@ -264,6 +266,10 @@ def _winners2_to_latex_alpha_cols_tau_rows(
 
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
+    if caption:
+        lines.append(rf"\caption{{{caption}}}")
+    if label:
+        lines.append(rf"\label{{{label}}}")
     if table_env:
         lines.append(r"\end{table}")
     return "\n".join(lines)
@@ -303,6 +309,7 @@ def _weight_mapping_to_latex(
     label=None,
     table_env=True,
     decimal_places=3,
+    font_size=r"\small",
 ):
     """
     Gera tabela LaTeX mostrando o mapeamento entre weight labels e seus vetores.
@@ -327,10 +334,8 @@ def _weight_mapping_to_latex(
     lines = []
     if table_env:
         lines += [r"\begin{table}[t]", r"\centering"]
-    if caption:
-        lines.append(rf"\caption{{{caption}}}")
-    if label:
-        lines.append(rf"\label{{{label}}}")
+        if font_size:
+            lines.append(font_size)
 
     lines.append(rf"\begin{{tabular}}{{{colspec}}}")
     lines.append(r"\toprule")
@@ -351,6 +356,10 @@ def _weight_mapping_to_latex(
 
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
+    if caption:
+        lines.append(rf"\caption{{{caption}}}")
+    if label:
+        lines.append(rf"\label{{{label}}}")
     if table_env:
         lines.append(r"\end{table}")
 
@@ -464,6 +473,7 @@ def _winners_by_tau_to_latex(
     caption=None,
     label=None,
     table_env=True,
+    font_size=r"\small",
 ) -> str:
     """
     Gera a tabela da célula 27: peso vencedor por tau, alpha, clientes e classe.
@@ -535,10 +545,8 @@ def _winners_by_tau_to_latex(
     lines = []
     if table_env:
         lines += [r"\begin{table}[t]", r"\centering"]
-    if caption:
-        lines.append(rf"\caption{{{caption}}}")
-    if label:
-        lines.append(rf"\label{{{label}}}")
+        if font_size:
+            lines.append(font_size)
 
     lines.append(rf"\begin{{tabular}}{{{colspec}}}")
     lines.append(r"\toprule")
@@ -595,13 +603,19 @@ def _winners_by_tau_to_latex(
 
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
+    if caption:
+        lines.append(rf"\caption{{{caption}}}")
+    if label:
+        lines.append(rf"\label{{{label}}}")
     if table_env:
         lines.append(r"\end{table}")
 
     return "\n".join(lines)
 
 
-def generate_performance_weights(out_dir: str | Path = "out") -> None:
+def generate_performance_weights(
+    out_dir: str | Path = "out", font_size=r"\small"
+) -> None:
     out_dir = Path(out_dir)
     latex_dir = out_dir / "latex"
     figs_dir = out_dir / "figs"
@@ -715,9 +729,10 @@ def generate_performance_weights(out_dir: str | Path = "out") -> None:
             alpha_order=alpha_order_tau,
             clientes_order=clientes_order_tau,
             classes_order=classes_order_tau,
-            caption=None,
-            label=None,
+            caption="Peso Vencedor",
+            label="tab:winner",
             table_env=True,
+            font_size=font_size,
         )
         (latex_dir / "wins_by_tau.tex").write_text(tex_counts)
 
@@ -736,6 +751,7 @@ def generate_performance_weights(out_dir: str | Path = "out") -> None:
             caption="Global performance of a portion of weight space $W$",
             label="tab:weight_performance",
             table_env=True,
+            font_size=font_size,
         )
         (latex_dir / "weight_performance.tex").write_text(tex)
 
@@ -756,6 +772,7 @@ def generate_performance_weights(out_dir: str | Path = "out") -> None:
             caption="Best weight per $\\alpha$ and $\\tau$",
             label="tab:winners_alpha_tau",
             table_env=True,
+            font_size=font_size,
         )
         (latex_dir / "winners_alpha_tau.tex").write_text(tex2)
 
@@ -779,5 +796,6 @@ def generate_performance_weights(out_dir: str | Path = "out") -> None:
                 label="tab:weight_mapping",
                 table_env=True,
                 decimal_places=3,
+                font_size=font_size,
             )
             (latex_dir / "weight_mapping.tex").write_text(tex_weights)

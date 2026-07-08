@@ -13,6 +13,7 @@ def gap_table_to_latex_alpha_weight(
     caption=None,
     label=None,
     table_env=True,
+    font_size=r"\small",
 ):
     tab = tabela_media.copy()
 
@@ -116,10 +117,8 @@ def gap_table_to_latex_alpha_weight(
     lines = []
     if table_env:
         lines += [r"\begin{table}[t]", r"\centering"]
-    if caption:
-        lines.append(rf"\caption{{{caption}}}")
-    if label:
-        lines.append(rf"\label{{{label}}}")
+        if font_size:
+            lines.append(font_size)
 
     lines.append(rf"\begin{{tabular}}{{{colspec}}}")
     lines.append(r"\toprule")
@@ -175,13 +174,17 @@ def gap_table_to_latex_alpha_weight(
 
     lines.append(r"\bottomrule")
     lines.append(r"\end{tabular}")
+    if caption:
+        lines.append(rf"\caption{{{caption}}}")
+    if label:
+        lines.append(rf"\label{{{label}}}")
     if table_env:
         lines.append(r"\end{table}")
 
     return "\n".join(lines)
 
 
-def generate_gap_tables(out_dir: Path | str = "out") -> None:
+def generate_gap_tables(out_dir: Path | str = "out", font_size=r"\small") -> None:
     out_dir = Path(out_dir)
     latex_dir = out_dir / "latex"
     latex_dir.mkdir(parents=True, exist_ok=True)
@@ -282,6 +285,7 @@ def generate_gap_tables(out_dir: Path | str = "out") -> None:
         caption="Average gap (\\%) by clients/class (rows) and $\\alpha$/weight (columns), without outliers.",
         label="tab:gap_alpha_weight",
         table_env=True,
+        font_size=font_size,
     )
 
     (latex_dir / "gap_alpha_weight.tex").write_text(latex_code)

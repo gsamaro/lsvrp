@@ -21,6 +21,11 @@ def main():
     p.add_argument(
         "--only", nargs="*", help="Which reports to run: fob, weights, gap, sensitivity"
     )
+    p.add_argument(
+        "--latex-font-size",
+        default=r"\small",
+        help="LaTeX font size command inserted after \\begin{table} (e.g. \\tiny, \\small, \\Large).",
+    )
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
 
@@ -37,17 +42,17 @@ def main():
     if "weights" in to_run:
         print("Running performance weights...")
         if not args.dry_run:
-            generate_performance_weights(out_dir)
+            generate_performance_weights(out_dir, font_size=args.latex_font_size)
 
     if "gap" in to_run:
         print("Running gap analysis...")
         if not args.dry_run:
-            generate_gap_tables(out_dir)
+            generate_gap_tables(out_dir, font_size=args.latex_font_size)
 
     if "sensitivity" in to_run:
         print("Running sensitivity analysis...")
         if not args.dry_run:
-            generate_sensitivity_tables(out_dir)
+            generate_sensitivity_tables(out_dir, font_size=args.latex_font_size)
 
 
 if __name__ == "__main__":

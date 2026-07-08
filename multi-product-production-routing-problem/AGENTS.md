@@ -19,9 +19,17 @@ Não foi possível determinar a partir do código a formulação matemática aca
 
 ## Execução local
 
-Para execuções no sandbox que realmente testem o código do projeto, usar `./run_with_zshrc.sh` como ponto de entrada, para garantir que `~/.zshrc` seja carregado antes do Python/Poetry e que o ambiente do CPLEX fique igual ao do bash/zsh local.
+Para execuções no sandbox que realmente testem o código do projeto, carregar `~/.zshrc` antes de chamar Poetry. O caminho que funcionou aqui para testes foi:
+
+```bash
+source "$HOME/.zshrc" && poetry run python -m unittest tests.test_...
+```
+
+Quando o objetivo for executar o fluxo completo do projeto, usar `./run_with_zshrc.sh` como ponto de entrada, porque ele já carrega `~/.zshrc` e chama o `python` do ambiente Poetry antes de entrar em `main.py`.
 
 Para outras execuções no sandbox, como `git commit`, revisão de arquivos, leitura de status ou tarefas de manutenção que não executem o solver, não é necessário passar pelo wrapper `./run_with_zshrc.sh`.
+
+Observação do ambiente: durante a execução dos testes apareceu o aviso do `pyenv` (`pyenv: cannot rehash ...`), mas isso não impediu a suíte de rodar quando o comando foi executado via `poetry run`.
 
 ## Arquitetura
 
@@ -356,4 +364,3 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | `targets.xlsx` | Planilha de metas por arquivo/período | `src/helpers/TargetsLoader.py`, `src/process/PostProcessingProcess.py` |
 | Guardrail | Monitoramento preventivo de walltime/memória/MPI | `src/helpers/JobGuardrails.py` |
 | MPI batch | Lote de tarefas submetido ao `MPIPoolExecutor` | `src/process/WorkerProcess.py` |
-
