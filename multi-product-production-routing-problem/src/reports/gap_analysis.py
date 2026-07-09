@@ -1,5 +1,7 @@
 from pathlib import Path
+
 import pandas as pd
+
 from .utils import read_results_df
 
 
@@ -116,7 +118,7 @@ def gap_table_to_latex_alpha_weight(
 
     lines = []
     if table_env:
-        lines += [r"\begin{table}[t]", r"\centering"]
+        lines += [r"\begin{table}[htbp]", r"\centering"]
         if font_size:
             lines.append(font_size)
 
@@ -186,7 +188,7 @@ def gap_table_to_latex_alpha_weight(
 
 def generate_gap_tables(out_dir: Path | str = "out", font_size=r"\small") -> None:
     out_dir = Path(out_dir)
-    latex_dir = out_dir / "latex"
+    latex_dir = out_dir / "tables"
     latex_dir.mkdir(parents=True, exist_ok=True)
 
     df = read_results_df()

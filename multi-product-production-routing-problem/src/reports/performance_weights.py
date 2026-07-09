@@ -127,7 +127,7 @@ def _wins_table_to_latex(
 
     lines = []
     if table_env:
-        lines += [r"\begin{table}[t]", r"\centering"]
+        lines += [r"\begin{table}[htbp]", r"\centering"]
         if font_size:
             lines.append(font_size)
 
@@ -239,7 +239,7 @@ def _winners2_to_latex_alpha_cols_tau_rows(
 
     lines = []
     if table_env:
-        lines += [r"\begin{table}[t]", r"\centering"]
+        lines += [r"\begin{table}[htbp]", r"\centering"]
         if font_size:
             lines.append(font_size)
 
@@ -333,7 +333,7 @@ def _weight_mapping_to_latex(
 
     lines = []
     if table_env:
-        lines += [r"\begin{table}[t]", r"\centering"]
+        lines += [r"\begin{table}[htbp]", r"\centering"]
         if font_size:
             lines.append(font_size)
 
@@ -544,7 +544,7 @@ def _winners_by_tau_to_latex(
 
     lines = []
     if table_env:
-        lines += [r"\begin{table}[t]", r"\centering"]
+        lines += [r"\begin{table}[htbp]", r"\centering"]
         if font_size:
             lines.append(font_size)
 
@@ -573,7 +573,9 @@ def _winners_by_tau_to_latex(
     row2 = [r"\multicolumn{1}{c}{\textbf{}}"]
     for _a in alpha_order:
         for c_val in clientes_order:
-            row2.append(rf"\multicolumn{{{K}}}{{c}}{{\textbf{{clientes {int(c_val)}}}}}")
+            row2.append(
+                rf"\multicolumn{{{K}}}{{c}}{{\textbf{{clientes {int(c_val)}}}}}"
+            )
     lines.append(" & ".join(row2) + r" \\")
 
     cmid2 = []
@@ -617,7 +619,7 @@ def generate_performance_weights(
     out_dir: str | Path = "out", font_size=r"\small"
 ) -> None:
     out_dir = Path(out_dir)
-    latex_dir = out_dir / "latex"
+    latex_dir = out_dir / "tables"
     figs_dir = out_dir / "figs"
     latex_dir.mkdir(parents=True, exist_ok=True)
     figs_dir.mkdir(parents=True, exist_ok=True)
@@ -717,7 +719,9 @@ def generate_performance_weights(
     # (Cell 27) tabela dos pesos vencedores por tau, alpha, clientes e classe
     taus_of_interest = [1.0, 1.5]
     winners_filtered = winners[
-        np.logical_or.reduce([np.isclose(winners["tau"], tau) for tau in taus_of_interest])
+        np.logical_or.reduce(
+            [np.isclose(winners["tau"], tau) for tau in taus_of_interest]
+        )
     ].copy()
     if not winners_filtered.empty:
         alpha_order_tau = sorted(winners_filtered["alpha"].unique())

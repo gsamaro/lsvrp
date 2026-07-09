@@ -1,7 +1,9 @@
-from pathlib import Path
 import re
-import pandas as pd
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
+
 from .utils import read_results_df
 
 
@@ -11,15 +13,12 @@ def _get_ct(df, by):
     if missing:
         raise ValueError(f"Missing columns for ct calculation: {missing}")
 
-    df_f_sum_t = (
-        pd.pivot_table(
-            df,
-            index=["file", "weight_hash", "weight_label", "alpha", by],
-            values=["f_sum_t"],
-            aggfunc="sum",
-        )
-        .reset_index()
-    )
+    df_f_sum_t = pd.pivot_table(
+        df,
+        index=["file", "weight_hash", "weight_label", "alpha", by],
+        values=["f_sum_t"],
+        aggfunc="sum",
+    ).reset_index()
     df_f_sum_t_001 = df_f_sum_t.query("alpha == 0.01").drop(columns=["alpha"])
     df_f_sum_t_099 = df_f_sum_t.query("alpha == 0.99").drop(columns=["alpha"])
     df_ct = pd.merge(
@@ -136,7 +135,7 @@ def generate_sensitivity_tables(
     out_dir: Path | str = "out", font_size=r"\small"
 ) -> None:
     out_dir = Path(out_dir)
-    latex_dir = out_dir / "latex"
+    latex_dir = out_dir / "tables"
     latex_dir.mkdir(parents=True, exist_ok=True)
 
     df = read_results_df()
