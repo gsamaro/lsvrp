@@ -7,6 +7,20 @@ import pandas as pd
 from .utils import read_results_df
 
 
+def _class_to_roman(value):
+    roman_map = {
+        1: "I",
+        2: "II",
+        3: "III",
+        4: "IV",
+        "1": "I",
+        "2": "II",
+        "3": "III",
+        "4": "IV",
+    }
+    return roman_map.get(value, roman_map.get(str(value), str(value)))
+
+
 def _get_ct(df, by):
     key_cols = ["file", "weight_hash", "weight_label", "alpha", by]
     missing = [col for col in key_cols + ["f_sum_t"] if col not in df.columns]
@@ -169,6 +183,8 @@ def generate_sensitivity_tables(
             "% Sensitivity table skipped: no matched rows for alpha 0.01 and 0.99.\n"
         )
     else:
+        df_ct_classe = df_ct_classe.copy()
+        df_ct_classe["classe"] = df_ct_classe["classe"].apply(_class_to_roman)
         tex2 = df_to_latex_table(
             df_ct_classe,
             caption="Sensitivity (ct) by class",

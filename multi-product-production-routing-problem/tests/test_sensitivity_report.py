@@ -146,11 +146,79 @@ class SensitivityReportTestCase(unittest.TestCase):
             with patch("src.reports.sensitivity.read_results_df", return_value=fake_df):
                 generate_sensitivity_tables(out_dir)
 
-            clientes_tex = (out_dir / "latex" / "sensitivity_ct_clientes.tex").read_text()
-            classe_tex = (out_dir / "latex" / "sensitivity_ct_classe.tex").read_text()
+            clientes_tex = (out_dir / "tables" / "sensitivity_ct_clientes.tex").read_text()
+            classe_tex = (out_dir / "tables" / "sensitivity_ct_classe.tex").read_text()
 
             self.assertIn("Sensitivity table skipped", clientes_tex)
             self.assertIn("Sensitivity table skipped", classe_tex)
+
+    def test_generate_sensitivity_tables_renders_class_in_roman_numerals(self):
+        fake_df = pd.DataFrame(
+            [
+                {
+                    "file": "instance_a.dat",
+                    "weight_hash": "abc123",
+                    "weight_label": "$w_{1}$",
+                    "alpha": 0.01,
+                    "clientes": 5,
+                    "classe": 1,
+                    "f1": 1.0,
+                    "f2": 1.0,
+                    "f3": 1.0,
+                    "f4": 1.0,
+                    "f5": 1.0,
+                },
+                {
+                    "file": "instance_a.dat",
+                    "weight_hash": "abc123",
+                    "weight_label": "$w_{1}$",
+                    "alpha": 0.99,
+                    "clientes": 5,
+                    "classe": 1,
+                    "f1": 2.0,
+                    "f2": 2.0,
+                    "f3": 2.0,
+                    "f4": 2.0,
+                    "f5": 2.0,
+                },
+                {
+                    "file": "instance_b.dat",
+                    "weight_hash": "def456",
+                    "weight_label": "$w_{2}$",
+                    "alpha": 0.01,
+                    "clientes": 5,
+                    "classe": 2,
+                    "f1": 3.0,
+                    "f2": 3.0,
+                    "f3": 3.0,
+                    "f4": 3.0,
+                    "f5": 3.0,
+                },
+                {
+                    "file": "instance_b.dat",
+                    "weight_hash": "def456",
+                    "weight_label": "$w_{2}$",
+                    "alpha": 0.99,
+                    "clientes": 5,
+                    "classe": 2,
+                    "f1": 4.0,
+                    "f2": 4.0,
+                    "f3": 4.0,
+                    "f4": 4.0,
+                    "f5": 4.0,
+                },
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            with patch("src.reports.sensitivity.read_results_df", return_value=fake_df):
+                generate_sensitivity_tables(out_dir)
+
+            classe_tex = (out_dir / "tables" / "sensitivity_ct_classe.tex").read_text()
+
+            self.assertIn("\nI &", classe_tex)
+            self.assertIn("\nII &", classe_tex)
 
     def test_df_to_latex_table_places_font_size_before_tabular_and_caption_after(self):
         df = pd.DataFrame(
