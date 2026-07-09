@@ -103,9 +103,9 @@ def gap_table_to_latex_alpha_weight(
 
     def clients_label(c):
         try:
-            return f"{int(float(c))} clients"
+            return f"{int(float(c))}C"
         except Exception:
-            return f"{c} clients"
+            return f"{c}C"
 
     def fmt_pct(v):
         if pd.isna(v):

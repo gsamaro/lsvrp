@@ -179,7 +179,7 @@ def _wins_table_to_latex(
             is_first = True
 
         if is_first:
-            left = rf"\multirow{{{num_rows}}}{{*}}{{\textbf{{{int(c)} clients}}}}"
+            left = rf"\multirow{{{num_rows}}}{{*}}{{\textbf{{{int(c)}C}}}}"
         else:
             left = ""
 
@@ -574,7 +574,7 @@ def _winners_by_tau_to_latex(
     for _a in alpha_order:
         for c_val in clientes_order:
             row2.append(
-                rf"\multicolumn{{{K}}}{{c}}{{\textbf{{clientes {int(c_val)}}}}}"
+                rf"\multicolumn{{{K}}}{{c}}{{\textbf{{{int(c_val)}C}}}}"
             )
     lines.append(" & ".join(row2) + r" \\")
 
