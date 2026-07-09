@@ -47,7 +47,7 @@ def main():
     if "gap" in to_run:
         print("Running gap analysis...")
         if not args.dry_run:
-            generate_gap_tables(out_dir, font_size=args.latex_font_size)
+            generate_gap_tables(out_dir, font_size="\scriptsize")
 
     if "sensitivity" in to_run:
         print("Running sensitivity analysis...")
