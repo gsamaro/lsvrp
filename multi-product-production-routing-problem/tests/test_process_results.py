@@ -240,8 +240,15 @@ class ProcessResultsTestCase(unittest.TestCase):
             parquet_files = os.listdir(parquet_dir)
             self.assertEqual(results["periods"], [])
             self.assertEqual(len(parquet_files), 1)
-            with open(os.path.join(parquet_dir, parquet_files[0]), encoding="utf-8") as handle:
-                self.assertEqual(handle.read(), "hash_file,var,t,j,value")
+            parquet_path = os.path.join(parquet_dir, parquet_files[0])
+            import pandas as pd
+
+            if hasattr(pd, "read_parquet"):
+                parquet_df = pd.read_parquet(parquet_path)
+                self.assertEqual(list(parquet_df.columns), ["hash_file", "var", "t", "j", "value"])
+            else:
+                with open(parquet_path, encoding="utf-8") as handle:
+                    self.assertEqual(handle.read(), "hash_file,var,t,j,value")
 
     def test_get_results_reconstructs_routes_without_converter(self):
         with tempfile.TemporaryDirectory() as tmpdir:

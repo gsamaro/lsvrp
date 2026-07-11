@@ -118,16 +118,16 @@ class MultProductProdctionRoutingProblem:
         for p in range(self.p):
             for t in range(self.t):
                 warm_start.add_var_value(
-                    self.model.X_p_t[p, t], self.start["variables"]["X"][p][t]
+                    self.model.X_p_t[p, t], float(self.start["variables"]["X"][p][t])
                 )
                 warm_start.add_var_value(
-                    self.model.Y_p_t[p, t], self.start["variables"]["Y"][p][t]
+                    self.model.Y_p_t[p, t], float(self.start["variables"]["Y"][p][t])
                 )
             for i in range(self.i):
                 for t in range(self.t):
                     warm_start.add_var_value(
                         self.model.I_p_i_t[p, i, t],
-                        self.start["variables"]["I"][p][i][t],
+                        float(self.start["variables"]["I"][p][i][t]),
                     )
             for v in range(self.v):
                 for i in range(self.i):
@@ -135,13 +135,13 @@ class MultProductProdctionRoutingProblem:
                         for t in range(self.t):
                             warm_start.add_var_value(
                                 self.model.R_p_v_i_k_t[p, v, i, k, t],
-                                self.start["variables"]["R"][p][v][i][k][t],
+                                float(self.start["variables"]["R"][p][v][i][k][t]),
                             )
                 for i in range(self.i):
                     for t in range(self.t):
                         warm_start.add_var_value(
                             self.model.Q_p_v_i_t[p, v, i, t],
-                            self.start["variables"]["Q"][p][v][i][t],
+                            float(self.start["variables"]["Q"][p][v][i][t]),
                         )
         for v in range(self.v):
             for i in range(self.i):
@@ -149,7 +149,7 @@ class MultProductProdctionRoutingProblem:
                     for t in range(self.t):
                         warm_start.add_var_value(
                             self.model.Z_v_i_k_t[v, i, k, t],
-                            self.start["variables"]["Z"][v][i][k][t],
+                            float(self.start["variables"]["Z"][v][i][k][t]),
                         )
         self.model.add_mip_start(warm_start)
 

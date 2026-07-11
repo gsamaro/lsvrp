@@ -4,24 +4,31 @@ import types
 import unittest
 from unittest.mock import patch
 
+_original_graph_display_module = sys.modules.get("src.helpers.GraphDisplay")
 graph_display_module = types.ModuleType("src.helpers.GraphDisplay")
 graph_display_module.graphResults = lambda *args, **kwargs: None
 sys.modules.setdefault("src.helpers.GraphDisplay", graph_display_module)
 
+_original_targets_loader_module = sys.modules.get("src.helpers.TargetsLoader")
 targets_loader_module = types.ModuleType("src.helpers.TargetsLoader")
 targets_loader_module.load_targets_by_file = lambda *args, **kwargs: {}
 targets_loader_module.normalize_instance_file_key = lambda value: value
 sys.modules.setdefault("src.helpers.TargetsLoader", targets_loader_module)
 
+_original_process_results_module = sys.modules.get("src.process.ProcessResults")
 process_results_module = types.ModuleType("src.process.ProcessResults")
 process_results_module.getResults = lambda *args, **kwargs: {"periods": []}
 process_results_module.new_get_results = lambda *args, **kwargs: {}
 sys.modules.setdefault("src.process.ProcessResults", process_results_module)
 
+_original_solver_module = sys.modules.get("src.solvers.MultProductProdctionRoutingProblem")
 solver_module = types.ModuleType("src.solvers.MultProductProdctionRoutingProblem")
 solver_module.MultProductProdctionRoutingProblem = object
 sys.modules.setdefault("src.solvers.MultProductProdctionRoutingProblem", solver_module)
 
+_original_heuristic_module = sys.modules.get(
+    "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic"
+)
 heuristic_module = types.ModuleType(
     "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic"
 )
@@ -32,6 +39,33 @@ sys.modules.setdefault(
 )
 
 from src.process.InstanceProcess import InstanceProcess
+
+if _original_graph_display_module is None:
+    sys.modules.pop("src.helpers.GraphDisplay", None)
+else:
+    sys.modules["src.helpers.GraphDisplay"] = _original_graph_display_module
+
+if _original_targets_loader_module is None:
+    sys.modules.pop("src.helpers.TargetsLoader", None)
+else:
+    sys.modules["src.helpers.TargetsLoader"] = _original_targets_loader_module
+
+if _original_process_results_module is None:
+    sys.modules.pop("src.process.ProcessResults", None)
+else:
+    sys.modules["src.process.ProcessResults"] = _original_process_results_module
+
+if _original_solver_module is None:
+    sys.modules.pop("src.solvers.MultProductProdctionRoutingProblem", None)
+else:
+    sys.modules["src.solvers.MultProductProdctionRoutingProblem"] = _original_solver_module
+
+if _original_heuristic_module is None:
+    sys.modules.pop("src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic", None)
+else:
+    sys.modules[
+        "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic"
+    ] = _original_heuristic_module
 
 
 class DummyLogger:
