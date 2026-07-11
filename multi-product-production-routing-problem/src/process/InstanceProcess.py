@@ -9,7 +9,9 @@ from src.process.ProcessResults import getResults
 from src.solvers.MultProductProdctionRoutingProblem import (
     MultProductProdctionRoutingProblem as MPPRP,
 )
+from src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic import MultProductProdctionRoutingProblemGreedyConstructiveHeuristic as MPPRPG
 import gc
+import numpy as np
 
 
 class InstanceProcess:
@@ -22,7 +24,7 @@ class InstanceProcess:
         numThreads=None,
         timeLimit=None,
         log: Logger = None,
-        solver="GRASP",
+        solver="GUROBY",
         weight=None,
         targets_by_file=None,
         alpha=None,
@@ -138,6 +140,12 @@ class InstanceProcess:
             return MPPRP(
                 map=data, dir=self.output, log=self.log, start={"start": False}
             )
+        elif self.solver == "HEURISTICA_CONSTRUTIVA":
+            self.log.info(f"Solver: HEURISTICA_CONSTRUTIVA")
+            inst = MPPRPG(
+                map=data, dir=self.output, log=self.log, rng=np.random.default_rng(seed=123))
+            inst.setMitStart(True)
+            return inst
         else:
             print(" VALOR SETADO COMO DEFAULT ----- SEM SOLVER ")
             return 0
