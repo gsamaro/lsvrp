@@ -19,10 +19,16 @@ Não foi possível determinar a partir do código a formulação matemática aca
 
 ## Execução local
 
-Para execuções no sandbox que realmente testem o código do projeto, carregar `~/.zshrc` antes de chamar Poetry. O caminho que funcionou aqui para testes foi:
+Para execuções no sandbox que realmente testem o código do projeto, carregar `~/.zshrc` antes de chamar Poetry. O runner recomendado para testes é `pytest`, inclusive para testes legados baseados em `unittest`, porque o `pytest` também os coleta.
 
 ```bash
-source "$HOME/.zshrc" && poetry run python -m unittest tests.test_...
+source "$HOME/.zshrc" && poetry run pytest tests/test_...
+```
+
+Para executar um arquivo específico, use:
+
+```bash
+source "$HOME/.zshrc" && poetry run pytest tests/test_greedy_constructive_heuristic.py
 ```
 
 Quando o objetivo for executar o fluxo completo do projeto, usar `./run_with_zshrc.sh` como ponto de entrada, porque ele já carrega `~/.zshrc` e chama o `python` do ambiente Poetry antes de entrar em `main.py`.
@@ -77,7 +83,7 @@ flowchart TD
 | Configuração global via `Config.get_nested(...)` | Antes de passar novos parâmetros, verifique se o padrão do projeto é buscar em `config/config.json` | `config/config.py`, `main.py`, `WorkerProcess.py`, `MultProductProdctionRoutingProblem.py` |
 | Logging por classe `Logger` própria | Use `log.info`, `log.warning`, `log.error`; não substitua por logging padrão sem análise | `src/log/Logger.py` |
 | Escrita de resultados tabulares com pandas | Preserve colunas existentes, hashes e formatos `.xlsx`/`.parquet` | `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py` |
-| Testes com `unittest` e mocks | Ao adicionar testes, siga o padrão dos arquivos em `tests/` | `tests/test_*.py` |
+| Testes com `pytest` e mocks | Ao adicionar testes, prefira estilo `pytest`; testes legados com `unittest` podem permanecer quando já houver infraestrutura útil no arquivo | `tests/test_*.py`, `pyproject.toml` |
 | Guardrails como parte do fluxo de execução | Não remova checkpoints ou snapshots sem avaliar impacto em execuções longas/HPC | `src/helpers/JobGuardrails.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py` |
 | Uso de constantes globais para pesos e alpha | Alterar pesos muda o espaço experimental inteiro | `constants.py`, `src/process/WorkerProcess.py` |
 
@@ -209,7 +215,7 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | `src/process/` | Orquestração e persistência | Worker, instância, pós-processamento, resultados |
 | `src/reports/` | Relatórios científicos/analíticos | Lê Excel consolidado em `out/<constants.FILE>` |
 | `src/solvers/` | Formulação e heurísticas | DOcplex/CPLEX e heurísticas de rota |
-| `tests/` | Testes unitários | Usa `unittest`, mocks e stubs |
+| `tests/` | Testes unitários | Use `pytest` como runner padrão. Testes legados podem usar classes `unittest`, desde que continuem coletáveis pelo `pytest`; inclui mocks e stubs |
 | raiz | Entradas, constantes, scripts PBS e metadados | `main.py`, `constants.py`, `pyproject.toml`, `script_*.sh` |
 
 ## Classes principais
@@ -364,3 +370,7 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | `targets.xlsx` | Planilha de metas por arquivo/período | `src/helpers/TargetsLoader.py`, `src/process/PostProcessingProcess.py` |
 | Guardrail | Monitoramento preventivo de walltime/memória/MPI | `src/helpers/JobGuardrails.py` |
 | MPI batch | Lote de tarefas submetido ao `MPIPoolExecutor` | `src/process/WorkerProcess.py` |
+
+### Formulação matemática do problema
+
+Disponível em docs/mathematical-model.md
