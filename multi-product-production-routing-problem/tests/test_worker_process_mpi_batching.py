@@ -26,16 +26,14 @@ solver_module = types.ModuleType("src.solvers.MultProductProdctionRoutingProblem
 solver_module.MultProductProdctionRoutingProblem = object
 sys.modules["src.solvers.MultProductProdctionRoutingProblem"] = solver_module
 
-_original_heuristic_module = sys.modules.get(
-    "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic"
+_original_pso_module = sys.modules.get(
+    "src.solvers.ParticleSwarmOptimization"
 )
-heuristic_module = types.ModuleType(
-    "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic"
+pso_module = types.ModuleType(
+    "src.solvers.ParticleSwarmOptimization"
 )
-heuristic_module.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic = object
-sys.modules[
-    "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic"
-] = heuristic_module
+pso_module.ParticleSwarmOptimization = object
+sys.modules["src.solvers.ParticleSwarmOptimization"] = pso_module
 
 from src.process.WorkerProcess import WorkerProcess
 
@@ -59,12 +57,10 @@ if _original_solver_module is None:
 else:
     sys.modules["src.solvers.MultProductProdctionRoutingProblem"] = _original_solver_module
 
-if _original_heuristic_module is None:
-    sys.modules.pop("src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic", None)
+if _original_pso_module is None:
+    sys.modules.pop("src.solvers.ParticleSwarmOptimization", None)
 else:
-    sys.modules[
-        "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic"
-    ] = _original_heuristic_module
+    sys.modules["src.solvers.ParticleSwarmOptimization"] = _original_pso_module
 
 
 class DummyLogger:
@@ -168,7 +164,7 @@ class WorkerProcessMPIBatchingTestCase(unittest.TestCase):
                 "numThreads": 1,
                 "timeLimit": 10,
             }
-            for i in range(150)
+            for i in range(1800)
         ]
 
         with patch("src.process.WorkerProcess.MPI_BOOL", True):
@@ -197,6 +193,29 @@ class WorkerProcessMPIBatchingTestCase(unittest.TestCase):
         self.assertTrue(all(max_workers <= 32 for max_workers in FakeExecutor.max_workers_used))
         self.assertTrue(all(max_workers == 32 for max_workers in FakeExecutor.max_workers_used[:-1]))
         self.assertEqual(FakeExecutor.max_workers_used[-1], 8)
+
+    def test_run_parallel_passes_solver_to_sequential_process(self):
+        worker = self._build_worker()
+        instancies = [
+            {
+                "file": "./data/DATA_PRP_5C/PRP1.dat",
+                "output": "./out/",
+                "isPloat": False,
+                "numThreads": 1,
+                "timeLimit": 10,
+            }
+        ]
+        captured = []
+
+        def fake_process(log, instancie, solver, w, targets_by_file, alpha, context=None, guardrail_runtime=None):
+            captured.append(solver)
+
+        with patch("src.process.WorkerProcess.MPI_BOOL", False):
+            with patch("src.process.WorkerProcess.process", side_effect=fake_process):
+                worker.run_parallel(instancies=instancies, solver="PSO")
+
+        self.assertTrue(captured)
+        self.assertTrue(all(solver == "PSO" for solver in captured))
 
 
 if __name__ == "__main__":

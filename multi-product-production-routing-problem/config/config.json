@@ -1,9 +1,21 @@
 {
   "solver":{
     "threadsLimit":1,
-    "timeLimit":3600,
-    "method":"GUROBY",
-    "multiobjective":true
+    "timeLimit":60,
+    "method":"PSO",
+    "multiobjective":false,
+    "pso": {
+      "swarm_size": 20,
+      "max_iterations": 5,
+      "inertia": 0.7,
+      "cognitive": 1.5,
+      "social": 1.5,
+      "seed": 123,
+      "initialization_mix": "constructive",
+      "repair_on_update": true,
+      "use_as_mip_start": true,
+      "return_heuristic_result_without_cplex": false
+    }
   },
   "workers":{
     "num":"auto",
@@ -17,7 +29,7 @@
     "is_plot": "true",
     "dir": "./data/",
     "output": "./out/",
-    "files": ["DATA_PRP_5C", "DATA_PRP_10C", "DATA_PRP_20C", "DATA_PRP_30C"]
+    "files": ["DATA_PRP_5C/PRP1_C5_P2_V1_T2_S1.dat"]
   },
   "relaxed_solution": {
     "replace_model": true

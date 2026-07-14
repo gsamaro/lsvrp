@@ -236,7 +236,7 @@ class WorkerProcess:
             f"submission_window={plan['submission_window']}"
         )
 
-    def _submit_mpi_batch(self, executor, batch, mpi_batch, plan):
+    def _submit_mpi_batch(self, executor, batch, mpi_batch, plan, solver):
         future_contexts = {}
         submission_window = max(1, plan["submission_window"])
         for start in range(0, len(batch), submission_window):
@@ -253,6 +253,7 @@ class WorkerProcess:
                     process,
                     task["log"],
                     task["instancie"],
+                    solver,
                     task["weight"],
                     task["targets_by_file"],
                     task["alpha"],
@@ -384,7 +385,13 @@ class WorkerProcess:
                 pending = total_tasks - completed_tasks - failed_tasks
                 try:
                     with MPIPoolExecutor(max_workers=plan["executor_workers"]) as executor:
-                        future_contexts = self._submit_mpi_batch(executor, batch, mpi_batch, plan)
+                        future_contexts = self._submit_mpi_batch(
+                            executor,
+                            batch,
+                            mpi_batch,
+                            plan,
+                            solver,
+                        )
 
                         for future in as_completed(future_contexts):
                             try:
@@ -444,6 +451,7 @@ class WorkerProcess:
                 process(
                     task["log"],
                     task["instancie"],
+                    solver,
                     task["weight"],
                     task["targets_by_file"],
                     task["alpha"],
@@ -469,7 +477,16 @@ class WorkerProcess:
         self.log.info(">> Fim do processamento paralelo.")
 
 
-def process(log, instancie, w, targets_by_file, alpha, context=None, guardrail_runtime=None):
+def process(
+    log,
+    instancie,
+    solver,
+    w,
+    targets_by_file,
+    alpha,
+    context=None,
+    guardrail_runtime=None,
+):
     context_label = context["label"] if context else instancie["file"]
     guardrails = JobGuardrails.from_config(runtime_context=guardrail_runtime)
     guardrails.refresh_runtime_context()
@@ -488,37 +505,37 @@ def process(log, instancie, w, targets_by_file, alpha, context=None, guardrail_r
             )
         )
     log.info(f">> Processando instância ({context_label}).")
-    try:
-        InstanceProcess(
-            instancie["file"],
-            instancie["output"],
-            isPloat=False,
-            timeLimit=instancie["timeLimit"],
-            numThreads=instancie["numThreads"],
-            log=log,
-            solver="GUROBY",
-            weight=w,
-            targets_by_file=targets_by_file,
-            alpha=alpha,
-            guardrail_runtime=current_runtime,
-            task_context=context,
-        ).process()
-    except Exception as e:
-        log.error(
-            f"Erro ao processar instância ({context_label}): {e}: stack: {traceback.format_exc()}"
-        )
-        raise RuntimeError(f"Falha na execução da instância ({context_label})") from e
-    finally:
-        if guardrails.is_enabled():
-            end_snapshot = guardrails.snapshot()
-            log.info(
-                guardrails.format_snapshot(
-                    end_snapshot,
-                    context={
-                        "event": "instance_end",
-                        "mpi_batch": context.get("mpi_batch") if context else None,
-                        "task_number": context.get("task_number") if context else None,
-                        "instance_file": instancie["file"],
-                    },
-                )
-            )
+    # try:
+    InstanceProcess(
+        instancie["file"],
+        instancie["output"],
+        isPloat=False,
+        timeLimit=instancie["timeLimit"],
+        numThreads=instancie["numThreads"],
+        log=log,
+        solver=solver,
+        weight=w,
+        targets_by_file=targets_by_file,
+        alpha=alpha,
+        guardrail_runtime=current_runtime,
+        task_context=context,
+    ).process()
+    # except Exception as e:
+    #     log.error(
+    #         f"Erro ao processar instância ({context_label}): {e}: stack: {traceback.format_exc()}"
+    #     )
+    #     raise RuntimeError(f"Falha na execução da instância ({context_label})") from e
+    # finally:
+    #     if guardrails.is_enabled():
+    #         end_snapshot = guardrails.snapshot()
+    #         log.info(
+    #             guardrails.format_snapshot(
+    #                 end_snapshot,
+    #                 context={
+    #                     "event": "instance_end",
+    #                     "mpi_batch": context.get("mpi_batch") if context else None,
+    #                     "task_number": context.get("task_number") if context else None,
+    #                     "instance_file": instancie["file"],
+    #                 },
+    #             )
+            # )

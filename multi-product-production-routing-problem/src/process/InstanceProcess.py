@@ -9,9 +9,10 @@ from src.process.ProcessResults import getResults
 from src.solvers.MultProductProdctionRoutingProblem import (
     MultProductProdctionRoutingProblem as MPPRP,
 )
-from src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic import MultProductProdctionRoutingProblemGreedyConstructiveHeuristic as MPPRPG
+from src.solvers.ParticleSwarmOptimization import (
+    ParticleSwarmOptimization as PSOSolver,
+)
 import gc
-import numpy as np
 
 
 class InstanceProcess:
@@ -140,12 +141,9 @@ class InstanceProcess:
             return MPPRP(
                 map=data, dir=self.output, log=self.log, start={"start": False}
             )
-        elif self.solver == "HEURISTICA_CONSTRUTIVA":
-            self.log.info(f"Solver: HEURISTICA_CONSTRUTIVA")
-            inst = MPPRPG(
-                map=data, dir=self.output, log=self.log, rng=np.random.default_rng(seed=123))
-            inst.setMitStart(True)
-            return inst
+        elif self.solver == "PSO":
+            self.log.info(f"Solver: PSO")
+            return PSOSolver(map=data, dir=self.output, log=self.log)
         else:
             print(" VALOR SETADO COMO DEFAULT ----- SEM SOLVER ")
             return 0

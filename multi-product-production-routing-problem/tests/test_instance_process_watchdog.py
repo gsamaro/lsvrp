@@ -26,16 +26,16 @@ solver_module = types.ModuleType("src.solvers.MultProductProdctionRoutingProblem
 solver_module.MultProductProdctionRoutingProblem = object
 sys.modules.setdefault("src.solvers.MultProductProdctionRoutingProblem", solver_module)
 
-_original_heuristic_module = sys.modules.get(
-    "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic"
+_original_pso_module = sys.modules.get(
+    "src.solvers.ParticleSwarmOptimization"
 )
-heuristic_module = types.ModuleType(
-    "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic"
+pso_module = types.ModuleType(
+    "src.solvers.ParticleSwarmOptimization"
 )
-heuristic_module.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic = object
+pso_module.ParticleSwarmOptimization = object
 sys.modules.setdefault(
-    "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic",
-    heuristic_module,
+    "src.solvers.ParticleSwarmOptimization",
+    pso_module,
 )
 
 from src.process.InstanceProcess import InstanceProcess
@@ -60,12 +60,12 @@ if _original_solver_module is None:
 else:
     sys.modules["src.solvers.MultProductProdctionRoutingProblem"] = _original_solver_module
 
-if _original_heuristic_module is None:
-    sys.modules.pop("src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic", None)
+if _original_pso_module is None:
+    sys.modules.pop("src.solvers.ParticleSwarmOptimization", None)
 else:
     sys.modules[
-        "src.solvers.MultProductProdctionRoutingProblemGreedyConstructiveHeuristic"
-    ] = _original_heuristic_module
+        "src.solvers.ParticleSwarmOptimization"
+    ] = _original_pso_module
 
 
 class DummyLogger:

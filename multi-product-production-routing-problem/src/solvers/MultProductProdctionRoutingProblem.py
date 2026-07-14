@@ -261,7 +261,13 @@ class MultProductProdctionRoutingProblem:
                 )
             else:
                 self.log.info(">> FO singleobjective.")
-                self.model.minimize(self.f1 + self.f2 + self.f3 + self.f4 + self.f5)
+                self.model.minimize(
+                    self.model.sum(self.f1)
+                    + self.model.sum(self.f2)
+                    + self.model.sum(self.f3)
+                    + self.model.sum(self.f4)
+                    + self.model.sum(self.f5)
+                )
 
     def createEstablishInvetoryBalanceAtPlant(self):
         for p in range(self.p):
