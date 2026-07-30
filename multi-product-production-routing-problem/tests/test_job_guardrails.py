@@ -7,6 +7,14 @@ from src.helpers.JobGuardrails import JobGuardrails
 
 
 class JobGuardrailsTestCase(unittest.TestCase):
+    def test_is_disabled_when_config_flag_is_false(self):
+        guardrails = JobGuardrails(
+            config={"enabled": False},
+            runtime_context={"job_start_time": time.time()},
+        )
+
+        self.assertFalse(guardrails.is_enabled())
+
     def test_walltime_stop_threshold(self):
         guardrails = JobGuardrails(
             config={

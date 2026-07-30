@@ -104,7 +104,7 @@ class WorkerProcessMPIBatchingTestCase(unittest.TestCase):
         self.logger = DummyLogger()
         FakeExecutor.max_workers_used = []
 
-    def _build_worker(self):
+    def _build_worker(self, guardrails_enabled=True):
         with patch("src.process.WorkerProcess.Config.get_nested") as get_nested:
             values = {
                 ("workers", "mpi_batch_multiplier"): 1,
@@ -115,12 +115,16 @@ class WorkerProcessMPIBatchingTestCase(unittest.TestCase):
                 ("postprocessing", "output"): None,
             }
             get_nested.side_effect = lambda *keys, default=None: values.get(keys, default)
-            return WorkerProcess(
-                numWorkers="auto",
-                timeSupervisor=1,
-                log={"instancia": self.logger, "dirLogs": "./out/logs"},
-                guardrail_runtime={"job_start_time": time.time(), "job_id": "local"},
-            )
+            with patch(
+                "src.helpers.JobGuardrails.Config.get",
+                return_value={"enabled": guardrails_enabled},
+            ):
+                return WorkerProcess(
+                    numWorkers="auto",
+                    timeSupervisor=1,
+                    log={"instancia": self.logger, "dirLogs": "./out/logs"},
+                    guardrail_runtime={"job_start_time": time.time(), "job_id": "local"},
+                )
 
     def test_compute_mpi_batch_size_respects_multiplier_and_cap(self):
         worker = self._build_worker()
@@ -216,6 +220,21 @@ class WorkerProcessMPIBatchingTestCase(unittest.TestCase):
 
         self.assertTrue(captured)
         self.assertTrue(all(solver == "PSO" for solver in captured))
+
+    def test_disabling_guardrails_disables_mpi_submit_guardrail(self):
+        worker = self._build_worker(guardrails_enabled=False)
+        batch = [
+            {"instancie": {"file": "./data/DATA_PRP_5C/PRP1.dat"}},
+            {"instancie": {"file": "./data/DATA_PRP_5C/PRP2.dat"}},
+            {"instancie": {"file": "./data/DATA_PRP_5C/PRP3.dat"}},
+        ]
+
+        with patch.object(worker, "_resolve_num_workers", return_value=2):
+            plan = worker._compute_batch_execution_plan(batch, total_tasks=3)
+
+        self.assertFalse(worker.guardrails.is_enabled())
+        self.assertFalse(worker.mpi_submit_guardrail_enabled)
+        self.assertEqual(plan["submission_window"], 3)
 
 
 if __name__ == "__main__":

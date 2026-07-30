@@ -39,7 +39,7 @@
     "output": "./out/target/"
   },
   "guardrails": {
-    "enabled": true,
+    "enabled": false,
     "walltime_seconds": 259200,
     "walltime_warning_ratio": 0.85,
     "walltime_stop_ratio": 0.95,

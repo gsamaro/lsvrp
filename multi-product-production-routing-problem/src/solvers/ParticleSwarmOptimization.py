@@ -69,12 +69,18 @@ class ParticleSwarmOptimization:
         self._initialize_bests()
 
     def _repair_invalid_particles(self):
+        self._aux_solutions = {}
+        self._aux_index = []
         for index, solution in enumerate(self.solutions):
             if solution["feasible"]:
                 continue
             replacement = self._resample_solution()
+            self._aux_index.append(index)
             self.positions[index] = replacement["position"]
-            self.solutions[index] = replacement["solution"]
+            self._aux_solutions.update({index: replacement['solution']})
+        for index in self._aux_index:
+            self.solutions[index] = self._aux_solutions[index]
+            # self.solutions[index] = replacement["solution"]
 
     def _resample_solution(self):
         while True:

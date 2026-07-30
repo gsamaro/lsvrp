@@ -52,7 +52,7 @@ class WorkerProcess:
         )
         if self.mpi_batch_max_tasks is not None:
             self.mpi_batch_max_tasks = max(1, int(self.mpi_batch_max_tasks))
-        self.mpi_submit_guardrail_enabled = bool(
+        self.mpi_submit_guardrail_enabled = self.guardrails.is_enabled() and bool(
             Config.get_nested("workers", "mpi_submit_guardrail_enabled", default=True)
         )
         self.mpi_heavy_instance_cap = Config.get_nested(

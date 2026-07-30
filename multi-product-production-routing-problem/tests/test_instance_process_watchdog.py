@@ -114,20 +114,24 @@ class FakeSolverInstance:
 
 
 class InstanceProcessWatchdogTestCase(unittest.TestCase):
-    def _build_process(self, logger):
-        return InstanceProcess(
-            instance="./data/test.dat",
-            output="./out/test/",
-            log=logger,
-            solver="GUROBY",
-            guardrail_runtime={
-                "job_start_time": time.time(),
-                "mpi_rank": "unknown",
-                "pid": 100,
-                "ppid": 10,
-            },
-            task_context={"mpi_batch": 2, "task_number": 9},
-        )
+    def _build_process(self, logger, guardrails_enabled=True):
+        with patch(
+            "src.helpers.JobGuardrails.Config.get",
+            return_value={"enabled": guardrails_enabled},
+        ):
+            return InstanceProcess(
+                instance="./data/test.dat",
+                output="./out/test/",
+                log=logger,
+                solver="GUROBY",
+                guardrail_runtime={
+                    "job_start_time": time.time(),
+                    "mpi_rank": "unknown",
+                    "pid": 100,
+                    "ppid": 10,
+                },
+                task_context={"mpi_batch": 2, "task_number": 9},
+            )
 
     def test_watchdog_logs_during_solve(self):
         logger = DummyLogger()
@@ -193,6 +197,38 @@ class InstanceProcessWatchdogTestCase(unittest.TestCase):
 
         self.assertIsNone(process._solve_watchdog_thread)
         self.assertIsNone(process._solve_watchdog_stop)
+
+    def test_disabling_guardrails_keeps_process_logs_without_guardrail_entries(self):
+        logger = DummyLogger()
+        process = self._build_process(logger, guardrails_enabled=False)
+        fake_instance = FakeSolverInstance()
+        fake_data = {
+            "file": "./data/test.dat",
+            "weight": [0.2] * 5,
+            "alpha": 0.01,
+            "s_p": [0.0],
+            "c_p": [0.0],
+            "h_pi": [[0.0]],
+            "f": [[0.0]],
+            "a_ik": [[0.0]],
+            "num_periods": 1,
+            "coordXY": {"x": [0.0], "y": [0.0]},
+            "I_pi0": [[0.0]],
+            "d_pit": [[[0.0]]],
+        }
+
+        with patch("src.process.InstanceProcess.RD") as mock_rd:
+            mock_rd.return_value.getDataSet.return_value = fake_data
+            with patch.object(process, "solverInstancie", return_value=fake_instance):
+                with patch("src.process.InstanceProcess.getResults", return_value={"periods": []}):
+                    process.process()
+
+        guardrail_logs = [
+            message for _, message in logger.messages if "guardrail " in message
+        ]
+
+        self.assertFalse(process.guardrails.is_enabled())
+        self.assertFalse(guardrail_logs)
 
 
 if __name__ == "__main__":
