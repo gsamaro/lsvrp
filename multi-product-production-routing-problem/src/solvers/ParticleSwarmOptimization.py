@@ -1,10 +1,12 @@
 import time
+import math
 
 import numpy as np
 
 from config import Config
 from src.log.Logger import Logger
 from src.solvers.FeasibleParticleHeuristic import FeasibleParticleHeuristic
+from src.solvers.LotSizingRelaxation import LotSizingRelaxation
 from src.solvers.MultProductProdctionRoutingProblem import (
     MultProductProdctionRoutingProblem as MPPRP,
 )
@@ -23,8 +25,32 @@ class ParticleSwarmOptimization:
         self.dir = dir
         self.log = log
         self.problem = ProblemData.from_map(map)
-        self.heuristic = FeasibleParticleHeuristic(map=map, dir=dir, log=log)
         self.pso_config = self._load_pso_config()
+        self.relaxed_bounds = None
+        self.relaxed_base = None
+        bounds_config = self.pso_config["lot_sizing_bounds"]
+        if bounds_config["enabled"]:
+            self.log.info(">> Calculando bounds relaxados de dimensionamento de lotes.")
+            time_limit = bounds_config["time_limit"]
+            if time_limit is None:
+                time_limit = Config.get_nested("solver", "timeLimit", default=None)
+            relaxation = LotSizingRelaxation(
+                map=map,
+                log=log,
+                time_limit=time_limit,
+            )
+            relaxed = relaxation.solve_bounds(
+                include_base=bounds_config["use_base_solution"]
+            )
+            self.relaxed_bounds = relaxed
+            self.relaxed_base = relaxed.get("base")
+        self.heuristic = FeasibleParticleHeuristic(
+            map=map,
+            dir=dir,
+            log=log,
+            bounds=self.relaxed_bounds,
+            relaxed_base=self.relaxed_base,
+        )
         self.rng = np.random.default_rng(seed=self.pso_config["seed"])
         self.positions = None
         self.velocities = None
@@ -49,10 +75,20 @@ class ParticleSwarmOptimization:
             "social": 1.5,
             "seed": 123,
             "repair_on_update": True,
+            "lot_sizing_bounds": {
+                "enabled": True,
+                "use_base_solution": False,
+                "time_limit": None,
+            },
             "use_as_mip_start": True,
             "return_heuristic_result_without_cplex": False,
         }
-        return {**defaults, **configured}
+        merged = {**defaults, **configured}
+        merged["lot_sizing_bounds"] = {
+            **defaults["lot_sizing_bounds"],
+            **(configured.get("lot_sizing_bounds") or {}),
+        }
+        return merged
 
     def _random_positions(self):
         return self.rng.normal(
@@ -64,9 +100,26 @@ class ParticleSwarmOptimization:
     def _initialize_swarm(self):
         self.positions = self._random_positions()
         self.velocities = np.zeros_like(self.positions)
+        self._seed_relaxed_base_position()
         self.solutions = self.heuristic.build_population(self.positions)
         self._repair_invalid_particles()
         self._initialize_bests()
+
+    def _seed_relaxed_base_position(self):
+        if self.relaxed_base is None or self.relaxed_bounds is None:
+            return
+        lower = self.relaxed_bounds["lower"]
+        upper = self.relaxed_bounds["upper"]
+        base_x = self.relaxed_base["X"]
+        for p in range(self.problem.p):
+            for t in range(self.problem.t):
+                span = upper[p, t] - lower[p, t]
+                if span <= 1e-9:
+                    gene = 0.0
+                else:
+                    ratio = np.clip((base_x[p, t] - lower[p, t]) / span, 1e-6, 1 - 1e-6)
+                    gene = math.log(float(ratio) / float(1 - ratio))
+                self.positions[0, p * self.problem.t + t] = gene
 
     def _repair_invalid_particles(self):
         self._aux_solutions = {}

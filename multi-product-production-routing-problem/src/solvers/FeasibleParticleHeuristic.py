@@ -12,7 +12,7 @@ from src.solvers._solver_common import (
 
 
 class FeasibleParticleHeuristic:
-    def __init__(self, map, dir, log: Logger, rng=None):
+    def __init__(self, map, dir, log: Logger, rng=None, bounds=None, relaxed_base=None):
         self.data = map
         self.dir = dir
         self.log = log
@@ -21,6 +21,19 @@ class FeasibleParticleHeuristic:
         self.dim_x = self.problem.p * self.problem.t
         self.dim_q = self.problem.p * self.problem.v * self.problem.i * self.problem.t
         self.particle_dim = self.dim_x + self.dim_q
+        self.bounds = bounds
+        self.relaxed_base = relaxed_base
+        if bounds is not None:
+            self.lower_bounds = np.asarray(bounds["lower"], dtype=float)
+            self.upper_bounds = np.asarray(bounds["upper"], dtype=float)
+            expected_shape = (self.problem.p, self.problem.t)
+            if self.lower_bounds.shape != expected_shape or self.upper_bounds.shape != expected_shape:
+                raise ValueError(f"bounds devem ter formato {expected_shape}")
+            if np.any(self.lower_bounds > self.upper_bounds + 1e-8):
+                raise ValueError("bounds relaxados inválidos: LB maior que UB")
+        else:
+            self.lower_bounds = None
+            self.upper_bounds = None
 
     def build_population(self, particles: np.ndarray):
         return [self._build_solution_from_particle(row) for row in particles]
@@ -170,6 +183,15 @@ class FeasibleParticleHeuristic:
         normalized = self._normalize_gene(gene)
         return low + int(round(normalized * (high - low)))
 
+    def _bounded_production_from_gene(self, p, t, gene):
+        if self.lower_bounds is None:
+            return None
+        normalized = self._normalize_gene(gene)
+        value = self.lower_bounds[p, t] + normalized * (
+            self.upper_bounds[p, t] - self.lower_bounds[p, t]
+        )
+        return int(round(value))
+
     def _build_period_state(self, t, raw_x, raw_q, previous_inventory):
         deficits = {
             customer: [
@@ -191,6 +213,16 @@ class FeasibleParticleHeuristic:
             return None
 
         production = minimum_production.copy()
+        if self.lower_bounds is not None:
+            production = np.maximum(
+                production,
+                np.ceil(self.lower_bounds[:, t]).astype(int),
+            )
+        minimum_time = sum(
+            self.problem.b_p[p] * production[p] for p in range(self.problem.p)
+        )
+        if minimum_time > self.problem.B:
+            return None
         remaining_time = int(self.problem.B - minimum_time)
         priority_products = sorted(
             range(self.problem.p),
@@ -206,10 +238,18 @@ class FeasibleParticleHeuristic:
                 int(self.problem.U_p_i[p][0] - previous_inventory[p, 0]),
             )
             max_extra_by_time = int(remaining_time // self.problem.b_p[p])
-            extra_high = min(storage_headroom, max_extra_by_time)
+            if self.lower_bounds is None:
+                extra_high = min(storage_headroom, max_extra_by_time)
+            else:
+                decoded = self._bounded_production_from_gene(p, t, raw_x[p, t])
+                bound_extra = max(0, decoded - int(production[p]))
+                extra_high = min(storage_headroom, max_extra_by_time, bound_extra)
             if extra_high <= 0:
                 continue
-            extra_units = self._pick_int_in_range(0, extra_high, raw_x[p, t])
+            if self.lower_bounds is None:
+                extra_units = self._pick_int_in_range(0, extra_high, raw_x[p, t])
+            else:
+                extra_units = extra_high
             production[p] += extra_units
             remaining_time -= self.problem.b_p[p] * extra_units
 

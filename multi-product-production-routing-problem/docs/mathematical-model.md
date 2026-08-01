@@ -449,6 +449,28 @@ Impõe limite superior de armazenamento por item e local.
 
 `createDelimitMaximumCapacityItemsAtPlant` em `src/solvers/MultProductProdctionRoutingProblem.py`.
 
+## PL relaxado para bounds do PSO
+
+O PSO utiliza um PL auxiliar de dimensionamento de lotes, implementado em
+`src/solvers/LotSizingRelaxation.py`. Esse PL contém somente as variáveis
+contínuas `X`, `I` e `Q`, com não negatividade, e as restrições 8, 9, 10 e 12.
+As restrições de setup, roteamento e capacidade dos veículos não fazem parte
+desse relaxamento.
+
+Para cada produto e período, são resolvidos dois objetivos independentes:
+
+- `min X[p,t]`, gerando `LB[p,t]`;
+- `max X[p,t]`, gerando `UB[p,t]`.
+
+Durante a decodificação da partícula, o gene de produção é transformado em:
+
+`X[p,t] = LB[p,t] + sigmoid(gene) * (UB[p,t] - LB[p,t])`.
+
+A construção heurística ainda reconcilia esses valores com as entregas e as
+rotas factíveis do problema integrado. Opcionalmente, um PL adicional que
+minimiza `sum(X[p,t])` fornece uma solução-base para a primeira partícula;
+essa solução-base não é usada diretamente como solução roteada.
+
 ## Restrição 13: Conservação de fluxo de produto em cliente
 
 ### Equação

@@ -13,6 +13,11 @@
       "seed": 123,
       "initialization_mix": "constructive",
       "repair_on_update": true,
+      "lot_sizing_bounds": {
+        "enabled": true,
+        "use_base_solution": false,
+        "time_limit": null
+      },
       "use_as_mip_start": true,
       "return_heuristic_result_without_cplex": false
     }

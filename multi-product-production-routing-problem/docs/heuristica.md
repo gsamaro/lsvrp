@@ -1,5 +1,32 @@
 # 3.3 Geração de soluções factíveis
 
+## Bounds relaxados de dimensionamento para o PSO
+
+Antes da inicialização do enxame, o PSO pode resolver o PL auxiliar de
+dimensionamento implementado em `LotSizingRelaxation`. O modelo mantém apenas
+as restrições 8, 9, 10 e 12 do modelo matemático, além da não negatividade,
+considerando as variáveis contínuas de produção `X`, estoque `I` e entrega
+`Q`. Roteamento, setup e capacidade dos veículos permanecem na etapa de
+construção da solução factível.
+
+Para cada `X[p,t]`, a minimização fornece `LB[p,t]` e a maximização fornece
+`UB[p,t]`. O gene correspondente da partícula é decodificado no intervalo
+individual:
+
+$$
+X_{pt} = LB_{pt} + sigmoid(gene_{pt})(UB_{pt}-LB_{pt}).
+$$
+
+Os valores são então reconciliados com a produção mínima necessária para os
+balanços e com a capacidade restante do período. A configuração também permite
+resolver um PL adicional que minimiza a produção total. Quando habilitado,
+seus valores de `X` inicializam a primeira partícula; as entregas e rotas são
+reconstruídas pela heurística para preservar a factibilidade veicular.
+
+O PL usa por padrão o timeout global `solver.timeLimit`. Esse valor pode ser
+substituído por `solver.pso.lot_sizing_bounds.time_limit`; o limite é aplicado a
+cada resolução de bound e à solução-base opcional.
+
 A resolução do problema integrado de produção e roteamento de veículos, uma variante particularmente complexa dos problemas de otimização combinatória, exige a identificação de soluções que atendam simultaneamente a múltiplas restrições operacionais.
 
 Devido à sua natureza NP-difícil e à forte interdependência entre as decisões de produção e roteamento, é fundamental contar com estratégias que possibilitem a geração de soluções iniciais viáveis.
