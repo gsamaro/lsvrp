@@ -9,23 +9,33 @@ considerando as variáveis contínuas de produção `X`, estoque `I` e entrega
 `Q`. Roteamento, setup e capacidade dos veículos permanecem na etapa de
 construção da solução factível.
 
-Para cada `X[p,t]`, a minimização fornece `LB[p,t]` e a maximização fornece
-`UB[p,t]`. O gene correspondente da partícula é decodificado no intervalo
-individual:
-
-$$
-X_{pt} = LB_{pt} + sigmoid(gene_{pt})(UB_{pt}-LB_{pt}).
-$$
-
-Os valores são então reconciliados com a produção mínima necessária para os
-balanços e com a capacidade restante do período. A configuração também permite
-resolver um PL adicional que minimiza a produção total. Quando habilitado,
-seus valores de `X` inicializam a primeira partícula; as entregas e rotas são
-reconstruídas pela heurística para preservar a factibilidade veicular.
+Agora são resolvidos dois PLs globais: um minimizando `sum(X[p,t])` e outro
+maximizando `sum(X[p,t])`. O retorno fornece os valores agregados `lower` e
+`upper`, além das soluções completas dos dois PLs. As matrizes de produção
+`lower_solution['X']` e `upper_solution['X']` são usadas como bounds
+`LB[p,t]` e `UB[p,t]` na `FeasibleParticleHeuristic`; os escalares agregados
+servem para avaliação do relaxamento. O segundo PL recebe restrições
+`X[p,t] >= lower_solution['X'][p,t]`, garantindo que o perfil upper não fique
+abaixo do perfil lower. A construção factível permanece ativa.
 
 O PL usa por padrão o timeout global `solver.timeLimit`. Esse valor pode ser
 substituído por `solver.pso.lot_sizing_bounds.time_limit`; o limite é aplicado a
 cada resolução de bound e à solução-base opcional.
+
+### Decisão provisória sobre a semente inicial
+
+A primeira partícula é inicializada com a solução `lower_solution`. Portanto,
+quando `base_x[p,t] == lower[p,t]`, o gene correspondente fica próximo do
+limite inferior mesmo que exista espaço até `upper[p,t]`. Essa decisão é
+intencional e será revisitada posteriormente; por enquanto, a diversidade
+inicial é fornecida pelas demais partículas aleatórias e pelas atualizações do
+PSO.
+
+Também fica pendente avaliar uma formulação alternativa dos bounds, substituindo
+os objetivos sobre a produção `sum(X[p,t])` por objetivos sobre as entregas
+`Q`. Essa comparação deverá verificar se minimizar/maximizar as entregas produz
+bounds mais úteis para a construção das partículas do que os bounds atuais de
+produção.
 
 A resolução do problema integrado de produção e roteamento de veículos, uma variante particularmente complexa dos problemas de otimização combinatória, exige a identificação de soluções que atendam simultaneamente a múltiplas restrições operacionais.
 

@@ -50,10 +50,26 @@ def test_relaxation_keeps_only_lot_sizing_constraints_and_calculates_bounds():
 
     result = relaxation.solve_bounds(include_base=True)
 
-    np.testing.assert_allclose(result["lower"], [[2.0, 0.0]])
-    np.testing.assert_allclose(result["upper"], [[10.0, 10.0]])
-    assert np.all(result["lower"] <= result["upper"])
+    assert result["lower"] == pytest.approx(5.0)
+    assert result["upper"] == pytest.approx(20.0)
+    assert result["lower"] <= result["upper"]
+    np.testing.assert_allclose(result["lower_solution"]["X"], [[2.0, 3.0]])
     np.testing.assert_allclose(result["base"]["X"], [[2.0, 3.0]])
+    assert np.all(
+        result["upper_solution"]["X"]
+        >= result["lower_solution"]["X"] - 1e-8
+    )
+
+
+def test_upper_model_contains_lower_production_constraints():
+    relaxation = LotSizingRelaxation(minimal_data(), DummyLogger())
+    lower = np.array([[2.0, 3.0]])
+    model, _, _, _ = relaxation._build_model(production_lower_bounds=lower)
+    names = [constraint.name for constraint in model.iter_constraints()]
+    model.end()
+
+    assert "relax_production_lower_bound_0_0" in names
+    assert "relax_production_lower_bound_0_1" in names
 
 
 def test_relaxation_reports_infeasible_instance():

@@ -457,19 +457,18 @@ contínuas `X`, `I` e `Q`, com não negatividade, e as restrições 8, 9, 10 e 1
 As restrições de setup, roteamento e capacidade dos veículos não fazem parte
 desse relaxamento.
 
-Para cada produto e período, são resolvidos dois objetivos independentes:
+São resolvidos somente dois PLs globais:
 
-- `min X[p,t]`, gerando `LB[p,t]`;
-- `max X[p,t]`, gerando `UB[p,t]`.
+- `min sum(X[p,t])`, gerando o limite inferior agregado `lower`;
+- `max sum(X[p,t])`, gerando o limite superior agregado `upper`, com as
+  restrições adicionais `X[p,t] >= lower_solution['X'][p,t]`.
 
-Durante a decodificação da partícula, o gene de produção é transformado em:
-
-`X[p,t] = LB[p,t] + sigmoid(gene) * (UB[p,t] - LB[p,t])`.
-
-A construção heurística ainda reconcilia esses valores com as entregas e as
-rotas factíveis do problema integrado. Opcionalmente, um PL adicional que
-minimiza `sum(X[p,t])` fornece uma solução-base para a primeira partícula;
-essa solução-base não é usada diretamente como solução roteada.
+O retorno também contém as soluções `lower_solution` e `upper_solution` dos
+dois PLs. As matrizes `lower_solution['X']` e `upper_solution['X']` são
+extraídas pelo PSO e aplicadas como os bounds `LB[p,t]` e `UB[p,t]` da
+heurística. Os valores escalares `lower` e `upper` permanecem disponíveis como
+limites agregados para avaliação. Quando solicitado, `base` referencia a
+solução do PL que minimiza a soma.
 
 ## Restrição 13: Conservação de fluxo de produto em cliente
 

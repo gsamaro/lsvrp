@@ -17,7 +17,7 @@ class LotSizingRelaxation:
         self.log = log
         self.time_limit = time_limit
 
-    def _build_model(self):
+    def _build_model(self, production_lower_bounds=None):
         problem = self.problem
         model = Model(name="PSO_LotSizing_Relaxation")
         x = {
@@ -88,6 +88,14 @@ class LotSizingRelaxation:
                         ctname=f"relax_inventory_capacity_{p}_{i}_{t}",
                     )
 
+        if production_lower_bounds is not None:
+            for p in range(problem.p):
+                for t in range(problem.t):
+                    model.add_constraint(
+                        x[p, t] >= float(production_lower_bounds[p, t]),
+                        ctname=f"relax_production_lower_bound_{p}_{t}",
+                    )
+
         return model, x, inventory, quantity
 
     @staticmethod
@@ -98,34 +106,49 @@ class LotSizingRelaxation:
         return float(value)
 
     def solve_bounds(self, include_base=False):
-        lower = np.zeros((self.problem.p, self.problem.t), dtype=float)
-        upper = np.zeros((self.problem.p, self.problem.t), dtype=float)
+        lower_result = self._solve_sum_model(minimize=True, label="lower")
+        lower_solution = lower_result["solution"]
+        upper_result = self._solve_sum_model(
+            minimize=False,
+            label="upper",
+            production_lower_bounds=lower_solution["X"],
+        )
 
-        model, x, _, _ = self._build_model()
+        result = {
+            "lower": lower_result["objective"],
+            "upper": upper_result["objective"],
+            "lower_solution": lower_solution,
+            "upper_solution": upper_result["solution"],
+        }
+        if include_base:
+            result["base"] = lower_solution
+        return result
+
+    def _solve_sum_model(self, minimize, label, production_lower_bounds=None):
+        model, x, inventory, quantity = self._build_model(
+            production_lower_bounds=production_lower_bounds
+        )
         try:
             self._apply_time_limit(model)
-            for p in range(self.problem.p):
-                for t in range(self.problem.t):
-                    model.minimize(x[p, t])
-                    lower[p, t] = self._solve_model_value(model, x[p, t])
-                    model.maximize(x[p, t])
-                    upper[p, t] = self._solve_model_value(model, x[p, t])
+            objective = model.sum(
+                x[p, t]
+                for p in range(self.problem.p)
+                for t in range(self.problem.t)
+            )
+            if minimize:
+                model.minimize(objective)
+            else:
+                model.maximize(objective)
+            solution = model.solve(log_output=False)
+            if solution is None:
+                status = model.solve_details.status if model.solve_details else "desconhecido"
+                raise RuntimeError(f"PL relaxado sem solução para {label} ({status})")
+            return {
+                "objective": float(solution.objective_value),
+                "solution": self._extract_solution(solution, x, inventory, quantity),
+            }
         finally:
             model.end()
-
-        result = {"lower": lower, "upper": upper}
-        if include_base:
-            model, x, inventory, quantity = self._build_model()
-            try:
-                self._apply_time_limit(model)
-                model.minimize(model.sum(x[p, t] for p in range(self.problem.p) for t in range(self.problem.t)))
-                solution = model.solve(log_output=False)
-                if solution is None:
-                    raise RuntimeError("PL relaxado da solução-base sem solução")
-                result["base"] = self._extract_solution(solution, x, inventory, quantity)
-            finally:
-                model.end()
-        return result
 
     def _apply_time_limit(self, model):
         if self.time_limit is not None:

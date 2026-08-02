@@ -28,6 +28,7 @@ class ParticleSwarmOptimization:
         self.pso_config = self._load_pso_config()
         self.relaxed_bounds = None
         self.relaxed_base = None
+        self.relaxed_total_bounds = None
         bounds_config = self.pso_config["lot_sizing_bounds"]
         if bounds_config["enabled"]:
             self.log.info(">> Calculando bounds relaxados de dimensionamento de lotes.")
@@ -42,8 +43,16 @@ class ParticleSwarmOptimization:
             relaxed = relaxation.solve_bounds(
                 include_base=bounds_config["use_base_solution"]
             )
-            self.relaxed_bounds = relaxed
-            self.relaxed_base = relaxed.get("base")
+            self.relaxed_total_bounds = relaxed
+            self.relaxed_bounds = {
+                "lower": np.asarray(relaxed["lower_solution"]["X"], dtype=float),
+                "upper": np.asarray(relaxed["upper_solution"]["X"], dtype=float),
+            }
+            self.relaxed_base = relaxed.get("base") or relaxed["lower_solution"]
+            self.log.info(
+                f">> Bounds agregados do PL: lower={relaxed['lower']} "
+                f"upper={relaxed['upper']}"
+            )
         self.heuristic = FeasibleParticleHeuristic(
             map=map,
             dir=dir,

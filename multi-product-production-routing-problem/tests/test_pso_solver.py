@@ -77,6 +77,19 @@ class PSOSolverTestCase(unittest.TestCase):
         self.assertIsNotNone(solver.global_best_solution)
         self.assertEqual(solver.positions.shape[0], 4)
         self.assertTrue(np.isfinite(solver.global_best_cost))
+        np.testing.assert_allclose(
+            solver.heuristic.lower_bounds,
+            solver.relaxed_total_bounds["lower_solution"]["X"],
+        )
+        np.testing.assert_allclose(
+            solver.heuristic.upper_bounds,
+            solver.relaxed_total_bounds["upper_solution"]["X"],
+        )
+        self.assertIsNotNone(solver.relaxed_base)
+        np.testing.assert_allclose(
+            solver.relaxed_base["X"],
+            solver.relaxed_total_bounds["lower_solution"]["X"],
+        )
 
     def test_pso_passes_warm_start_to_exact_solver(self):
         starts = []
