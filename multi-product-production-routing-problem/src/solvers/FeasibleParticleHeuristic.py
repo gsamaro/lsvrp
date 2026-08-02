@@ -31,9 +31,38 @@ class FeasibleParticleHeuristic:
                 raise ValueError(f"bounds devem ter formato {expected_shape}")
             if np.any(self.lower_bounds > self.upper_bounds + 1e-8):
                 raise ValueError("bounds relaxados inválidos: LB maior que UB")
+            if "q_lower" in bounds or "q_upper" in bounds:
+                self.lower_delivery_bounds = np.asarray(
+                    bounds.get("q_lower"), dtype=float
+                )
+                self.upper_delivery_bounds = np.asarray(
+                    bounds.get("q_upper"), dtype=float
+                )
+                expected_delivery_shape = (
+                    self.problem.p,
+                    self.problem.v,
+                    self.problem.i,
+                    self.problem.t,
+                )
+                if (
+                    self.lower_delivery_bounds.shape != expected_delivery_shape
+                    or self.upper_delivery_bounds.shape != expected_delivery_shape
+                ):
+                    raise ValueError(
+                        f"bounds de Q devem ter formato {expected_delivery_shape}"
+                    )
+                if np.any(
+                    self.lower_delivery_bounds > self.upper_delivery_bounds + 1e-8
+                ):
+                    raise ValueError("bounds relaxados de Q inválidos: LB maior que UB")
+            else:
+                self.lower_delivery_bounds = None
+                self.upper_delivery_bounds = None
         else:
             self.lower_bounds = None
             self.upper_bounds = None
+            self.lower_delivery_bounds = None
+            self.upper_delivery_bounds = None
 
     def build_population(self, particles: np.ndarray):
         return [self._build_solution_from_particle(row) for row in particles]
@@ -191,6 +220,18 @@ class FeasibleParticleHeuristic:
             self.upper_bounds[p, t] - self.lower_bounds[p, t]
         )
         return int(round(value))
+
+    def _bounded_delivery_from_genes(self, p, customer, t, raw_q):
+        if self.lower_delivery_bounds is None:
+            return None
+        total = 0.0
+        for v in range(self.problem.v):
+            lower = self.lower_delivery_bounds[p, v, customer, t]
+            upper = self.upper_delivery_bounds[p, v, customer, t]
+            total += lower + self._normalize_gene(raw_q[p, v, customer, t]) * (
+                upper - lower
+            )
+        return int(round(total))
 
     def _build_period_state(self, t, raw_x, raw_q, previous_inventory):
         deficits = {
@@ -353,14 +394,45 @@ class FeasibleParticleHeuristic:
                 customer_stock_headroom = int(
                     self.problem.U_p_i[p][customer] - customer_inventory
                 )
+                desired_delivery = None
+                if self.lower_delivery_bounds is not None:
+                    desired_delivery = self._bounded_delivery_from_genes(
+                        p,
+                        customer,
+                        t,
+                        raw_q,
+                    )
                 if customer_stock_headroom <= 0:
                     continue
-                edge = add_edge(
-                    product_nodes[p],
-                    customer_nodes[customer],
-                    customer_stock_headroom,
-                )
-                tracked_edges.append((p, customer, edge, customer_stock_headroom))
+                if self.lower_delivery_bounds is None:
+                    preferred_extra = 0
+                else:
+                    preferred_extra = min(
+                        customer_stock_headroom,
+                        max(
+                            0,
+                            desired_delivery - period_deliveries[customer][p],
+                        ),
+                    )
+                if preferred_extra > 0:
+                    preferred_edge = add_edge(
+                        product_nodes[p],
+                        customer_nodes[customer],
+                        preferred_extra,
+                    )
+                    tracked_edges.append(
+                        (p, customer, preferred_edge, preferred_extra)
+                    )
+                fallback_extra = customer_stock_headroom - preferred_extra
+                if fallback_extra > 0:
+                    fallback_edge = add_edge(
+                        product_nodes[p],
+                        customer_nodes[customer],
+                        fallback_extra,
+                    )
+                    tracked_edges.append(
+                        (p, customer, fallback_edge, fallback_extra)
+                    )
 
         for customer, load in remaining_vehicle_load_by_customer.items():
             add_edge(customer_nodes[customer], sink, load)

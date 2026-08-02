@@ -113,7 +113,16 @@ class FeasibleParticleHeuristicTestCase(unittest.TestCase):
             "weight": [0.2] * 5,
             "alpha": 0.01,
         }
-        bounds = {"lower": np.array([[8.0]]), "upper": np.array([[8.0]])}
+        q_lower = np.zeros((1, 1, 3, 1))
+        q_upper = np.zeros((1, 1, 3, 1))
+        q_upper[0, 0, 1, 0] = 5
+        q_upper[0, 0, 2, 0] = 5
+        bounds = {
+            "lower": np.array([[8.0]]),
+            "upper": np.array([[8.0]]),
+            "q_lower": q_lower,
+            "q_upper": q_upper,
+        }
         heuristic = FeasibleParticleHeuristic(data, "/tmp", DummyLogger(), bounds=bounds)
 
         particles = np.array(

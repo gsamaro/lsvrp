@@ -17,7 +17,11 @@ class LotSizingRelaxation:
         self.log = log
         self.time_limit = time_limit
 
-    def _build_model(self, production_lower_bounds=None):
+    def _build_model(
+        self,
+        production_lower_bounds=None,
+        quantity_lower_bounds=None,
+    ):
         problem = self.problem
         model = Model(name="PSO_LotSizing_Relaxation")
         x = {
@@ -80,6 +84,18 @@ class LotSizingRelaxation:
                 ctname=f"relax_production_capacity_{t}",
             )
 
+        for v in range(problem.v):
+            for t in range(problem.t):
+                model.add_constraint(
+                    model.sum(
+                        quantity[p, v, i, t]
+                        for p in range(problem.p)
+                        for i in range(1, problem.i)
+                    )
+                    <= problem.C,
+                    ctname=f"relax_vehicle_delivery_capacity_{v}_{t}",
+                )
+
         for p in range(problem.p):
             for i in range(problem.i):
                 for t in range(problem.t):
@@ -95,6 +111,17 @@ class LotSizingRelaxation:
                         x[p, t] >= float(production_lower_bounds[p, t]),
                         ctname=f"relax_production_lower_bound_{p}_{t}",
                     )
+
+        if quantity_lower_bounds is not None:
+            for p in range(problem.p):
+                for v in range(problem.v):
+                    for i in range(problem.i):
+                        for t in range(problem.t):
+                            model.add_constraint(
+                                quantity[p, v, i, t]
+                                >= float(quantity_lower_bounds[p, v, i, t]),
+                                ctname=f"relax_delivery_lower_bound_{p}_{v}_{i}_{t}",
+                            )
 
         return model, x, inventory, quantity
 
@@ -112,6 +139,7 @@ class LotSizingRelaxation:
             minimize=False,
             label="upper",
             production_lower_bounds=lower_solution["X"],
+            quantity_lower_bounds=lower_solution["Q"],
         )
 
         result = {
@@ -124,15 +152,24 @@ class LotSizingRelaxation:
             result["base"] = lower_solution
         return result
 
-    def _solve_sum_model(self, minimize, label, production_lower_bounds=None):
+    def _solve_sum_model(
+        self,
+        minimize,
+        label,
+        production_lower_bounds=None,
+        quantity_lower_bounds=None,
+    ):
         model, x, inventory, quantity = self._build_model(
-            production_lower_bounds=production_lower_bounds
+            production_lower_bounds=production_lower_bounds,
+            quantity_lower_bounds=quantity_lower_bounds,
         )
         try:
             self._apply_time_limit(model)
             objective = model.sum(
-                x[p, t]
+                quantity[p, v, i, t]
                 for p in range(self.problem.p)
+                for v in range(self.problem.v)
+                for i in range(1, self.problem.i)
                 for t in range(self.problem.t)
             )
             if minimize:

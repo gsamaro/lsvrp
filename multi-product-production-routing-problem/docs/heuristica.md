@@ -9,14 +9,19 @@ considerando as variáveis contínuas de produção `X`, estoque `I` e entrega
 `Q`. Roteamento, setup e capacidade dos veículos permanecem na etapa de
 construção da solução factível.
 
-Agora são resolvidos dois PLs globais: um minimizando `sum(X[p,t])` e outro
-maximizando `sum(X[p,t])`. O retorno fornece os valores agregados `lower` e
-`upper`, além das soluções completas dos dois PLs. As matrizes de produção
-`lower_solution['X']` e `upper_solution['X']` são usadas como bounds
-`LB[p,t]` e `UB[p,t]` na `FeasibleParticleHeuristic`; os escalares agregados
-servem para avaliação do relaxamento. O segundo PL recebe restrições
-`X[p,t] >= lower_solution['X'][p,t]`, garantindo que o perfil upper não fique
-abaixo do perfil lower. A construção factível permanece ativa.
+Para manter os bounds de entrega compatíveis com a frota, o PL também inclui a
+aproximação `sum_i sum_p Q[p,v,i,t] <= C` para cada veículo e período. Ela não
+modela arcos ou sequência de rota, mas limita a carga total atribuída a cada
+veículo.
+
+Agora são resolvidos dois PLs globais sobre as entregas: um minimizando
+`sum(Q[p,v,i,t])`, com `i != 0`, e outro maximizando a mesma expressão. O
+segundo PL recebe restrições `X[p,t] >= lower_solution['X'][p,t]` e
+`Q[p,v,i,t] >= lower_solution['Q'][p,v,i,t]`, garantindo que os perfis upper
+não fiquem abaixo dos lower. As matrizes de produção `X` continuam a definir
+os bounds de produção; as matrizes `Q` são decodificadas como metas de entrega
+na alocação de excedente. Essa preferência é reparada quando necessário para
+preservar estoques `U`, carga `C` e a factibilidade das rotas.
 
 Ao construir cada período, a heurística primeiro entrega as quantidades
 necessárias para cobrir os déficits dos clientes. Em seguida, distribui todo o

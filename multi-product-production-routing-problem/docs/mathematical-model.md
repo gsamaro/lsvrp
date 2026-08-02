@@ -454,21 +454,28 @@ Impõe limite superior de armazenamento por item e local.
 O PSO utiliza um PL auxiliar de dimensionamento de lotes, implementado em
 `src/solvers/LotSizingRelaxation.py`. Esse PL contém somente as variáveis
 contínuas `X`, `I` e `Q`, com não negatividade, e as restrições 8, 9, 10 e 12.
-As restrições de setup, roteamento e capacidade dos veículos não fazem parte
-desse relaxamento.
+Além delas, o relaxamento inclui uma aproximação da restrição 15, sem as
+variáveis de arco `R` e `Z`:
+
+`sum_i sum_p Q[p,v,i,t] <= C` para cada veículo `v` e período `t`.
+
+As restrições de setup e roteamento não fazem parte desse relaxamento.
 
 São resolvidos somente dois PLs globais:
 
-- `min sum(X[p,t])`, gerando o limite inferior agregado `lower`;
-- `max sum(X[p,t])`, gerando o limite superior agregado `upper`, com as
-  restrições adicionais `X[p,t] >= lower_solution['X'][p,t]`.
+- `min sum(Q[p,v,i,t])`, para clientes `i != 0`, gerando o limite inferior
+  agregado `lower`;
+- `max sum(Q[p,v,i,t])`, com as restrições adicionais
+  `X[p,t] >= lower_solution['X'][p,t]` e
+  `Q[p,v,i,t] >= lower_solution['Q'][p,v,i,t]`, gerando `upper`.
 
 O retorno também contém as soluções `lower_solution` e `upper_solution` dos
 dois PLs. As matrizes `lower_solution['X']` e `upper_solution['X']` são
 extraídas pelo PSO e aplicadas como os bounds `LB[p,t]` e `UB[p,t]` da
-heurística. Os valores escalares `lower` e `upper` permanecem disponíveis como
-limites agregados para avaliação. Quando solicitado, `base` referencia a
-solução do PL que minimiza a soma.
+heurística; o mesmo acontece com `lower_solution['Q']` e
+`upper_solution['Q']` para orientar as entregas. Os valores escalares `lower`
+e `upper` permanecem disponíveis como limites agregados para avaliação. Quando
+solicitado, `base` referencia a solução do PL que minimiza a soma.
 
 ## Restrição 13: Conservação de fluxo de produto em cliente
 

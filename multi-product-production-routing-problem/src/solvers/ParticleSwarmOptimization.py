@@ -47,6 +47,8 @@ class ParticleSwarmOptimization:
             self.relaxed_bounds = {
                 "lower": np.asarray(relaxed["lower_solution"]["X"], dtype=float),
                 "upper": np.asarray(relaxed["upper_solution"]["X"], dtype=float),
+                "q_lower": np.asarray(relaxed["lower_solution"]["Q"], dtype=float),
+                "q_upper": np.asarray(relaxed["upper_solution"]["Q"], dtype=float),
             }
             self.relaxed_base = relaxed.get("base") or relaxed["lower_solution"]
             self.log.info(
@@ -73,6 +75,10 @@ class ParticleSwarmOptimization:
         self.solverGurobi = None
         self.time = 0
         self.solCount = 0
+        self._population_history = []
+        self._invalid_before_repair = []
+        self._resample_attempts = 0
+        self._resample_infeasible = 0
 
     def _load_pso_config(self):
         configured = Config.get_nested("solver", "pso", default={}) or {}
@@ -113,6 +119,13 @@ class ParticleSwarmOptimization:
         self.solutions = self.heuristic.build_population(self.positions)
         self._repair_invalid_particles()
         self._initialize_bests()
+        diversity = self._record_population_metrics(iteration=0)
+        self.log.info(
+            "PSO initialization "
+            f"feasible={diversity['feasible']}/{len(self.solutions)} "
+            f"x_profiles={diversity['x_profiles']} "
+            f"q_profiles={diversity['q_profiles']}"
+        )
 
     def _seed_relaxed_base_position(self):
         if self.relaxed_base is None or self.relaxed_bounds is None:
@@ -130,7 +143,33 @@ class ParticleSwarmOptimization:
                     gene = math.log(float(ratio) / float(1 - ratio))
                 self.positions[0, p * self.problem.t + t] = gene
 
+        lower_q = self.relaxed_bounds["q_lower"]
+        upper_q = self.relaxed_bounds["q_upper"]
+        base_q = self.relaxed_base["Q"]
+        for p in range(self.problem.p):
+            for v in range(self.problem.v):
+                for i in range(self.problem.i):
+                    for t in range(self.problem.t):
+                        span = upper_q[p, v, i, t] - lower_q[p, v, i, t]
+                        if span <= 1e-9:
+                            gene = 0.0
+                        else:
+                            ratio = np.clip(
+                                (base_q[p, v, i, t] - lower_q[p, v, i, t]) / span,
+                                1e-6,
+                                1 - 1e-6,
+                            )
+                            gene = math.log(float(ratio) / float(1 - ratio))
+                        index = self.heuristic.dim_x + np.ravel_multi_index(
+                            (p, v, i, t),
+                            (self.problem.p, self.problem.v, self.problem.i, self.problem.t),
+                        )
+                        self.positions[0, index] = gene
+
     def _repair_invalid_particles(self):
+        self._invalid_before_repair.append(
+            sum(not solution["feasible"] for solution in self.solutions)
+        )
         self._aux_solutions = {}
         self._aux_index = []
         for index, solution in enumerate(self.solutions):
@@ -146,6 +185,7 @@ class ParticleSwarmOptimization:
 
     def _resample_solution(self):
         while True:
+            self._resample_attempts += 1
             candidate_position = self.rng.normal(
                 loc=0.0,
                 scale=1.0,
@@ -156,6 +196,7 @@ class ParticleSwarmOptimization:
             )[0]
             if candidate_solution["feasible"]:
                 return {"position": candidate_position, "solution": candidate_solution}
+            self._resample_infeasible += 1
 
     def _initialize_bests(self):
         self.personal_best_positions = np.array(self.positions, copy=True)
@@ -203,6 +244,70 @@ class ParticleSwarmOptimization:
             self.global_best_position = np.array(self.personal_best_positions[best_index], copy=True)
             self.global_best_solution = clone_solution(self.personal_best_solutions[best_index])
 
+    def _population_diversity(self):
+        feasible_solutions = [
+            solution for solution in self.solutions if solution["feasible"]
+        ]
+        x_profiles = {
+            tuple(np.asarray(solution["X"], dtype=int).ravel())
+            for solution in feasible_solutions
+        }
+        q_profiles = {
+            tuple(np.asarray(solution["Q"], dtype=int).sum(axis=1).ravel())
+            for solution in feasible_solutions
+        }
+        return {
+            "feasible": len(feasible_solutions),
+            "x_profiles": len(x_profiles),
+            "q_profiles": len(q_profiles),
+        }
+
+    def _record_population_metrics(self, iteration):
+        metrics = {
+            "iteration": iteration,
+            "population_size": len(self.solutions),
+            "best_cost": self.global_best_cost,
+            **self._population_diversity(),
+        }
+        self._population_history.append(metrics)
+        return metrics
+
+    def _log_final_report(self):
+        if not self._population_history:
+            return
+
+        initial = self._population_history[0]
+        final = self._population_history[-1]
+        best_cost = min(metrics["best_cost"] for metrics in self._population_history)
+        first_best_iteration = next(
+            metrics["iteration"]
+            for metrics in self._population_history
+            if metrics["best_cost"] == best_cost
+        )
+        total_population_candidates = sum(
+            metrics["population_size"] for metrics in self._population_history
+        )
+        invalid_before_repair = sum(self._invalid_before_repair)
+        minimum_x_profiles = min(
+            metrics["x_profiles"] for metrics in self._population_history
+        )
+        minimum_q_profiles = min(
+            metrics["q_profiles"] for metrics in self._population_history
+        )
+        self.log.info(
+            "PSO final "
+            f"best_cost={best_cost} "
+            f"best_first_seen_iteration={first_best_iteration} "
+            f"final_feasible={final['feasible']}/{final['population_size']}"
+        )
+        self.log.info(
+            "PSO final diagnostics "
+            f"pre_repair_infeasible={invalid_before_repair}/{total_population_candidates} "
+            f"resample_infeasible={self._resample_infeasible}/{self._resample_attempts} "
+            f"x_profiles={initial['x_profiles']}->{final['x_profiles']}(min={minimum_x_profiles}) "
+            f"q_profiles={initial['q_profiles']}->{final['q_profiles']}(min={minimum_q_profiles})"
+        )
+
     def _maybe_run_exact_solver(self, numThreads=None, timeLimit=None):
         standalone = bool(self.pso_config["return_heuristic_result_without_cplex"])
         use_as_mip_start = bool(self.pso_config["use_as_mip_start"])
@@ -236,16 +341,19 @@ class ParticleSwarmOptimization:
             iteration_started_at = time.time()
             self._update_positions()
             self._evaluate_swarm()
-            invalid = sum(1 for solution in self.solutions if not solution["feasible"])
+            diversity = self._record_population_metrics(iteration=iteration + 1)
             self.log.info(
                 f"PSO iteration={iteration + 1} "
                 f"best_cost={self.global_best_cost} "
-                f"invalid_particles={invalid} "
+                f"feasible={diversity['feasible']}/{len(self.solutions)} "
+                f"x_profiles={diversity['x_profiles']} "
+                f"q_profiles={diversity['q_profiles']} "
                 f"elapsed={time.time() - iteration_started_at:.2f}s"
             )
 
         self.time = time.time() - started_at
         self.solCount = 1 if self.global_best_solution is not None else 0
+        self._log_final_report()
         self._maybe_run_exact_solver(timeLimit=timeLimit, numThreads=numThreads)
 
     def getResults(self):

@@ -46,30 +46,57 @@ def test_relaxation_keeps_only_lot_sizing_constraints_and_calculates_bounds():
     model.end()
 
     assert all("relax_" in name for name in names)
-    assert not any("vehicle" in name or "route" in name for name in names)
+    assert not any("route" in name for name in names)
+    assert "relax_vehicle_delivery_capacity_0_0" in names
+    assert "relax_vehicle_delivery_capacity_0_1" in names
 
     result = relaxation.solve_bounds(include_base=True)
 
     assert result["lower"] == pytest.approx(5.0)
     assert result["upper"] == pytest.approx(20.0)
     assert result["lower"] <= result["upper"]
-    np.testing.assert_allclose(result["lower_solution"]["X"], [[2.0, 3.0]])
-    np.testing.assert_allclose(result["base"]["X"], [[2.0, 3.0]])
+    assert np.sum(result["lower_solution"]["Q"]) == pytest.approx(5.0)
+    np.testing.assert_allclose(
+        result["base"]["X"],
+        result["lower_solution"]["X"],
+    )
     assert np.all(
         result["upper_solution"]["X"]
         >= result["lower_solution"]["X"] - 1e-8
+    )
+    assert np.all(
+        result["upper_solution"]["Q"]
+        >= result["lower_solution"]["Q"] - 1e-8
     )
 
 
 def test_upper_model_contains_lower_production_constraints():
     relaxation = LotSizingRelaxation(minimal_data(), DummyLogger())
     lower = np.array([[2.0, 3.0]])
-    model, _, _, _ = relaxation._build_model(production_lower_bounds=lower)
+    lower_q = np.zeros((1, 1, 2, 2))
+    lower_q[0, 0, 1, :] = [2.0, 3.0]
+    model, _, _, _ = relaxation._build_model(
+        production_lower_bounds=lower,
+        quantity_lower_bounds=lower_q,
+    )
     names = [constraint.name for constraint in model.iter_constraints()]
     model.end()
 
     assert "relax_production_lower_bound_0_0" in names
     assert "relax_production_lower_bound_0_1" in names
+    assert "relax_delivery_lower_bound_0_0_1_0" in names
+    assert "relax_delivery_lower_bound_0_0_1_1" in names
+
+
+def test_relaxation_limits_total_delivery_per_vehicle_and_period():
+    data = minimal_data()
+    data["C"] = 4
+
+    result = LotSizingRelaxation(data, DummyLogger()).solve_bounds()
+
+    assert result["upper"] == pytest.approx(8.0)
+    for t in range(data["num_periods"]):
+        assert np.sum(result["upper_solution"]["Q"][0, 0, 1:, t]) <= 4.0 + 1e-8
 
 
 def test_relaxation_reports_infeasible_instance():

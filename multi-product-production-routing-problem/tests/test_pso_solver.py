@@ -85,10 +85,54 @@ class PSOSolverTestCase(unittest.TestCase):
             solver.heuristic.upper_bounds,
             solver.relaxed_total_bounds["upper_solution"]["X"],
         )
+        np.testing.assert_allclose(
+            solver.heuristic.lower_delivery_bounds,
+            solver.relaxed_total_bounds["lower_solution"]["Q"],
+        )
+        np.testing.assert_allclose(
+            solver.heuristic.upper_delivery_bounds,
+            solver.relaxed_total_bounds["upper_solution"]["Q"],
+        )
         self.assertIsNotNone(solver.relaxed_base)
         np.testing.assert_allclose(
             solver.relaxed_base["X"],
             solver.relaxed_total_bounds["lower_solution"]["X"],
+        )
+        log_messages = [message for _, message in solver.log.messages]
+        self.assertTrue(
+            any(
+                "PSO initialization" in message
+                and "feasible=4/4" in message
+                and "x_profiles=" in message
+                and "q_profiles=" in message
+                for message in log_messages
+            )
+        )
+        self.assertTrue(
+            any(
+                "PSO iteration=1" in message
+                and "x_profiles=" in message
+                and "q_profiles=" in message
+                for message in log_messages
+            )
+        )
+        self.assertTrue(
+            any(
+                "PSO final " in message
+                and "best_first_seen_iteration=" in message
+                and "final_feasible=4/4" in message
+                for message in log_messages
+            )
+        )
+        self.assertTrue(
+            any(
+                "PSO final diagnostics " in message
+                and "pre_repair_infeasible=" in message
+                and "resample_infeasible=" in message
+                and "x_profiles=" in message
+                and "q_profiles=" in message
+                for message in log_messages
+            )
         )
 
     def test_pso_passes_warm_start_to_exact_solver(self):
