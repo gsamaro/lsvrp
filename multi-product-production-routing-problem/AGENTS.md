@@ -35,6 +35,8 @@ Quando o objetivo for executar o fluxo completo do projeto, usar `./run_with_zsh
 
 Para outras execuções no sandbox, como `git commit`, revisão de arquivos, leitura de status ou tarefas de manutenção que não executem o solver, não é necessário passar pelo wrapper `./run_with_zshrc.sh`.
 
+O GitHub está configurado neste repositório por HTTPS nos remotes `origin` e `upstream`. Ao realizar operações Git com o GitHub, como `commit`, `push`, `pull` ou criação de branches, preserve o uso de HTTPS e não altere os remotes para SSH.
+
 Observação do ambiente: durante a execução dos testes apareceu o aviso do `pyenv` (`pyenv: cannot rehash ...`), mas isso não impediu a suíte de rodar quando o comando foi executado via `poetry run`.
 
 ## Arquitetura
