@@ -233,17 +233,17 @@ class FeasibleParticleHeuristic:
         for p in priority_products:
             if self.problem.b_p[p] <= 0:
                 continue
-            storage_headroom = max(
-                0,
-                int(self.problem.U_p_i[p][0] - previous_inventory[p, 0]),
-            )
             max_extra_by_time = int(remaining_time // self.problem.b_p[p])
             if self.lower_bounds is None:
+                storage_headroom = max(
+                    0,
+                    int(self.problem.U_p_i[p][0] - previous_inventory[p, 0]),
+                )
                 extra_high = min(storage_headroom, max_extra_by_time)
             else:
                 decoded = self._bounded_production_from_gene(p, t, raw_x[p, t])
                 bound_extra = max(0, decoded - int(production[p]))
-                extra_high = min(storage_headroom, max_extra_by_time, bound_extra)
+                extra_high = min(max_extra_by_time, bound_extra)
             if extra_high <= 0:
                 continue
             if self.lower_bounds is None:
@@ -253,56 +253,25 @@ class FeasibleParticleHeuristic:
             production[p] += extra_units
             remaining_time -= self.problem.b_p[p] * extra_units
 
-        available_plant = np.array(previous_inventory[:, 0] + production, dtype=int)
-        remaining_total_vehicle_capacity = self.problem.v * self.problem.C
         period_deliveries = {customer: [0 for _ in range(self.problem.p)] for customer in range(1, self.problem.i)}
 
         for customer in range(1, self.problem.i):
             lower_by_product = deficits[customer]
             lower_total = sum(lower_by_product)
-            remaining_lower_totals_rest = sum(
-                sum(deficits[other]) for other in range(customer + 1, self.problem.i)
-            )
-            max_total_for_customer = min(
-                self.problem.C,
-                remaining_total_vehicle_capacity - remaining_lower_totals_rest,
-            )
-            if max_total_for_customer < lower_total:
+            if lower_total > self.problem.C:
                 return None
 
-            remaining_customer_capacity = max_total_for_customer
             for p in range(self.problem.p):
-                demand = int(self.problem.d_p_i_t[p][customer - 1][t])
-                prev_customer_inventory = int(previous_inventory[p, customer])
-                lower = lower_by_product[p]
-                if prev_customer_inventory >= demand:
-                    lower = 0
+                period_deliveries[customer][p] = lower_by_product[p]
 
-                remaining_required_for_rest = sum(
-                    deficits[other][p] for other in range(customer + 1, self.problem.i)
-                )
-                if t == self.problem.t - 1:
-                    upper = lower
-                else:
-                    stock_upper = max(
-                        lower,
-                        int(self.problem.U_p_i[p][customer] - prev_customer_inventory),
-                    )
-                    plant_upper = max(
-                        lower,
-                        int(available_plant[p] - remaining_required_for_rest),
-                    )
-                    upper = min(stock_upper, plant_upper, remaining_customer_capacity)
-                    upper = max(lower, upper)
-
-                gene = sum(raw_q[p, v, customer, t] for v in range(self.problem.v))
-                delivery = self._pick_int_in_range(lower, upper, gene)
-                period_deliveries[customer][p] = delivery
-                available_plant[p] -= delivery
-                remaining_customer_capacity -= delivery
-
-            delivered_total = sum(period_deliveries[customer])
-            remaining_total_vehicle_capacity -= delivered_total
+        if not self._drain_plant_inventory(
+            period_deliveries,
+            previous_inventory,
+            production,
+            raw_q,
+            t,
+        ):
+            return None
 
         vehicle_assignment = self._assign_customers_to_vehicles(period_deliveries, raw_q, t)
         if vehicle_assignment is None:
@@ -310,6 +279,132 @@ class FeasibleParticleHeuristic:
 
         routes = self._build_nearest_neighbor_routes(vehicle_assignment)
         return production, period_deliveries, vehicle_assignment, routes
+
+    def _drain_plant_inventory(
+        self,
+        period_deliveries,
+        previous_inventory,
+        production,
+        raw_q,
+        t,
+    ):
+        available_by_product = np.array(
+            previous_inventory[:, 0] + production,
+            dtype=int,
+        )
+        mandatory_by_product = np.array(
+            [
+                sum(period_deliveries[customer][p] for customer in period_deliveries)
+                for p in range(self.problem.p)
+            ],
+            dtype=int,
+        )
+        excess_by_product = available_by_product - mandatory_by_product
+        if np.any(excess_by_product < 0):
+            return False
+
+        remaining_vehicle_load_by_customer = {
+            customer: self.problem.C - sum(period_deliveries[customer])
+            for customer in period_deliveries
+        }
+        if any(load < 0 for load in remaining_vehicle_load_by_customer.values()):
+            return False
+
+        required_extra = int(np.sum(excess_by_product))
+        remaining_fleet_load = (
+            self.problem.v * self.problem.C
+            - sum(sum(deliveries) for deliveries in period_deliveries.values())
+        )
+        if required_extra > remaining_fleet_load:
+            return False
+
+        source = 0
+        product_nodes = {p: p + 1 for p in range(self.problem.p)}
+        customer_nodes = {
+            customer: self.problem.p + customer
+            for customer in period_deliveries
+        }
+        sink = self.problem.p + self.problem.i
+        graph = [[] for _ in range(sink + 1)]
+        tracked_edges = []
+
+        def add_edge(origin, destination, capacity):
+            forward = [destination, len(graph[destination]), int(capacity)]
+            backward = [origin, len(graph[origin]), 0]
+            graph[origin].append(forward)
+            graph[destination].append(backward)
+            return forward
+
+        for p in range(self.problem.p):
+            add_edge(source, product_nodes[p], excess_by_product[p])
+            customers = sorted(
+                period_deliveries,
+                key=lambda customer: self._normalize_gene(
+                    sum(raw_q[p, v, customer, t] for v in range(self.problem.v))
+                ),
+                reverse=True,
+            )
+            for customer in customers:
+                customer_inventory = (
+                    previous_inventory[p, customer]
+                    + period_deliveries[customer][p]
+                    - self.problem.d_p_i_t[p][customer - 1][t]
+                )
+                customer_stock_headroom = int(
+                    self.problem.U_p_i[p][customer] - customer_inventory
+                )
+                if customer_stock_headroom <= 0:
+                    continue
+                edge = add_edge(
+                    product_nodes[p],
+                    customer_nodes[customer],
+                    customer_stock_headroom,
+                )
+                tracked_edges.append((p, customer, edge, customer_stock_headroom))
+
+        for customer, load in remaining_vehicle_load_by_customer.items():
+            add_edge(customer_nodes[customer], sink, load)
+
+        flow = 0
+        while True:
+            parent = [None for _ in graph]
+            queue = [source]
+            parent[source] = source
+            for node in queue:
+                for edge_index, edge in enumerate(graph[node]):
+                    if edge[2] <= 0 or parent[edge[0]] is not None:
+                        continue
+                    parent[edge[0]] = (node, edge_index)
+                    queue.append(edge[0])
+                    if edge[0] == sink:
+                        break
+                if parent[sink] is not None:
+                    break
+            if parent[sink] is None:
+                break
+
+            increment = required_extra - flow
+            node = sink
+            while node != source:
+                previous, edge_index = parent[node]
+                increment = min(increment, graph[previous][edge_index][2])
+                node = previous
+
+            node = sink
+            while node != source:
+                previous, edge_index = parent[node]
+                edge = graph[previous][edge_index]
+                edge[2] -= increment
+                graph[node][edge[1]][2] += increment
+                node = previous
+            flow += increment
+
+        if flow != required_extra:
+            return False
+
+        for p, customer, edge, initial_capacity in tracked_edges:
+            period_deliveries[customer][p] += initial_capacity - edge[2]
+        return True
 
     def _assign_customers_to_vehicles(self, period_deliveries, raw_q, t):
         remaining_capacity = [self.problem.C for _ in range(self.problem.v)]

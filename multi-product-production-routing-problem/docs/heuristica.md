@@ -18,6 +18,25 @@ servem para avaliação do relaxamento. O segundo PL recebe restrições
 `X[p,t] >= lower_solution['X'][p,t]`, garantindo que o perfil upper não fique
 abaixo do perfil lower. A construção factível permanece ativa.
 
+Ao construir cada período, a heurística primeiro entrega as quantidades
+necessárias para cobrir os déficits dos clientes. Em seguida, distribui todo o
+excedente disponível na planta para os clientes, respeitando a capacidade de
+estoque `U[p][i]` de cada produto no cliente, a carga `C` do veículo que atende
+o cliente e a capacidade total da frota. A capacidade de estoque da planta é
+`U[p][0]`; como o excedente é escoado, o estoque final da planta é zero em cada
+período. As preferências codificadas pelos genes de `Q` ordenam essa alocação
+adicional, preservando perfis de entrega diversos entre as partículas. Se o
+excedente não puder ser escoado sob essas capacidades, a partícula é inválida.
+
+### Limitação em avaliação
+
+Ainda são geradas partículas infactíveis. Isso ocorre quando o perfil de
+produção imposto pelos bounds não pode ser escoado no período respeitando, ao
+mesmo tempo, os limites de estoque `U[p][i]`, a carga `C` de cada veículo e a
+alocação de clientes em rotas. Nesses casos a partícula é reamostrada; a
+integração dos limites de entrega na geração dos bounds permanece pendente de
+avaliação.
+
 O PL usa por padrão o timeout global `solver.timeLimit`. Esse valor pode ser
 substituído por `solver.pso.lot_sizing_bounds.time_limit`; o limite é aplicado a
 cada resolução de bound e à solução-base opcional.

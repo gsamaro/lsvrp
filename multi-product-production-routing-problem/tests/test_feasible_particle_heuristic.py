@@ -92,6 +92,59 @@ class FeasibleParticleHeuristicTestCase(unittest.TestCase):
         self.assertTrue(repaired["feasible"])
         self.assertTrue(report["feasible"], report["violations"])
 
+    def test_bounds_are_drained_to_customers_with_diverse_delivery_profiles(self):
+        data = {
+            "num_products": 1,
+            "num_customers": 2,
+            "num_periods": 1,
+            "num_vehicles": 1,
+            "B": 10,
+            "b_p": [1],
+            "c_p": [2],
+            "s_p": [3],
+            "M": 100,
+            "U_pi": [[0, 4, 4]],
+            "I_pi0": [[0, 0, 0]],
+            "h_pi": [[0, 1, 1]],
+            "C": 10,
+            "f": 7,
+            "a_ik": [[0, 1, 2], [1, 0, 1], [2, 1, 0]],
+            "d_pit": [[[1], [1]]],
+            "weight": [0.2] * 5,
+            "alpha": 0.01,
+        }
+        bounds = {"lower": np.array([[8.0]]), "upper": np.array([[8.0]])}
+        heuristic = FeasibleParticleHeuristic(data, "/tmp", DummyLogger(), bounds=bounds)
+
+        particles = np.array(
+            [
+                [0.0, 0.0, 10.0, -10.0],
+                [0.0, 0.0, -10.0, 10.0],
+            ]
+        )
+        solutions = heuristic.build_population(particles)
+
+        self.assertTrue(all(solution["feasible"] for solution in solutions))
+        self.assertTrue(all(solution["I"][0, 0, 0] == 0 for solution in solutions))
+        self.assertTrue(
+            all(
+                solution["I"][0, customer, 0] <= data["U_pi"][0][customer]
+                for solution in solutions
+                for customer in (1, 2)
+            )
+        )
+        self.assertTrue(
+            all(
+                sum(solution["Q"][0, 0, customer, 0] for customer in (1, 2))
+                == 8
+                for solution in solutions
+            )
+        )
+        self.assertNotEqual(
+            solutions[0]["Q"][0, 0, 1, 0],
+            solutions[1]["Q"][0, 0, 1, 0],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
