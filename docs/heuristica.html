@@ -28,7 +28,7 @@
       background: var(--paper);
       font: 16px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    .wrap { width: min(1120px, calc(100% - 40px)); margin: auto; }
+    .wrap { width: min(1280px, calc(100% - 32px)); margin: auto; }
     header {
       padding: 72px 0 64px;
       color: #fff;
@@ -79,7 +79,7 @@
     @media (max-width: 800px) {
       .grid, .grid.two, .metrics { grid-template-columns: 1fr; }
       header { padding: 50px 0 46px; }
-      .wrap { width: min(100% - 28px, 1120px); }
+      .wrap { width: min(100% - 28px, 1280px); }
       .panel { padding: 16px; }
     }
   </style>
@@ -440,13 +440,13 @@ gbest ← melhor_solução(população)
     <section>
       <h2>Comparação em outras instâncias configuradas</h2>
       <p class="section-intro">Experimento com uma thread no CPLEX, limite de 60 segundos para a busca MIP e PSO Numba de 1000 partículas por 1000 iterações. A licença completa do CPLEX foi confirmada antes das execuções; os tempos de parede incluem a preparação do modelo.</p>
-      <div class="panel" style="margin-top:16px; box-shadow:none;">
+      <div class="panel" style="margin-top:16px; box-shadow:none; overflow-x:auto;">
         <table>
-          <thead><tr><th>Instância</th><th>MIP sem start</th><th>PSO</th><th>MIP com start do PSO</th><th>Leitura</th></tr></thead>
+          <thead><tr><th>Instância</th><th>Sem start<br>incumbente</th><th>Com start<br>incumbente</th><th>Sem start<br>gap</th><th>Com start<br>gap</th><th>Sem start<br>nós</th><th>Com start<br>nós</th><th>PSO<br>tempo quente</th><th>PSO<br>melhor custo</th><th>Leitura</th></tr></thead>
           <tbody>
-            <tr><td><code>PRP21_C10_P5_V2_T6_S5</code></td><td>900.685,00; gap 13,96%; 954 nós; 6 incumbentes; primeira em 2,69 s</td><td>4,93 s quente; melhor 1.003.487,00; 100% factível</td><td>822.337,00; gap 5,72%; 1.204 nós; 9 incumbentes; start aceito em 0,10 s; melhor em 31,38 s</td><td>Melhorou a incumbente final em 78.348,00 e reduziu o gap em 8,25 p.p.</td></tr>
-            <tr><td><code>PRP12_C20_P8_V5_T12_S3</code></td><td>Sem incumbente; 0 nós; relaxação 53.719.781,21 em 1,77 s</td><td>26,88 s quente; melhor 54.859.202,00; 100% factível</td><td>53.968.455,00; gap 0,36%; 61 nós; 2 incumbentes; start registrado em 30,79 s</td><td>Transformou uma execução sem solução inteira em solução com gap baixo.</td></tr>
-            <tr><td><code>PRP1_C30_P10_V5_T12_S1</code></td><td>Sem incumbente; 0 nós; relaxação 8.965.524,31 em 8,81 s</td><td>46,20 s quente; melhor 10.502.062,00 na iteração 5; 100% factível</td><td>10.502.062,00; gap reportado 98,80%; 0 nós e nenhuma melhoria posterior observada</td><td>O start forneceu a única incumbente, mas o MIP não avançou na árvore.</td></tr>
+            <tr><td><code>PRP21_C10_P5_V2_T6_S5</code></td><td>900.685,00</td><td>822.337,00</td><td>13,96%</td><td>5,72%</td><td>954</td><td>1.204</td><td>4,93 s</td><td>1.003.487,00</td><td>Melhorou a incumbente em 78.348,00 e reduziu o gap em 8,25 p.p.</td></tr>
+            <tr><td><code>PRP12_C20_P8_V5_T12_S3</code></td><td>Não encontrada</td><td>53.968.455,00</td><td>—</td><td>0,36%</td><td>0</td><td>61</td><td>26,88 s</td><td>54.859.202,00</td><td>Transformou uma execução sem solução inteira em solução com gap baixo.</td></tr>
+            <tr><td><code>PRP1_C30_P10_V5_T12_S1</code></td><td>Não encontrada</td><td>10.502.062,00</td><td>—</td><td>98,80%</td><td>0</td><td>0</td><td>46,20 s</td><td>10.502.062,00</td><td>O start forneceu a única incumbente, mas o MIP não avançou na árvore.</td></tr>
           </tbody>
         </table>
       </div>
