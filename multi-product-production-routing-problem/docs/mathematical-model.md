@@ -449,12 +449,12 @@ Impõe limite superior de armazenamento por item e local.
 
 `createDelimitMaximumCapacityItemsAtPlant` em `src/solvers/MultProductProdctionRoutingProblem.py`.
 
-## PL relaxado para bounds do PSO
+## Modelo de dimensionamento sem roteamento para bounds do PSO
 
 O PSO utiliza um PL auxiliar de dimensionamento de lotes, implementado em
 `src/solvers/LotSizingRelaxation.py`. Esse PL contém somente as variáveis
-contínuas `X`, `I` e `Q`, com não negatividade, e as restrições 8, 9, 10 e 12.
-Além delas, o relaxamento inclui uma aproximação da restrição 15, sem as
+contínuas e não negativas `X`, `I` e `Q`, e as restrições 8, 9, 10 e 12.
+Além delas, o modelo de dimensionamento inclui uma aproximação da restrição 15, sem as
 variáveis de arco `R` e `Z`:
 
 `sum_i sum_p Q[p,v,i,t] <= C` para cada veículo `v` e período `t`.
@@ -476,6 +476,19 @@ heurística; o mesmo acontece com `lower_solution['Q']` e
 `upper_solution['Q']` para orientar as entregas. Os valores escalares `lower`
 e `upper` permanecem disponíveis como limites agregados para avaliação. Quando
 solicitado, `base` referencia a solução do PL que minimiza a soma.
+
+O tipo das variáveis é configurável por
+`solver.pso.lot_sizing_bounds.integer_variables`. Com `false`, o modelo é um
+PL contínuo; com `true`, transforma-se em uma formulação inteira de
+dimensionamento, ainda sem variáveis de rota. O limite de tempo é configurado
+por `solver.pso.lot_sizing_bounds.time_limit` e, no experimento atual, está
+definido como 1 segundo por modelo.
+
+Durante o PSO, cada partícula mantém apenas `X`, `Y`, `I`, `Q`, atribuições e
+rotas. As variáveis `R` e `Z` do modelo completo são materializadas a partir
+das rotas somente para auditoria, solução final e warm start. Essa
+representação não altera as equações do modelo completo; evita apenas criar e
+validar os tensores densos para todas as partículas.
 
 ## Restrição 13: Conservação de fluxo de produto em cliente
 

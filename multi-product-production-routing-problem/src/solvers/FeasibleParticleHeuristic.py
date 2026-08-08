@@ -1,4 +1,5 @@
 import math
+import time
 
 import numpy as np
 
@@ -7,7 +8,6 @@ from src.solvers._solver_common import (
     ProblemData,
     clone_solution,
     empty_solution,
-    evaluate_solution_cost,
 )
 
 
@@ -23,6 +23,7 @@ class FeasibleParticleHeuristic:
         self.particle_dim = self.dim_x + self.dim_q
         self.bounds = bounds
         self.relaxed_base = relaxed_base
+        self.fast_validation_seconds = 0.0
         if bounds is not None:
             self.lower_bounds = np.asarray(bounds["lower"], dtype=float)
             self.upper_bounds = np.asarray(bounds["upper"], dtype=float)
@@ -68,65 +69,170 @@ class FeasibleParticleHeuristic:
         return [self._build_solution_from_particle(row) for row in particles]
 
     def repair_population(self, particles: np.ndarray, previous_solutions=None):
-        return [self._build_solution_from_particle(row) for row in particles]
+        repaired = []
+        for index, row in enumerate(particles):
+            solution = self._build_solution_from_particle(row)
+            previous = (
+                previous_solutions[index]
+                if previous_solutions is not None and index < len(previous_solutions)
+                else None
+            )
+            if not solution["feasible"] and previous is not None and previous["feasible"]:
+                solution = clone_solution(previous)
+                solution["reused_previous"] = True
+            else:
+                solution["reused_previous"] = False
+            repaired.append(solution)
+        return repaired
 
-    def validate_solution(self, solution):
-        variables = solution
-        X = variables["X"]
-        Y = variables["Y"]
-        I = variables["I"]
-        Q = variables["Q"]
-        R = variables["R"]
-        Z = variables["Z"]
+    def _empty_compact_solution(self):
+        return {
+            "X": np.zeros((self.problem.p, self.problem.t), dtype=int),
+            "Y": np.zeros((self.problem.p, self.problem.t), dtype=int),
+            "I": np.zeros(
+                (self.problem.p, self.problem.i, self.problem.t), dtype=int
+            ),
+            "Q": np.zeros(
+                (
+                    self.problem.p,
+                    self.problem.v,
+                    self.problem.i,
+                    self.problem.t,
+                ),
+                dtype=int,
+            ),
+            "route_plan": [],
+            "assignments": [],
+        }
+
+    def validate_compact_solution(self, solution):
+        """Fast vectorized validation used for every particle."""
+        X = np.asarray(solution["X"])
+        Y = np.asarray(solution["Y"])
+        I = np.asarray(solution["I"])
+        Q = np.asarray(solution["Q"])
         violations = []
 
-        for p in range(self.problem.p):
-            for t in range(self.problem.t):
-                if X[p, t] < 0:
-                    violations.append(f"X[{p},{t}] negativo")
-                if Y[p, t] not in (0, 1):
-                    violations.append(f"Y[{p},{t}] nao binario")
-                if X[p, t] > self.problem.M * Y[p, t]:
-                    violations.append(f"X[{p},{t}] excede M*Y")
+        if np.any(X < 0):
+            violations.append("X negativo")
+        if np.any((Y != 0) & (Y != 1)):
+            violations.append("Y nao binario")
+        if np.any(X > self.problem.M * Y):
+            violations.append("X excede M*Y")
 
-        for t in range(self.problem.t):
-            total_time = sum(self.problem.b_p[p] * X[p, t] for p in range(self.problem.p))
-            if total_time > self.problem.B:
-                violations.append(f"capacidade producao excedida t={t}")
+        production_time = np.asarray(self.problem.b_p, dtype=int) @ X
+        if np.any(production_time > self.problem.B):
+            violations.append("capacidade producao excedida")
 
-        for p in range(self.problem.p):
-            for i in range(self.problem.i):
-                for t in range(self.problem.t):
-                    if I[p, i, t] < 0:
-                        violations.append(f"I[{p},{i},{t}] negativo")
-                    if I[p, i, t] > self.problem.U_p_i[p][i]:
-                        violations.append(f"I[{p},{i},{t}] excede U")
+        inventory_capacity = np.asarray(self.problem.U_p_i, dtype=int)[:, :, None]
+        if np.any(I < 0):
+            violations.append("estoque negativo")
+        if np.any(I > inventory_capacity):
+            violations.append("capacidade estoque excedida")
 
-        for p in range(self.problem.p):
-            for t in range(self.problem.t):
-                previous = self.problem.I_p_i_0[p][0] if t == 0 else I[p, 0, t - 1]
-                delivered = sum(Q[p, v, i, t] for v in range(self.problem.v) for i in range(1, self.problem.i))
-                if previous + X[p, t] - delivered != I[p, 0, t]:
-                    violations.append(f"balanco planta p={p} t={t}")
+        initial_inventory = np.asarray(self.problem.I_p_i_0, dtype=int)
+        previous_plant = np.concatenate(
+            (initial_inventory[:, 0, None], I[:, 0, :-1]), axis=1
+        )
+        delivered_from_plant = Q[:, :, 1:, :].sum(axis=(1, 2))
+        if np.any(previous_plant + X - delivered_from_plant != I[:, 0, :]):
+            violations.append("balanco planta")
 
-        for p in range(self.problem.p):
-            for i in range(1, self.problem.i):
-                for t in range(self.problem.t):
-                    previous = self.problem.I_p_i_0[p][i] if t == 0 else I[p, i, t - 1]
-                    delivered = sum(Q[p, v, i, t] for v in range(self.problem.v))
-                    if previous + delivered - self.problem.d_p_i_t[p][i - 1][t] != I[p, i, t]:
-                        violations.append(f"balanco cliente p={p} i={i} t={t}")
+        previous_customers = np.concatenate(
+            (initial_inventory[:, 1:, None], I[:, 1:, :-1]), axis=2
+        )
+        received = Q[:, :, 1:, :].sum(axis=1)
+        demand = np.asarray(self.problem.d_p_i_t, dtype=int)
+        if np.any(previous_customers + received - demand != I[:, 1:, :]):
+            violations.append("balanco cliente")
 
-        for v in range(self.problem.v):
-            for i in range(self.problem.i):
-                for k in range(self.problem.k):
-                    if i == k:
-                        continue
-                    for t in range(self.problem.t):
-                        if sum(R[p, v, i, k, t] for p in range(self.problem.p)) > self.problem.C * Z[v, i, k, t]:
-                            violations.append(f"capacidade rota v={v} i={i} k={k} t={t}")
+        vehicle_load = Q[:, :, 1:, :].sum(axis=(0, 2))
+        if np.any(vehicle_load > self.problem.C):
+            violations.append("capacidade veiculo")
 
-        return {"feasible": len(violations) == 0, "violations": violations[:50]}
+        active_vehicle = Q[:, :, 1:, :].sum(axis=0) > 0
+        if np.any(active_vehicle.sum(axis=0) > 1):
+            violations.append("cliente atendido por mais de um veiculo")
+
+        route_plan = solution.get("route_plan", [])
+        if len(route_plan) != self.problem.t:
+            violations.append("plano de rotas incompleto")
+        else:
+            for t, period_routes in enumerate(route_plan):
+                if len(period_routes) != self.problem.v:
+                    violations.append(f"quantidade de rotas invalida t={t}")
+                    continue
+                for vehicle, route in enumerate(period_routes):
+                    route = list(route)
+                    if len(route) != len(set(route)):
+                        violations.append(
+                            f"cliente repetido v={vehicle} t={t}"
+                        )
+                    expected = set(
+                        np.flatnonzero(active_vehicle[vehicle, :, t]) + 1
+                    )
+                    if set(route) != expected:
+                        violations.append(
+                            f"rota inconsistente v={vehicle} t={t}"
+                        )
+
+        return {"feasible": not violations, "violations": violations[:50]}
+
+    def materialize_solution(self, solution):
+        """Create dense R/Z arrays only for audits, output and warm starts."""
+        full = empty_solution(self.problem)
+        for name in ("X", "Y", "I", "Q"):
+            full[name][...] = solution[name]
+        for t, routes in enumerate(solution.get("route_plan", [])):
+            self._fill_route_variables(full, t, routes)
+        metadata = clone_solution(
+            {
+                "route_plan": solution.get("route_plan", []),
+                "assignments": solution.get("assignments", []),
+            }
+        )
+        return {
+            **full,
+            **metadata,
+            "routes": solution.get("routes", []),
+            "visits": solution.get("visits", []),
+            "feasible": solution.get("feasible", False),
+            "cost": solution.get("cost", math.inf),
+        }
+
+    def validate_solution(self, solution):
+        """Complete vectorized audit, including materialized route flow."""
+        compact_report = self.validate_compact_solution(solution)
+        if not compact_report["feasible"]:
+            return compact_report
+        full = solution if "R" in solution and "Z" in solution else self.materialize_solution(solution)
+        route_capacity = np.asarray(full["R"]).sum(axis=0)
+        route_enabled_capacity = self.problem.C * np.asarray(full["Z"])
+        violations = list(compact_report["violations"])
+        if np.any(route_capacity > route_enabled_capacity):
+            violations.append("capacidade rota")
+        return {"feasible": not violations, "violations": violations[:50]}
+
+    def evaluate_compact_cost(self, solution):
+        X = np.asarray(solution["X"], dtype=int)
+        Y = np.asarray(solution["Y"], dtype=int)
+        I = np.asarray(solution["I"], dtype=int)
+        total = int(np.sum(np.asarray(self.problem.s_p)[:, None] * Y))
+        total += int(np.sum(np.asarray(self.problem.c_p)[:, None] * X))
+        total += int(
+            np.sum(np.asarray(self.problem.h_p_i)[:, :, None] * I)
+        )
+        for period_routes in solution.get("route_plan", []):
+            for route in period_routes:
+                if not route:
+                    continue
+                total += self.problem.f
+                full_route = [0] + list(route) + [0]
+                total += sum(
+                    self.problem.a_i_k[full_route[index]][full_route[index + 1]]
+                    for index in range(len(full_route) - 1)
+                )
+        return total
 
     def _build_solution_from_particle(self, row):
         if row.shape[0] != self.particle_dim:
@@ -135,13 +241,13 @@ class FeasibleParticleHeuristic:
             )
 
         raw_x, raw_q = self._decode_particle(row)
-        solution = empty_solution(self.problem)
+        solution = self._empty_compact_solution()
         previous_inventory = np.array(self.problem.I_p_i_0, dtype=int)
 
         for t in range(self.problem.t):
             period_state = self._build_period_state(t, raw_x, raw_q, previous_inventory)
             if period_state is None:
-                infeasible = empty_solution(self.problem)
+                infeasible = self._empty_compact_solution()
                 return {
                     **infeasible,
                     "routes": [],
@@ -151,6 +257,8 @@ class FeasibleParticleHeuristic:
                 }
 
             production, period_deliveries, vehicle_assignment, routes = period_state
+            solution["route_plan"].append([list(route) for route in routes])
+            solution["assignments"].append(dict(vehicle_assignment))
 
             for p in range(self.problem.p):
                 solution["X"][p, t] = production[p]
@@ -179,14 +287,18 @@ class FeasibleParticleHeuristic:
                         - self.problem.d_p_i_t[p][i - 1][t]
                     )
 
-            self._fill_route_variables(solution, t, routes)
             previous_inventory = solution["I"][:, :, t].copy()
 
-        cost = evaluate_solution_cost(self.problem, solution)
-        report = self.validate_solution(solution)
+        validation_started_at = time.perf_counter()
+        report = self.validate_compact_solution(solution)
+        self.fast_validation_seconds += time.perf_counter() - validation_started_at
+        cost = self.evaluate_compact_cost(solution) if report["feasible"] else math.inf
         return {
             **clone_solution(solution),
-            "routes": self._extract_routes_metadata(solution),
+            "routes": [
+                {"periodo": t, "route": [list(route) for route in routes]}
+                for t, routes in enumerate(solution["route_plan"])
+            ],
             "visits": self._extract_visits(solution),
             "feasible": report["feasible"],
             "cost": cost,
@@ -202,7 +314,8 @@ class FeasibleParticleHeuristic:
     def _normalize_gene(self, value):
         if np.isnan(value):
             return 0.5
-        return 1.0 / (1.0 + math.exp(-float(value)))
+        bounded_value = min(60.0, max(-60.0, float(value)))
+        return 1.0 / (1.0 + math.exp(-bounded_value))
 
     def _pick_int_in_range(self, low, high, gene):
         low = int(max(0, round(low)))
@@ -305,17 +418,22 @@ class FeasibleParticleHeuristic:
             for p in range(self.problem.p):
                 period_deliveries[customer][p] = lower_by_product[p]
 
+        vehicle_assignment = self._assign_customers_to_vehicles(
+            period_deliveries,
+            raw_q,
+            t,
+        )
+        if vehicle_assignment is None:
+            return None
+
         if not self._drain_plant_inventory(
             period_deliveries,
             previous_inventory,
             production,
             raw_q,
             t,
+            vehicle_assignment,
         ):
-            return None
-
-        vehicle_assignment = self._assign_customers_to_vehicles(period_deliveries, raw_q, t)
-        if vehicle_assignment is None:
             return None
 
         routes = self._build_nearest_neighbor_routes(vehicle_assignment)
@@ -328,6 +446,7 @@ class FeasibleParticleHeuristic:
         production,
         raw_q,
         t,
+        vehicle_assignment,
     ):
         available_by_product = np.array(
             previous_inventory[:, 0] + production,
@@ -340,142 +459,94 @@ class FeasibleParticleHeuristic:
             ],
             dtype=int,
         )
-        excess_by_product = available_by_product - mandatory_by_product
-        if np.any(excess_by_product < 0):
+        plant_inventory_before_extra = available_by_product - mandatory_by_product
+        if np.any(plant_inventory_before_extra < 0):
             return False
 
-        remaining_vehicle_load_by_customer = {
-            customer: self.problem.C - sum(period_deliveries[customer])
-            for customer in period_deliveries
-        }
-        if any(load < 0 for load in remaining_vehicle_load_by_customer.values()):
-            return False
-
-        required_extra = int(np.sum(excess_by_product))
-        remaining_fleet_load = (
-            self.problem.v * self.problem.C
-            - sum(sum(deliveries) for deliveries in period_deliveries.values())
+        # A planta pode carregar estoque para o próximo período.  Portanto,
+        # somente o volume acima de U[p][0] precisa ser entregue agora.
+        excess_by_product = np.maximum(
+            0,
+            plant_inventory_before_extra
+            - np.asarray(self.problem.U_p_i, dtype=int)[:, 0],
         )
-        if required_extra > remaining_fleet_load:
+
+        remaining_capacity = [self.problem.C for _ in range(self.problem.v)]
+        for customer, vehicle in vehicle_assignment.items():
+            remaining_capacity[vehicle] -= sum(period_deliveries[customer])
+        if any(capacity < 0 for capacity in remaining_capacity):
             return False
 
-        source = 0
-        product_nodes = {p: p + 1 for p in range(self.problem.p)}
-        customer_nodes = {
-            customer: self.problem.p + customer
-            for customer in period_deliveries
-        }
-        sink = self.problem.p + self.problem.i
-        graph = [[] for _ in range(sink + 1)]
-        tracked_edges = []
-
-        def add_edge(origin, destination, capacity):
-            forward = [destination, len(graph[destination]), int(capacity)]
-            backward = [origin, len(graph[origin]), 0]
-            graph[origin].append(forward)
-            graph[destination].append(backward)
-            return forward
-
-        for p in range(self.problem.p):
-            add_edge(source, product_nodes[p], excess_by_product[p])
-            customers = sorted(
-                period_deliveries,
-                key=lambda customer: self._normalize_gene(
-                    sum(raw_q[p, v, customer, t] for v in range(self.problem.v))
-                ),
-                reverse=True,
-            )
-            for customer in customers:
-                customer_inventory = (
-                    previous_inventory[p, customer]
-                    + period_deliveries[customer][p]
-                    - self.problem.d_p_i_t[p][customer - 1][t]
+        product_priority = sorted(
+            range(self.problem.p),
+            key=lambda p: sum(
+                max(
+                    0,
+                    self.problem.U_p_i[p][customer]
+                    - (
+                        previous_inventory[p, customer]
+                        + period_deliveries[customer][p]
+                        - self.problem.d_p_i_t[p][customer - 1][t]
+                    ),
                 )
-                customer_stock_headroom = int(
-                    self.problem.U_p_i[p][customer] - customer_inventory
-                )
-                desired_delivery = None
-                if self.lower_delivery_bounds is not None:
-                    desired_delivery = self._bounded_delivery_from_genes(
-                        p,
-                        customer,
-                        t,
-                        raw_q,
+                for customer in period_deliveries
+            ),
+        )
+        for p in product_priority:
+            while excess_by_product[p] > 0:
+                candidates = []
+                for customer in period_deliveries:
+                    customer_inventory = (
+                        previous_inventory[p, customer]
+                        + period_deliveries[customer][p]
+                        - self.problem.d_p_i_t[p][customer - 1][t]
                     )
-                if customer_stock_headroom <= 0:
-                    continue
-                if self.lower_delivery_bounds is None:
-                    preferred_extra = 0
-                else:
-                    preferred_extra = min(
-                        customer_stock_headroom,
-                        max(
-                            0,
-                            desired_delivery - period_deliveries[customer][p],
-                        ),
+                    stock_headroom = int(
+                        self.problem.U_p_i[p][customer] - customer_inventory
                     )
-                if preferred_extra > 0:
-                    preferred_edge = add_edge(
-                        product_nodes[p],
-                        customer_nodes[customer],
-                        preferred_extra,
-                    )
-                    tracked_edges.append(
-                        (p, customer, preferred_edge, preferred_extra)
-                    )
-                fallback_extra = customer_stock_headroom - preferred_extra
-                if fallback_extra > 0:
-                    fallback_edge = add_edge(
-                        product_nodes[p],
-                        customer_nodes[customer],
-                        fallback_extra,
-                    )
-                    tracked_edges.append(
-                        (p, customer, fallback_edge, fallback_extra)
-                    )
-
-        for customer, load in remaining_vehicle_load_by_customer.items():
-            add_edge(customer_nodes[customer], sink, load)
-
-        flow = 0
-        while True:
-            parent = [None for _ in graph]
-            queue = [source]
-            parent[source] = source
-            for node in queue:
-                for edge_index, edge in enumerate(graph[node]):
-                    if edge[2] <= 0 or parent[edge[0]] is not None:
+                    if stock_headroom <= 0:
                         continue
-                    parent[edge[0]] = (node, edge_index)
-                    queue.append(edge[0])
-                    if edge[0] == sink:
-                        break
-                if parent[sink] is not None:
-                    break
-            if parent[sink] is None:
-                break
 
-            increment = required_extra - flow
-            node = sink
-            while node != source:
-                previous, edge_index = parent[node]
-                increment = min(increment, graph[previous][edge_index][2])
-                node = previous
+                    if customer in vehicle_assignment:
+                        vehicles = [vehicle_assignment[customer]]
+                    else:
+                        vehicles = sorted(
+                            range(self.problem.v),
+                            key=lambda vehicle: self._normalize_gene(
+                                raw_q[p, vehicle, customer, t]
+                            ),
+                            reverse=True,
+                        )
+                    for vehicle in vehicles:
+                        available = min(stock_headroom, remaining_capacity[vehicle])
+                        if available <= 0:
+                            continue
+                        preference = self._normalize_gene(
+                            raw_q[p, vehicle, customer, t]
+                        )
+                        if self.lower_delivery_bounds is not None:
+                            desired = self._bounded_delivery_from_genes(
+                                p,
+                                customer,
+                                t,
+                                raw_q,
+                            )
+                            preference += int(
+                                desired > period_deliveries[customer][p]
+                            )
+                        candidates.append(
+                            (preference, -remaining_capacity[vehicle], customer, vehicle, available)
+                        )
 
-            node = sink
-            while node != source:
-                previous, edge_index = parent[node]
-                edge = graph[previous][edge_index]
-                edge[2] -= increment
-                graph[node][edge[1]][2] += increment
-                node = previous
-            flow += increment
+                if not candidates:
+                    return False
 
-        if flow != required_extra:
-            return False
-
-        for p, customer, edge, initial_capacity in tracked_edges:
-            period_deliveries[customer][p] += initial_capacity - edge[2]
+                _, _, customer, vehicle, available = max(candidates)
+                quantity = min(int(excess_by_product[p]), available)
+                period_deliveries[customer][p] += quantity
+                remaining_capacity[vehicle] -= quantity
+                vehicle_assignment[customer] = vehicle
+                excess_by_product[p] -= quantity
         return True
 
     def _assign_customers_to_vehicles(self, period_deliveries, raw_q, t):
@@ -496,24 +567,19 @@ class FeasibleParticleHeuristic:
                 ),
                 reverse=True,
             )
-            assigned = False
-            for vehicle in vehicle_preferences:
-                if remaining_capacity[vehicle] >= total_delivery:
-                    assignment[customer] = vehicle
-                    remaining_capacity[vehicle] -= total_delivery
-                    assigned = True
-                    break
-
-            if not assigned:
-                for vehicle in range(self.problem.v):
-                    if remaining_capacity[vehicle] >= total_delivery:
-                        assignment[customer] = vehicle
-                        remaining_capacity[vehicle] -= total_delivery
-                        assigned = True
-                        break
-
-            if not assigned:
+            feasible_vehicles = [
+                vehicle
+                for vehicle in vehicle_preferences
+                if remaining_capacity[vehicle] >= total_delivery
+            ]
+            if not feasible_vehicles:
                 return None
+            vehicle = min(
+                feasible_vehicles,
+                key=lambda candidate: remaining_capacity[candidate] - total_delivery,
+            )
+            assignment[customer] = vehicle
+            remaining_capacity[vehicle] -= total_delivery
 
         return assignment
 

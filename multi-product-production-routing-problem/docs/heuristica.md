@@ -1,5 +1,25 @@
 # 3.3 Geração de soluções factíveis
 
+## Estado atual da abordagem
+
+O PSO usa um modelo auxiliar de dimensionamento sem rotas para obter perfis de
+produção e entrega. No experimento atual, esse modelo está configurado como PL
+contínuo (`integer_variables=false`), com limite de 1 segundo por resolução.
+O modo inteiro (`integer_variables=true`) permanece disponível para comparação.
+O solver completo de produção e roteamento não participa da avaliação standalone
+do PSO.
+
+Após a construção dos déficits obrigatórios, a planta conserva estoque de cada
+produto até `U[p][0]`; somente o excedente acima dessa capacidade é enviado aos
+clientes. Essa alteração tornou a solução LB do modelo auxiliar factível no PSO
+na instância avaliada.
+
+Na medição mais recente, com 1000 partículas e três iterações, todas as
+partículas foram factíveis. Houve um perfil de quantidade entregue por cliente,
+mas 1000 perfis de `X`, atribuição de veículos e tensor completo `Q` em todas as
+iterações. O melhor custo, `5391676`, foi encontrado na inicialização. Cada
+iteração levou entre 7,79 e 7,99 segundos.
+
 ## Bounds relaxados de dimensionamento para o PSO
 
 Antes da inicialização do enxame, o PSO pode resolver o PL auxiliar de
@@ -23,24 +43,25 @@ os bounds de produção; as matrizes `Q` são decodificadas como metas de entreg
 na alocação de excedente. Essa preferência é reparada quando necessário para
 preservar estoques `U`, carga `C` e a factibilidade das rotas.
 
-Ao construir cada período, a heurística primeiro entrega as quantidades
-necessárias para cobrir os déficits dos clientes. Em seguida, distribui todo o
-excedente disponível na planta para os clientes, respeitando a capacidade de
-estoque `U[p][i]` de cada produto no cliente, a carga `C` do veículo que atende
-o cliente e a capacidade total da frota. A capacidade de estoque da planta é
-`U[p][0]`; como o excedente é escoado, o estoque final da planta é zero em cada
-período. As preferências codificadas pelos genes de `Q` ordenam essa alocação
+Ao construir cada período, a heurística primeiro atribui os clientes com
+déficit aos veículos por `best-fit decreasing`, respeitando a visita única e a
+carga `C` de cada veículo. Em seguida, distribui somente o excedente que
+ultrapassa `U[p][0]`, usando as capacidades residuais desses veículos e o
+estoque disponível em cada cliente. A capacidade de estoque da planta é
+`U[p][0]`;
+o estoque final da planta pode permanecer positivo, desde que não ultrapasse
+`U[p][0]`.
+As preferências codificadas pelos genes de `Q` ordenam essa alocação
 adicional, preservando perfis de entrega diversos entre as partículas. Se o
 excedente não puder ser escoado sob essas capacidades, a partícula é inválida.
 
 ### Limitação em avaliação
 
-Ainda são geradas partículas infactíveis. Isso ocorre quando o perfil de
-produção imposto pelos bounds não pode ser escoado no período respeitando, ao
-mesmo tempo, os limites de estoque `U[p][i]`, a carga `C` de cada veículo e a
-alocação de clientes em rotas. Nesses casos a partícula é reamostrada; a
-integração dos limites de entrega na geração dos bounds permanece pendente de
-avaliação.
+Ainda podem ser geradas partículas infactíveis quando os bounds impõem uma
+produção que não pode ser escoada no período. Na inicialização, a reamostragem
+é limitada por configuração. Nas iterações seguintes, a heurística preserva a
+solução factível anterior da partícula, evitando reamostragem ilimitada e
+mantendo o custo do PSO previsível.
 
 O PL usa por padrão o timeout global `solver.timeLimit`. Esse valor pode ser
 substituído por `solver.pso.lot_sizing_bounds.time_limit`; o limite é aplicado a
@@ -60,6 +81,37 @@ os objetivos sobre a produção `sum(X[p,t])` por objetivos sobre as entregas
 `Q`. Essa comparação deverá verificar se minimizar/maximizar as entregas produz
 bounds mais úteis para a construção das partículas do que os bounds atuais de
 produção.
+
+### Melhorias de desempenho e diversidade de `Q`
+
+As partículas usam uma representação compacta com `X`, `Y`, `I`, `Q`, rotas e
+atribuições. Os tensores densos `R` e `Z` não são mantidos na população: eles
+são materializados somente para um novo melhor global, auditorias, saída final
+e warm start. Toda partícula passa por validação vetorizada de produção,
+estoques, balanços, carga, visita única e consistência das rotas. A validação
+completa audita o melhor, a solução final e 1% da população a cada 10 iterações.
+
+O PSO usa inércia e coeficientes cognitivo/social adaptativos, limite de
+velocidade e mutação leve em 10% das partículas não elites. Após cinco
+iterações sem melhoria, as 15% piores partículas são reinicializadas, mantendo
+as 5% melhores. No benchmark de três iterações houve 100 mutações por iteração;
+a reinicialização ainda não foi acionada.
+
+Também foi observado que a diversidade medida para `Q` pode ser igual a um:
+quando a produção cabe no estoque da planta, as entregas obrigatórias são
+determinadas pelos déficits dos clientes e não há entrega adicional para os
+genes diferenciarem. Além disso, a métrica atual soma `Q` entre veículos, não
+capturando diferenças de atribuição de veículos. Essas duas questões serão
+reavaliadas antes de alterar a regra de construção.
+
+A telemetria agora separa `q_quantity_profiles` (quantidades agregadas por
+cliente), `vehicle_assignment_profiles` (veículo atribuído a cada cliente e
+período) e `q_full_profiles` (tensor completo de `Q`, incluindo veículos).
+`q_profiles` permanece como alias compatível de `q_quantity_profiles`.
+
+A telemetria também registra distribuição dos custos, partículas mutadas e
+reinicializadas, estagnação, auditorias e tempos de atualização, construção,
+validação rápida, materialização e cálculo de diversidade.
 
 A resolução do problema integrado de produção e roteamento de veículos, uma variante particularmente complexa dos problemas de otimização combinatória, exige a identificação de soluções que atendam simultaneamente a múltiplas restrições operacionais.
 

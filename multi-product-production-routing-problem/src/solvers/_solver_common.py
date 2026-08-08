@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass
 
 import numpy as np
@@ -65,7 +66,7 @@ def clone_solution(solution):
         if isinstance(value, np.ndarray):
             cloned[key] = np.array(value, copy=True)
         else:
-            cloned[key] = value
+            cloned[key] = copy.deepcopy(value)
     return cloned
 
 

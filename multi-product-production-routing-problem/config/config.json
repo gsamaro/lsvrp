@@ -5,18 +5,37 @@
     "method":"PSO",
     "multiobjective":false,
     "pso": {
-      "swarm_size": 20,
-      "max_iterations": 5,
+      "swarm_size": 1000,
+      "max_iterations": 1000,
       "inertia": 0.7,
       "cognitive": 1.5,
       "social": 1.5,
+      "inertia_initial": 0.9,
+      "inertia_final": 0.4,
+      "cognitive_initial": 1.8,
+      "cognitive_final": 1.2,
+      "social_initial": 0.6,
+      "social_final": 1.8,
+      "velocity_limit": 2.0,
+      "mutation_particle_rate": 0.1,
+      "mutation_x_gene_rate": 0.1,
+      "mutation_q_gene_rate": 0.005,
+      "mutation_sigma_initial": 0.5,
+      "mutation_sigma_final": 0.1,
+      "stagnation_patience": 5,
+      "reinitialize_fraction": 0.15,
+      "elite_fraction": 0.05,
+      "audit_fraction": 0.01,
+      "audit_interval": 10,
       "seed": 123,
       "initialization_mix": "constructive",
       "repair_on_update": true,
+      "max_initial_resample_attempts": 1,
       "lot_sizing_bounds": {
         "enabled": true,
         "use_base_solution": false,
-        "time_limit": null
+        "time_limit": 1,
+        "integer_variables": false
       },
       "use_as_mip_start": true,
       "return_heuristic_result_without_cplex": false
@@ -34,7 +53,7 @@
     "is_plot": "true",
     "dir": "./data/",
     "output": "./out/",
-    "files": ["DATA_PRP_5C/PRP1_C5_P2_V1_T2_S1.dat"]
+    "files": ["DATA_PRP_20C/PRP1_C20_P8_V5_T12_S1.dat"]
   },
   "relaxed_solution": {
     "replace_model": true

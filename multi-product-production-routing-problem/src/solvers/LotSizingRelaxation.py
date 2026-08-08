@@ -1,4 +1,4 @@
-"""Linear relaxation used to derive production bounds for the PSO."""
+"""Lot-sizing formulation used to derive production bounds for the PSO."""
 
 import math
 
@@ -10,12 +10,23 @@ from src.solvers._solver_common import ProblemData
 
 
 class LotSizingRelaxation:
-    """Solve the production/inventory relaxation from constraints 8, 9, 10 and 12."""
+    """Solve the production/inventory formulation without routing variables.
 
-    def __init__(self, map, log: Logger, time_limit=None):
+    The model keeps constraints 8, 9, 10, 12 and vehicle-load capacity, but can
+    use integer variables when ``integer_variables`` is enabled.  It is still
+    intentionally separate from the complete routing model.
+    """
+
+    def __init__(self, map, log: Logger, time_limit=None, integer_variables=True):
         self.problem = ProblemData.from_map(map)
         self.log = log
         self.time_limit = time_limit
+        self.integer_variables = bool(integer_variables)
+
+    def _variable(self, model, name):
+        if self.integer_variables:
+            return model.integer_var(lb=0, name=name)
+        return model.continuous_var(lb=0, name=name)
 
     def _build_model(
         self,
@@ -25,18 +36,18 @@ class LotSizingRelaxation:
         problem = self.problem
         model = Model(name="PSO_LotSizing_Relaxation")
         x = {
-            (p, t): model.continuous_var(lb=0, name=f"relax_X_{p}_{t}")
+            (p, t): self._variable(model, f"relax_X_{p}_{t}")
             for p in range(problem.p)
             for t in range(problem.t)
         }
         inventory = {
-            (p, i, t): model.continuous_var(lb=0, name=f"relax_I_{p}_{i}_{t}")
+            (p, i, t): self._variable(model, f"relax_I_{p}_{i}_{t}")
             for p in range(problem.p)
             for i in range(problem.i)
             for t in range(problem.t)
         }
         quantity = {
-            (p, v, i, t): model.continuous_var(lb=0, name=f"relax_Q_{p}_{v}_{i}_{t}")
+            (p, v, i, t): self._variable(model, f"relax_Q_{p}_{v}_{i}_{t}")
             for p in range(problem.p)
             for v in range(problem.v)
             for i in range(problem.i)
@@ -145,6 +156,8 @@ class LotSizingRelaxation:
         result = {
             "lower": lower_result["objective"],
             "upper": upper_result["objective"],
+            "lower_gap": lower_result["gap"],
+            "upper_gap": upper_result["gap"],
             "lower_solution": lower_solution,
             "upper_solution": upper_result["solution"],
         }
@@ -182,6 +195,7 @@ class LotSizingRelaxation:
                 raise RuntimeError(f"PL relaxado sem solução para {label} ({status})")
             return {
                 "objective": float(solution.objective_value),
+                "gap": self._extract_gap(model),
                 "solution": self._extract_solution(solution, x, inventory, quantity),
             }
         finally:
@@ -190,6 +204,25 @@ class LotSizingRelaxation:
     def _apply_time_limit(self, model):
         if self.time_limit is not None:
             model.set_time_limit(float(self.time_limit))
+
+    @staticmethod
+    def _extract_gap(model):
+        details = getattr(model, "solve_details", None)
+        if details is None:
+            return None
+        for name in ("mip_relative_gap", "relative_gap", "mip_gap"):
+            value = getattr(details, name, None)
+            if value is not None:
+                try:
+                    numeric_value = float(value)
+                    if math.isfinite(numeric_value):
+                        return numeric_value
+                except (TypeError, ValueError):
+                    pass
+        status = str(getattr(details, "status", "")).lower()
+        if "optimal" in status:
+            return 0.0
+        return None
 
     def _solve_model_value(self, model, variable):
         solution = model.solve(log_output=False)

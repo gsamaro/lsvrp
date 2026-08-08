@@ -199,6 +199,79 @@ class PSOSolverTestCase(unittest.TestCase):
         self.assertEqual(len(results), 16)
         self.assertGreater(results[7], 0)
 
+    def test_adaptive_coefficients_reach_configured_extremes_and_velocity_is_limited(self):
+        values = {
+            ("solver", "pso"): {
+                "swarm_size": 4,
+                "max_iterations": 3,
+                "seed": 123,
+                "mutation_particle_rate": 0,
+                "stagnation_patience": 99,
+                "return_heuristic_result_without_cplex": True,
+            }
+        }
+        with patch("src.solvers.ParticleSwarmOptimization.Config.get_nested") as get_nested:
+            get_nested.side_effect = lambda *keys, default=None: values.get(keys, default)
+            solver = ParticleSwarmOptimization(
+                map=self._minimal_data(), dir="/tmp", log=DummyLogger()
+            )
+
+        self.assertEqual(solver._schedule_value("inertia_initial", "inertia_final", 1), 0.9)
+        self.assertEqual(solver._schedule_value("inertia_initial", "inertia_final", 3), 0.4)
+        solver.positions = np.zeros((4, solver.heuristic.particle_dim))
+        solver.velocities = np.full_like(solver.positions, 100.0)
+        solver.personal_best_positions = np.zeros_like(solver.positions)
+        solver.personal_best_costs = np.arange(4, dtype=float)
+        solver.global_best_position = np.zeros(solver.heuristic.particle_dim)
+        solver.personal_best_solutions = [None] * 4
+        solver.solutions = [{"feasible": True}] * 4
+
+        solver._update_positions(iteration=1)
+
+        self.assertLessEqual(np.max(np.abs(solver.velocities)), 2.0)
+
+    def test_mutation_preserves_elite_and_reinitialization_replaces_worst(self):
+        values = {
+            ("solver", "pso"): {
+                "swarm_size": 10,
+                "max_iterations": 10,
+                "seed": 123,
+                "mutation_particle_rate": 0.5,
+                "elite_fraction": 0.1,
+                "reinitialize_fraction": 0.2,
+                "stagnation_patience": 5,
+                "return_heuristic_result_without_cplex": True,
+            }
+        }
+        with patch("src.solvers.ParticleSwarmOptimization.Config.get_nested") as get_nested:
+            get_nested.side_effect = lambda *keys, default=None: values.get(keys, default)
+            solver = ParticleSwarmOptimization(
+                map=self._minimal_data(), dir="/tmp", log=DummyLogger()
+            )
+
+        solver.positions = np.zeros((10, solver.heuristic.particle_dim))
+        solver.velocities = np.zeros_like(solver.positions)
+        solver.personal_best_positions = np.zeros_like(solver.positions)
+        solver.personal_best_costs = np.arange(10, dtype=float)
+        solver.personal_best_solutions = [{"feasible": True}] * 10
+        solver.solutions = [{"feasible": True}] * 10
+
+        solver._mutate_non_elites(iteration=1)
+
+        self.assertEqual(solver._mutated_particles, 5)
+        self.assertTrue(np.all(solver.positions[0] == 0))
+        self.assertGreater(np.count_nonzero(solver.positions), 0)
+
+        solver._stagnation_count = 5
+        solver._reinitialize_if_stagnant()
+
+        self.assertEqual(solver._reinitialized_particles, 2)
+        self.assertTrue(np.all(solver.positions[0] == 0))
+        self.assertTrue(np.isinf(solver.personal_best_costs[8]))
+        self.assertTrue(np.isinf(solver.personal_best_costs[9]))
+        self.assertFalse(solver.solutions[8]["feasible"])
+        self.assertFalse(solver.solutions[9]["feasible"])
+
     def test_instance_process_selects_only_pso_solver(self):
         fake_instance = object()
         process = InstanceProcess(
