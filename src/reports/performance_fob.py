@@ -6,10 +6,16 @@ import plotly.express as px
 from .utils import read_results_df
 
 
-def generate_performance_fob(out_dir: Union[str, Path] = "out") -> None:
+def generate_performance_fob(
+    out_dir: Union[str, Path] = "out",
+    publish_dir: Union[str, Path, None] = None,
+) -> None:
     out_dir = Path(out_dir)
     figs_dir = out_dir / "figs"
     figs_dir.mkdir(parents=True, exist_ok=True)
+    if publish_dir is not None:
+        publish_dir = Path(publish_dir)
+        publish_dir.mkdir(parents=True, exist_ok=True)
     df = read_results_df()
 
     omegas = np.arange(0, 4, 0.001)
@@ -48,6 +54,17 @@ def generate_performance_fob(out_dir: Union[str, Path] = "out") -> None:
     fig.update_xaxes(title="RTD limit")
     fig.update_yaxes(title="RTD proportion")
 
+    html_path = (
+        publish_dir / "index.html"
+        if publish_dir is not None
+        else figs_dir / "performance_fob.html"
+    )
+    if publish_dir is not None:
+        # Keep Plotly self-contained so the report also works offline and under
+        # a project Pages URL (which is not the domain root).
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_html(str(html_path), include_plotlyjs="inline", full_html=True)
+
     # save images (requires kaleido)
     png_path = figs_dir / "performance_fob.png"
     svg_path = figs_dir / "performance_fob.svg"
@@ -55,5 +72,5 @@ def generate_performance_fob(out_dir: Union[str, Path] = "out") -> None:
         fig.write_image(str(png_path))
         fig.write_image(str(svg_path))
     except Exception:
-        # fallback: open in browser if image export not available
-        fig.write_html(str(figs_dir / "performance_fob.html"))
+        # The HTML publication above does not depend on Kaleido.
+        pass

@@ -19,6 +19,11 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--out-dir", default="out")
     p.add_argument(
+        "--publish-dir",
+        default="docs/reports",
+        help="Root directory for HTML reports published by GitHub Pages.",
+    )
+    p.add_argument(
         "--only", nargs="*", help="Which reports to run: fob, weights, gap, sensitivity"
     )
     p.add_argument(
@@ -31,18 +36,23 @@ def main():
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    publish_dir = Path(args.publish_dir)
 
     to_run = set(args.only) if args.only else {"fob", "weights", "gap", "sensitivity"}
 
     if "fob" in to_run:
         print("Running performance fob...")
         if not args.dry_run:
-            generate_performance_fob(out_dir)
+            generate_performance_fob(out_dir, publish_dir / "performance-fob")
 
     if "weights" in to_run:
         print("Running performance weights...")
         if not args.dry_run:
-            generate_performance_weights(out_dir, font_size=args.latex_font_size)
+            generate_performance_weights(
+                out_dir,
+                font_size=args.latex_font_size,
+                publish_dir=publish_dir / "performance-weights",
+            )
 
     if "gap" in to_run:
         print("Running gap analysis...")

@@ -40,7 +40,6 @@ def _write_plotly_png_with_chrome(fig, html_path: Path, png_path: Path) -> None:
     if chrome is None:
         raise RuntimeError("Chrome executable not found for Plotly PNG fallback.")
 
-    fig.write_html(str(html_path), include_plotlyjs="inline", full_html=True)
     width = fig.layout.width or 1100
     height = fig.layout.height or 700
     subprocess.run(
@@ -367,7 +366,10 @@ def _weight_mapping_to_latex(
 
 
 def _generate_performance_profile_figure(
-    out_data: pd.DataFrame, figs_dir: Path, stem: str = "performance_profile_weights"
+    out_data: pd.DataFrame,
+    figs_dir: Path,
+    publish_dir: Path | None = None,
+    stem: str = "performance_profile_weights",
 ) -> None:
     """
     Gera figura Plotly de performance profile (célula 24 do notebook).
@@ -455,7 +457,10 @@ def _generate_performance_profile_figure(
 
     png_path = figs_dir / f"{stem}.png"
     svg_path = figs_dir / f"{stem}.svg"
-    html_path = figs_dir / f"{stem}.html"
+    html_path = (publish_dir / "index.html") if publish_dir else figs_dir / f"{stem}.html"
+    if publish_dir:
+        publish_dir.mkdir(parents=True, exist_ok=True)
+    fig.write_html(str(html_path), include_plotlyjs="inline", full_html=True)
     try:
         fig.write_image(str(png_path))
         fig.write_image(str(svg_path))
@@ -616,13 +621,16 @@ def _winners_by_tau_to_latex(
 
 
 def generate_performance_weights(
-    out_dir: str | Path = "out", font_size=r"\small"
+    out_dir: str | Path = "out",
+    font_size=r"\small",
+    publish_dir: str | Path | None = None,
 ) -> None:
     out_dir = Path(out_dir)
     latex_dir = out_dir / "tables"
     figs_dir = out_dir / "figs"
     latex_dir.mkdir(parents=True, exist_ok=True)
     figs_dir.mkdir(parents=True, exist_ok=True)
+    publish_dir = Path(publish_dir) if publish_dir is not None else None
 
     df = read_results_df()
 
@@ -714,7 +722,7 @@ def generate_performance_weights(
     )
     if not out_for_fig.empty:
         out_for_fig["count_norm"] = out_for_fig["count"] / out_for_fig["count"].max()
-        _generate_performance_profile_figure(out_for_fig, figs_dir)
+        _generate_performance_profile_figure(out_for_fig, figs_dir, publish_dir)
 
     # (Cell 27) tabela dos pesos vencedores por tau, alpha, clientes e classe
     taus_of_interest = [1.0, 1.5]

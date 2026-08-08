@@ -215,6 +215,26 @@ python scripts/generate_reports.py --out-dir out --only fob weights gap sensitiv
 
 Os relatórios leem `out/<FILE>`, onde `FILE` é definido em `constants.py` como `2026-04-19.xlsx`.
 
+### GitHub Pages / Reports
+
+Os relatórios HTML interativos são gerados diretamente em `docs/reports/<nome-do-relatorio>/index.html`; os PNG/SVG e as tabelas LaTeX continuam sendo gravados em `out/`. A página inicial fica em `docs/index.html` e usa caminhos relativos, funcionando também na URL de um GitHub Pages de projeto.
+
+Para gerar os relatórios HTML a partir do Excel consolidado:
+
+```bash
+python scripts/generate_reports.py --out-dir out
+```
+
+Também é possível selecionar categorias: `python scripts/generate_reports.py --out-dir out --only fob weights`. Depois de revisar os arquivos em `docs/`, adicione-os, faça commit e push na branch `develop`; não há commit, push ou deploy automático. Para adicionar um novo relatório HTML, acrescente o gerador ao runner, grave seu `index.html` em um subdiretório de `docs/reports/` e inclua um cartão com link relativo em `docs/index.html`.
+
+Para visualizar localmente, a partir da raiz do repositório, use um servidor HTTP simples (necessário para testar os mesmos caminhos relativos do Pages):
+
+```bash
+python -m http.server 8000 --directory docs
+```
+
+Abra `http://localhost:8000/`. No GitHub, configure manualmente `Settings → Pages → Build and deployment → Deploy from a branch → develop → /docs`.
+
 ### Testes
 
 Os testes usam `unittest`. Uma forma compatível com a estrutura observada é:
@@ -444,4 +464,3 @@ Esta documentação foi gerada exclusivamente a partir dos arquivos presentes em
 - Relatórios: `scripts/generate_reports.py`, `src/reports/*.py`, `constants.py`.
 - Dependências: `pyproject.toml`.
 - Testes: `tests/test_instance_process_watchdog.py`, `tests/test_job_guardrails.py`, `tests/test_process_results.py`, `tests/test_worker_process_mpi_batching.py`.
-

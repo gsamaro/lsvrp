@@ -28,4 +28,4 @@ WEIGHTS_OPTIMIZE = [
 
 ALPHA = [0.01]
 
-FILE = '2026-06-30.xlsx' 
+FILE = '2026-06-30_union_results.xlsx'
