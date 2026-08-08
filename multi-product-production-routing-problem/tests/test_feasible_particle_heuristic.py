@@ -276,6 +276,100 @@ class FeasibleParticleHeuristicTestCase(unittest.TestCase):
             any("rota inconsistente" in violation for violation in report["violations"])
         )
 
+    def test_numba_backend_matches_python_backend(self):
+        data = self._minimal_data()
+        python = FeasibleParticleHeuristic(
+            data, "/tmp", DummyLogger(), execution_backend="python"
+        )
+        numba = FeasibleParticleHeuristic(
+            data,
+            "/tmp",
+            DummyLogger(),
+            execution_backend="numba",
+            parallel_workers=1,
+        )
+        positions = np.random.default_rng(77).normal(
+            size=(8, python.particle_dim)
+        )
+
+        expected = python.build_population_state(positions)
+        actual = numba.build_population_state(positions)
+
+        for name in (
+            "X",
+            "Y",
+            "I",
+            "Q",
+            "assignments",
+            "route_nodes",
+            "route_lengths",
+            "feasible",
+            "costs",
+        ):
+            np.testing.assert_array_equal(getattr(actual, name), getattr(expected, name))
+
+    def test_route_distance_tie_uses_q_gene_then_customer_index(self):
+        data = {
+            "num_products": 1,
+            "num_customers": 2,
+            "num_periods": 1,
+            "num_vehicles": 1,
+            "B": 10,
+            "b_p": [1],
+            "c_p": [1],
+            "s_p": [1],
+            "M": 100,
+            "U_pi": [[10, 10, 10]],
+            "I_pi0": [[0, 0, 0]],
+            "h_pi": [[0, 0, 0]],
+            "C": 10,
+            "f": 1,
+            "a_ik": [[0, 5, 5], [5, 0, 1], [5, 1, 0]],
+            "d_pit": [[[1], [1]]],
+            "weight": [0.2] * 5,
+            "alpha": 0.01,
+        }
+        for backend in ("python", "numba"):
+            heuristic = FeasibleParticleHeuristic(
+                data,
+                "/tmp",
+                DummyLogger(),
+                execution_backend=backend,
+                parallel_workers=1,
+            )
+            position = np.array([[0.0, 0.0, -2.0, 2.0]])
+            solution = heuristic.build_population(position)[0]
+            self.assertEqual(solution["route_plan"][0][0], [2, 1])
+
+            tied_position = np.zeros((1, heuristic.particle_dim))
+            tied_solution = heuristic.build_population(tied_position)[0]
+            self.assertEqual(tied_solution["route_plan"][0][0], [1, 2])
+
+    def test_numba_backend_is_deterministic_across_thread_counts(self):
+        data = self._minimal_data()
+        one_thread = FeasibleParticleHeuristic(
+            data,
+            "/tmp",
+            DummyLogger(),
+            execution_backend="numba",
+            parallel_workers=1,
+        )
+        positions = np.random.default_rng(91).normal(
+            size=(16, one_thread.particle_dim)
+        )
+        expected = one_thread.build_population_state(positions)
+        eight_threads = FeasibleParticleHeuristic(
+            data,
+            "/tmp",
+            DummyLogger(),
+            execution_backend="numba",
+            parallel_workers=8,
+        )
+        actual = eight_threads.build_population_state(positions)
+
+        for name in ("X", "I", "Q", "route_nodes", "route_lengths", "costs"):
+            np.testing.assert_array_equal(getattr(actual, name), getattr(expected, name))
+
 
 if __name__ == "__main__":
     unittest.main()

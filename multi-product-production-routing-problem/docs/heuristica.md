@@ -14,11 +14,11 @@ produto até `U[p][0]`; somente o excedente acima dessa capacidade é enviado ao
 clientes. Essa alteração tornou a solução LB do modelo auxiliar factível no PSO
 na instância avaliada.
 
-Na medição mais recente, com 1000 partículas e três iterações, todas as
-partículas foram factíveis. Houve um perfil de quantidade entregue por cliente,
-mas 1000 perfis de `X`, atribuição de veículos e tensor completo `Q` em todas as
-iterações. O melhor custo, `5391676`, foi encontrado na inicialização. Cada
-iteração levou entre 7,79 e 7,99 segundos.
+Na medição compilada mais recente, com 1000 partículas e 1000 iterações, todas
+as partículas foram factíveis. Houve um perfil de quantidade entregue por
+cliente, mas 1000 perfis de atribuição de veículos e tensor completo `Q`. O
+melhor custo, `5391676`, foi encontrado na inicialização. O fluxo quente até a
+materialização do MIP start levou 31,06 segundos.
 
 ## Bounds relaxados de dimensionamento para o PSO
 
@@ -84,12 +84,22 @@ produção.
 
 ### Melhorias de desempenho e diversidade de `Q`
 
-As partículas usam uma representação compacta com `X`, `Y`, `I`, `Q`, rotas e
-atribuições. Os tensores densos `R` e `Z` não são mantidos na população: eles
-são materializados somente para um novo melhor global, auditorias, saída final
-e warm start. Toda partícula passa por validação vetorizada de produção,
-estoques, balanços, carga, visita única e consistência das rotas. A validação
-completa audita o melhor, a solução final e 1% da população a cada 10 iterações.
+As partículas são construídas em lote por um kernel Numba. O estado da
+população mantém arrays de `X`, `Y`, `I`, `Q`, atribuições, nós das rotas,
+comprimentos, custos e factibilidade. Listas, dicionários, `visits`, `R` e `Z`
+não são criados no caminho crítico. Uma solução Python individual e os tensores
+`R/Z` são materializados somente para um novo melhor global, auditorias, saída
+final e warm start.
+
+O backend `numba` é o padrão; `execution_backend=python` preserva uma
+implementação de referência para testes. `parallel_workers=auto` usa até oito
+threads localmente e uma thread por rank MPI, evitando paralelismo aninhado no
+cluster. O aquecimento JIT é medido separadamente e não entra no tempo quente.
+
+O desempate da rota por vizinho mais próximo agora é determinístico: menor
+distância, maior preferência agregada `sum_p(raw_q[p,v,i,t])` e menor índice do
+cliente. Os backends Python e Numba produzem os mesmos arrays, rotas, custos e
+indicadores de factibilidade para as mesmas posições.
 
 O PSO usa inércia e coeficientes cognitivo/social adaptativos, limite de
 velocidade e mutação leve em 10% das partículas não elites. Após cinco
@@ -110,8 +120,24 @@ período) e `q_full_profiles` (tensor completo de `Q`, incluindo veículos).
 `q_profiles` permanece como alias compatível de `q_quantity_profiles`.
 
 A telemetria também registra distribuição dos custos, partículas mutadas e
-reinicializadas, estagnação, auditorias e tempos de atualização, construção,
-validação rápida, materialização e cálculo de diversidade.
+reinicializadas, estagnação, auditorias e tempos de atualização, kernel,
+adaptação Python, materialização e cálculo de diversidade. São reportados
+separadamente `bounds_seconds`, `jit_warmup_seconds`,
+`initialization_seconds`, `pso_hot_elapsed_seconds` e
+`pso_cold_elapsed_seconds`.
+
+No benchmark `PRP10_C20_P8_V5_T12_S1`, com oito threads locais, 1000 partículas
+e 1000 iterações, foram observados:
+
+- 31,06 s no fluxo quente completo até o MIP start;
+- 43,69 s incluindo uma compilação JIT completa de 12,63 s;
+- média de 0,0305 s por iteração e percentil 95 de 0,0471 s;
+- 100% de factibilidade e 1002 auditorias sem falhas;
+- melhor custo `5391676`, encontrado na população inicial.
+
+O benchmark oficial pode ser repetido com
+`PYTHONPATH=. poetry run python scripts/benchmark_pso.py`. O MIP exato posterior
+não participa do limite de 60 segundos do PSO.
 
 A resolução do problema integrado de produção e roteamento de veículos, uma variante particularmente complexa dos problemas de otimização combinatória, exige a identificação de soluções que atendam simultaneamente a múltiplas restrições operacionais.
 

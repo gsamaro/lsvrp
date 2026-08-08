@@ -1,7 +1,11 @@
+import hashlib
 import math
 import time
+from dataclasses import dataclass
 
 import numpy as np
+from numba import config as numba_config
+from numba import set_num_threads
 
 from src.log.Logger import Logger
 from src.solvers._solver_common import (
@@ -9,10 +13,42 @@ from src.solvers._solver_common import (
     clone_solution,
     empty_solution,
 )
+from src.solvers._pso_numba_kernel import build_population_kernel
+
+
+@dataclass
+class PopulationState:
+    X: np.ndarray
+    Y: np.ndarray
+    I: np.ndarray
+    Q: np.ndarray
+    assignments: np.ndarray
+    route_nodes: np.ndarray
+    route_lengths: np.ndarray
+    feasible: np.ndarray
+    costs: np.ndarray
+    x_fingerprints: np.ndarray
+    q_quantity_fingerprints: np.ndarray
+    assignment_fingerprints: np.ndarray
+    q_full_fingerprints: np.ndarray
+    reused_previous: np.ndarray
+
+    def __len__(self):
+        return len(self.costs)
 
 
 class FeasibleParticleHeuristic:
-    def __init__(self, map, dir, log: Logger, rng=None, bounds=None, relaxed_base=None):
+    def __init__(
+        self,
+        map,
+        dir,
+        log: Logger,
+        rng=None,
+        bounds=None,
+        relaxed_base=None,
+        execution_backend="python",
+        parallel_workers=1,
+    ):
         self.data = map
         self.dir = dir
         self.log = log
@@ -23,7 +59,26 @@ class FeasibleParticleHeuristic:
         self.particle_dim = self.dim_x + self.dim_q
         self.bounds = bounds
         self.relaxed_base = relaxed_base
+        self.execution_backend = execution_backend
+        if self.execution_backend not in ("python", "numba"):
+            raise ValueError("execution_backend deve ser 'python' ou 'numba'")
+        self.parallel_workers = max(1, int(parallel_workers))
+        if self.execution_backend == "numba":
+            set_num_threads(
+                min(self.parallel_workers, int(numba_config.NUMBA_NUM_THREADS))
+            )
+        self.jit_warmup_seconds = 0.0
+        self.kernel_seconds = 0.0
+        self.adapter_seconds = 0.0
         self.fast_validation_seconds = 0.0
+        self._production_time = np.asarray(self.problem.b_p, dtype=np.int64)
+        self._production_cost = np.asarray(self.problem.c_p, dtype=np.int64)
+        self._setup_cost = np.asarray(self.problem.s_p, dtype=np.int64)
+        self._inventory_cost = np.asarray(self.problem.h_p_i, dtype=np.int64)
+        self._inventory_capacity = np.asarray(self.problem.U_p_i, dtype=np.int64)
+        self._initial_inventory = np.asarray(self.problem.I_p_i_0, dtype=np.int64)
+        self._demand = np.asarray(self.problem.d_p_i_t, dtype=np.int64)
+        self._distance = np.asarray(self.problem.a_i_k, dtype=np.int64)
         if bounds is not None:
             self.lower_bounds = np.asarray(bounds["lower"], dtype=float)
             self.upper_bounds = np.asarray(bounds["upper"], dtype=float)
@@ -66,7 +121,176 @@ class FeasibleParticleHeuristic:
             self.upper_delivery_bounds = None
 
     def build_population(self, particles: np.ndarray):
+        if self.execution_backend == "numba":
+            state = self.build_population_state(particles)
+            return [self.solution_from_state(state, index) for index in range(len(state))]
         return [self._build_solution_from_particle(row) for row in particles]
+
+    def warmup_numba(self):
+        if self.execution_backend != "numba":
+            return 0.0
+        started_at = time.perf_counter()
+        self.build_population_state(np.zeros((1, self.particle_dim), dtype=np.float64))
+        self.jit_warmup_seconds += time.perf_counter() - started_at
+        self.kernel_seconds = 0.0
+        self.adapter_seconds = 0.0
+        return self.jit_warmup_seconds
+
+    def build_population_state(self, particles: np.ndarray):
+        if self.execution_backend == "python":
+            started_at = time.perf_counter()
+            solutions = [self._build_solution_from_particle(row) for row in particles]
+            self.kernel_seconds += time.perf_counter() - started_at
+            return self._state_from_solutions(solutions)
+
+        lower_x = (
+            self.lower_bounds
+            if self.lower_bounds is not None
+            else np.zeros((self.problem.p, self.problem.t), dtype=float)
+        )
+        upper_x = (
+            self.upper_bounds
+            if self.upper_bounds is not None
+            else np.zeros((self.problem.p, self.problem.t), dtype=float)
+        )
+        q_shape = (self.problem.p, self.problem.v, self.problem.i, self.problem.t)
+        lower_q = (
+            self.lower_delivery_bounds
+            if self.lower_delivery_bounds is not None
+            else np.zeros(q_shape, dtype=float)
+        )
+        upper_q = (
+            self.upper_delivery_bounds
+            if self.upper_delivery_bounds is not None
+            else np.zeros(q_shape, dtype=float)
+        )
+        started_at = time.perf_counter()
+        values = build_population_kernel(
+            np.ascontiguousarray(particles, dtype=np.float64),
+            self.problem.p,
+            self.problem.v,
+            self.problem.i,
+            self.problem.t,
+            self.problem.B,
+            self.problem.C,
+            self.problem.M,
+            self._production_time,
+            self._production_cost,
+            self._setup_cost,
+            self._inventory_cost,
+            self._inventory_capacity,
+            self._initial_inventory,
+            self._demand,
+            self._distance,
+            float(self.problem.f),
+            np.ascontiguousarray(lower_x, dtype=np.float64),
+            np.ascontiguousarray(upper_x, dtype=np.float64),
+            np.ascontiguousarray(lower_q, dtype=np.float64),
+            np.ascontiguousarray(upper_q, dtype=np.float64),
+            self.lower_bounds is not None,
+            self.lower_delivery_bounds is not None,
+        )
+        self.kernel_seconds += time.perf_counter() - started_at
+        return PopulationState(*values, np.zeros(len(particles), dtype=bool))
+
+    def _state_from_solutions(self, solutions):
+        count = len(solutions)
+        X = np.stack([solution["X"] for solution in solutions])
+        Y = np.stack([solution["Y"] for solution in solutions])
+        I = np.stack([solution["I"] for solution in solutions])
+        Q = np.stack([solution["Q"] for solution in solutions])
+        assignments = np.full((count, self.problem.t, self.problem.i), -1, dtype=np.int16)
+        route_nodes = np.zeros(
+            (count, self.problem.t, self.problem.v, self.problem.i - 1), dtype=np.int16
+        )
+        route_lengths = np.zeros((count, self.problem.t, self.problem.v), dtype=np.int16)
+        for index, solution in enumerate(solutions):
+            for period, mapping in enumerate(solution.get("assignments", [])):
+                for customer, vehicle in mapping.items():
+                    assignments[index, period, customer] = vehicle
+            for period, routes in enumerate(solution.get("route_plan", [])):
+                for vehicle, route in enumerate(routes):
+                    route_lengths[index, period, vehicle] = len(route)
+                    route_nodes[index, period, vehicle, : len(route)] = route
+        x_fingerprints = np.zeros(count, dtype=np.uint64)
+        q_quantity_fingerprints = np.zeros(count, dtype=np.uint64)
+        assignment_fingerprints = np.zeros(count, dtype=np.uint64)
+        q_full_fingerprints = np.zeros(count, dtype=np.uint64)
+        for index in range(count):
+            x_fingerprints[index] = self._fingerprint_uint64(X[index])
+            q_quantity_fingerprints[index] = self._fingerprint_uint64(
+                Q[index].sum(axis=1)[:, 1:, :]
+            )
+            assignment_fingerprints[index] = self._fingerprint_uint64(
+                assignments[index, :, 1:]
+            )
+            q_full_fingerprints[index] = self._fingerprint_uint64(
+                Q[index, :, :, 1:, :]
+            )
+        return PopulationState(
+            X,
+            Y,
+            I,
+            Q,
+            assignments,
+            route_nodes,
+            route_lengths,
+            np.asarray([solution["feasible"] for solution in solutions], dtype=np.uint8),
+            np.asarray([solution["cost"] for solution in solutions], dtype=float),
+            x_fingerprints,
+            q_quantity_fingerprints,
+            assignment_fingerprints,
+            q_full_fingerprints,
+            np.asarray(
+                [solution.get("reused_previous", False) for solution in solutions],
+                dtype=bool,
+            ),
+        )
+
+    @staticmethod
+    def _fingerprint_uint64(array):
+        contiguous = np.ascontiguousarray(array)
+        digest = hashlib.blake2b(contiguous.view(np.uint8), digest_size=8).digest()
+        return np.frombuffer(digest, dtype=np.uint64)[0]
+
+    def solution_from_state(self, state, index, include_metadata=False):
+        started_at = time.perf_counter()
+        route_plan = []
+        assignment_plan = []
+        for period in range(self.problem.t):
+            period_routes = []
+            for vehicle in range(self.problem.v):
+                length = int(state.route_lengths[index, period, vehicle])
+                period_routes.append(
+                    state.route_nodes[index, period, vehicle, :length].astype(int).tolist()
+                )
+            route_plan.append(period_routes)
+            assignment_plan.append(
+                {
+                    customer: int(state.assignments[index, period, customer])
+                    for customer in range(1, self.problem.i)
+                    if state.assignments[index, period, customer] >= 0
+                }
+            )
+        solution = {
+            "X": np.array(state.X[index], copy=True),
+            "Y": np.array(state.Y[index], copy=True),
+            "I": np.array(state.I[index], copy=True),
+            "Q": np.array(state.Q[index], copy=True),
+            "route_plan": route_plan,
+            "assignments": assignment_plan,
+            "feasible": bool(state.feasible[index]),
+            "cost": float(state.costs[index]),
+            "reused_previous": bool(state.reused_previous[index]),
+        }
+        if include_metadata:
+            solution["routes"] = [
+                {"periodo": period, "route": [list(route) for route in routes]}
+                for period, routes in enumerate(route_plan)
+            ]
+            solution["visits"] = self._extract_visits(solution)
+        self.adapter_seconds += time.perf_counter() - started_at
+        return solution
 
     def repair_population(self, particles: np.ndarray, previous_solutions=None):
         repaired = []
@@ -436,7 +660,7 @@ class FeasibleParticleHeuristic:
         ):
             return None
 
-        routes = self._build_nearest_neighbor_routes(vehicle_assignment)
+        routes = self._build_nearest_neighbor_routes(vehicle_assignment, raw_q, t)
         return production, period_deliveries, vehicle_assignment, routes
 
     def _drain_plant_inventory(
@@ -583,7 +807,7 @@ class FeasibleParticleHeuristic:
 
         return assignment
 
-    def _build_nearest_neighbor_routes(self, vehicle_assignment):
+    def _build_nearest_neighbor_routes(self, vehicle_assignment, raw_q=None, t=None):
         routes = [[] for _ in range(self.problem.v)]
         vehicle_customers = {vehicle: [] for vehicle in range(self.problem.v)}
         for customer, vehicle in vehicle_assignment.items():
@@ -599,7 +823,16 @@ class FeasibleParticleHeuristic:
             while unvisited:
                 next_customer = min(
                     unvisited,
-                    key=lambda customer: self.problem.a_i_k[current][customer],
+                    key=lambda customer: (
+                        self.problem.a_i_k[current][customer],
+                        -sum(
+                            raw_q[p, vehicle, customer, t]
+                            for p in range(self.problem.p)
+                        )
+                        if raw_q is not None
+                        else 0,
+                        customer,
+                    ),
                 )
                 route.append(next_customer)
                 unvisited.remove(next_customer)

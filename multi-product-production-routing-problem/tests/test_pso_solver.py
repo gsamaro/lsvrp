@@ -199,6 +199,28 @@ class PSOSolverTestCase(unittest.TestCase):
         self.assertEqual(len(results), 16)
         self.assertGreater(results[7], 0)
 
+    def test_pso_python_reference_backend_remains_available(self):
+        values = {
+            ("solver", "pso"): {
+                "swarm_size": 3,
+                "max_iterations": 1,
+                "seed": 123,
+                "execution_backend": "python",
+                "parallel_workers": 1,
+                "use_as_mip_start": False,
+                "return_heuristic_result_without_cplex": True,
+            }
+        }
+        with patch("src.solvers.ParticleSwarmOptimization.Config.get_nested") as get_nested:
+            get_nested.side_effect = lambda *keys, default=None: values.get(keys, default)
+            solver = ParticleSwarmOptimization(
+                map=self._minimal_data(), dir="/tmp", log=DummyLogger()
+            )
+            solver.solver()
+
+        self.assertEqual(solver.pso_config["execution_backend"], "python")
+        self.assertEqual(int(solver.population_state.feasible.sum()), 3)
+
     def test_adaptive_coefficients_reach_configured_extremes_and_velocity_is_limited(self):
         values = {
             ("solver", "pso"): {
@@ -271,6 +293,33 @@ class PSOSolverTestCase(unittest.TestCase):
         self.assertTrue(np.isinf(solver.personal_best_costs[9]))
         self.assertFalse(solver.solutions[8]["feasible"])
         self.assertFalse(solver.solutions[9]["feasible"])
+
+    def test_parallel_workers_auto_uses_eight_locally_and_one_under_mpi(self):
+        values = {
+            ("solver", "pso"): {
+                "swarm_size": 2,
+                "max_iterations": 1,
+                "execution_backend": "python",
+                "parallel_workers": "auto",
+                "lot_sizing_bounds": {"enabled": False},
+                "return_heuristic_result_without_cplex": True,
+            }
+        }
+        with patch("src.solvers.ParticleSwarmOptimization.Config.get_nested") as get_nested:
+            get_nested.side_effect = lambda *keys, default=None: values.get(keys, default)
+            with patch.dict("os.environ", {}, clear=True), patch(
+                "src.solvers.ParticleSwarmOptimization.os.cpu_count", return_value=10
+            ):
+                local = ParticleSwarmOptimization(
+                    map=self._minimal_data(), dir="/tmp", log=DummyLogger()
+                )
+            with patch.dict("os.environ", {"OMPI_COMM_WORLD_SIZE": "16"}, clear=True):
+                mpi = ParticleSwarmOptimization(
+                    map=self._minimal_data(), dir="/tmp", log=DummyLogger()
+                )
+
+        self.assertEqual(local.parallel_workers, 8)
+        self.assertEqual(mpi.parallel_workers, 1)
 
     def test_instance_process_selects_only_pso_solver(self):
         fake_instance = object()

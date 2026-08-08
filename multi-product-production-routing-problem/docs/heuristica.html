@@ -367,12 +367,12 @@ gbest ← melhor_solução(população)
 
     <section>
       <h2>Telemetria da instância maior</h2>
-      <p class="section-intro">A configuração usa o modelo auxiliar contínuo (PL), com limite de 1 segundo por resolução. A medição foi feita na instância disponível <code>PRP10_C20_P8_V5_T12_S1.dat</code>, com 8 produtos, 20 clientes, 5 veículos, 12 períodos e 1000 partículas. O solver completo de roteamento foi desabilitado neste benchmark isolado, controlado com três iterações. A avaliação do fluxo completo aparece na seção seguinte.</p>
+      <p class="section-intro">A configuração usa o modelo auxiliar contínuo (PL), com limite de 1 segundo por resolução, e o backend Numba com oito threads locais. A medição foi feita na instância <code>PRP10_C20_P8_V5_T12_S1.dat</code>, com 8 produtos, 20 clientes, 5 veículos, 12 períodos, 1000 partículas e 1000 iterações. O MIP exato foi desabilitado neste benchmark.</p>
       <div class="metrics">
-        <div class="metric"><strong>0,397 s</strong><span>PL de bounds</span></div>
-        <div class="metric"><strong>1000</strong><span>partículas</span></div>
-        <div class="metric"><strong>1000</strong><span>iterações configuradas</span></div>
-        <div class="metric"><strong>7,79–7,99 s</strong><span>tempo por iteração</span></div>
+        <div class="metric"><strong>31,06 s</strong><span>fluxo quente completo</span></div>
+        <div class="metric"><strong>0,0305 s</strong><span>média por iteração</span></div>
+        <div class="metric"><strong>0,0471 s</strong><span>percentil 95</span></div>
+        <div class="metric"><strong>100%</strong><span>partículas factíveis</span></div>
       </div>
       <div class="panel" style="margin-top:16px; box-shadow:none;">
         <table>
@@ -381,54 +381,60 @@ gbest ← melhor_solução(população)
             <tr><td>Dimensão</td><td>8 × 20 × 5 × 12</td><td>Produtos × clientes × veículos × períodos</td></tr>
             <tr><td>Bounds do PL</td><td>lower = 87276; upper = 118049</td><td>Dois PLs globais contínuos concluídos</td></tr>
             <tr><td>Gap dos PLs</td><td>lower = 0,0%; upper = 0,0%</td><td>Ambas as resoluções retornaram gap zero</td></tr>
-            <tr><td>Tempo do PL</td><td>0,397 s</td><td>Medido isoladamente antes do enxame</td></tr>
-            <tr><td>Tempo da execução</td><td>31,78 s</td><td>PL, inicialização, três iterações e auditoria final</td></tr>
-            <tr><td>Tempo por iteração</td><td>7,79–7,99 s</td><td>A construção compacta consumiu aproximadamente 7,3–7,5 s</td></tr>
+            <tr><td>Tempo dos bounds</td><td>0,419 s</td><td>Incluído no fluxo quente</td></tr>
+            <tr><td>Aquecimento JIT</td><td>12,627 s</td><td>Recompilação completa, registrada fora da meta quente</td></tr>
+            <tr><td>Inicialização</td><td>0,109 s</td><td>Construção, melhores iniciais e auditoria</td></tr>
+            <tr><td>Fluxo quente</td><td>31,063 s</td><td>Bounds, inicialização, 1000 iterações, auditoria e materialização final</td></tr>
+            <tr><td>Fluxo frio</td><td>43,690 s</td><td>Fluxo quente mais compilação JIT completa</td></tr>
+            <tr><td>Tempo por iteração</td><td>média 0,0305 s; p95 0,0471 s</td><td>Máximo observado de 0,269 s em iteração com trabalho adicional</td></tr>
             <tr><td>Factibilidade</td><td>1000/1000</td><td>Todas as partículas factíveis em todas as etapas</td></tr>
             <tr><td>Melhor custo</td><td>5391676</td><td>Encontrado na inicialização</td></tr>
             <tr><td>Quantidade de Q</td><td>1 perfil</td><td>As entregas obrigatórias são determinadas pelos déficits</td></tr>
             <tr><td>Atribuição de veículos</td><td>1000 perfis</td><td>As partículas distribuem os clientes entre veículos diferentes</td></tr>
             <tr><td>Q completo</td><td>1000 perfis</td><td>Confirma diversidade quando o eixo dos veículos é preservado</td></tr>
-            <tr><td>Produção X</td><td>1000 perfis</td><td>Diversidade preservada nas três iterações</td></tr>
-            <tr><td>Custos distintos</td><td>998 → 963</td><td>Redução moderada, sem colapso da população</td></tr>
-            <tr><td>Mutação</td><td>100 partículas/iteração</td><td>A elite de 5% foi preservada</td></tr>
-            <tr><td>Auditoria</td><td>2, sem falhas</td><td>Melhor inicial e solução final</td></tr>
+            <tr><td>Produção X</td><td>1000 → 152 perfis</td><td>Mínimo observado de 151 perfis</td></tr>
+            <tr><td>Mutação</td><td>100000 partículas</td><td>100 partículas por iteração; elite preservada</td></tr>
+            <tr><td>Reinicialização</td><td>29850 partículas</td><td>Ativada após cinco iterações sem melhoria</td></tr>
+            <tr><td>Auditoria</td><td>1002, sem falhas</td><td>Amostra periódica, melhor inicial e solução final</td></tr>
             <tr><td>Reamostragem</td><td>0 tentativas</td><td>Não foi necessária</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="note" style="margin-top:16px;"><strong>Diagnóstico:</strong> a representação compacta evita manter <code>R/Z</code> em todas as partículas e reduziu o tempo de aproximadamente 41 s para menos de 8 s por iteração. A validação rápida é aplicada a toda a população; <code>R/Z</code> são materializados para auditorias, saída e warm start. O melhor custo ainda foi encontrado na inicialização, mas os 1000 perfis de <code>X</code> foram preservados nas três iterações pela dinâmica adaptativa e mutação.</div>
+      <div class="note" style="margin-top:16px;"><strong>Diagnóstico:</strong> o kernel Numba constrói a população em arrays e executa as partículas em paralelo, eliminando milhões de laços, somas e cópias Python. O estado mantém nós e comprimentos das rotas; listas, <code>visits</code> e <code>R/Z</code> são materializados somente para auditoria, saída e warm start. O backend Python permanece como referência de equivalência. Localmente são usadas até oito threads; dentro de um rank MPI, o padrão automático é uma thread para evitar oversubscription.</div>
+      <div class="note" style="margin-top:16px;"><strong>Desempate de rota:</strong> clientes à mesma distância são ordenados pela maior preferência agregada dos genes de <code>Q</code>; persistindo o empate, vence o menor índice. Essa regra é determinística nos backends Python e Numba.</div>
     </section>
 
     <section>
       <h2>Impacto do MIP start no modelo completo</h2>
-      <p class="section-intro">Comparação na mesma instância, com uma thread e limite de 60 segundos para o MIP exato. A relaxação inicial foi medida separadamente; o tempo ponta a ponta com PSO inclui a geração do MIP start.</p>
+      <p class="section-intro">Nova comparação na mesma instância, com uma thread, limite de 60 segundos para o MIP exato e PSO de 1000 partículas por 1000 iterações. A relaxação inicial foi medida separadamente; o tempo ponta a ponta inclui construção do modelo, LP medido, MIP e, no segundo cenário, a geração do MIP start.</p>
       <div class="metrics">
-        <div class="metric"><strong>0,25 s</strong><span>primeira solução factível com PSO</span></div>
-        <div class="metric"><strong>4,88%</strong><span>gap final com MIP start</span></div>
-        <div class="metric"><strong>145</strong><span>nós explorados com MIP start</span></div>
-        <div class="metric"><strong>150,10 s</strong><span>fluxo ponta a ponta com PSO</span></div>
+        <div class="metric"><strong>26,93 s</strong><span>PSO quente 1000 × 1000</span></div>
+        <div class="metric"><strong>4,52%</strong><span>gap final com MIP start</span></div>
+        <div class="metric"><strong>64</strong><span>nós explorados com MIP start</span></div>
+        <div class="metric"><strong>95,49 s</strong><span>fluxo ponta a ponta com PSO</span></div>
       </div>
       <div class="panel" style="margin-top:16px; box-shadow:none;">
         <table>
           <thead><tr><th>Indicador</th><th>MIP sem solução inicial</th><th>MIP com PSO + MIP start</th></tr></thead>
           <tbody>
-            <tr><td>Relaxação LP inicial</td><td>4.464.139,02 (5,03 s)</td><td>4.464.139,02 (5,87 s)</td></tr>
+            <tr><td>Relaxação LP inicial</td><td>4.464.139,02 (1,60 s)</td><td>4.464.139,02 (1,47 s)</td></tr>
             <tr><td>Status aos 60 s</td><td>Limite de tempo, sem solução inteira</td><td>Limite de tempo, com solução inteira</td></tr>
-            <tr><td>Primeira solução factível</td><td>Não encontrada</td><td>0,25 s; custo 5.391.676,00</td></tr>
-            <tr><td>Melhor incumbente</td><td>Não disponível</td><td>4.732.007,00 aos 36,61 s</td></tr>
-            <tr><td>Melhor bound final</td><td>4.501.248,59</td><td>4.501.248,38</td></tr>
-            <tr><td>Gap final</td><td>Não definido, pois não houve incumbente</td><td>4,88%</td></tr>
-            <tr><td>Nós processados</td><td>0</td><td>145</td></tr>
-            <tr><td>Incumbentes observados</td><td>0</td><td>2</td></tr>
-            <tr><td>Tempo do MIP exato</td><td>60,03 s</td><td>60,19 s</td></tr>
-            <tr><td>Tempo do PSO (10 iterações)</td><td>—</td><td>84,05 s</td></tr>
-            <tr><td>Tempo ponta a ponta</td><td>60,03 s, sem contar a medição isolada do LP</td><td>150,10 s, incluindo PSO, LP medido e MIP</td></tr>
+            <tr><td>Primeira solução factível observada</td><td>Não encontrada</td><td>27,95 s; custo 5.391.676,00</td></tr>
+            <tr><td>Evolução das incumbentes</td><td>—</td><td>5.391.676,00 → 4.732.007,00 → 4.714.060,00</td></tr>
+            <tr><td>Melhor incumbente</td><td>Não disponível</td><td>4.714.060,00 aos 44,47 s</td></tr>
+            <tr><td>Primeiro bound observado</td><td>4.465.203,59 aos 30,01 s</td><td>4.465.203,59 aos 27,95 s</td></tr>
+            <tr><td>Melhor bound final</td><td>4.500.779,45</td><td>4.500.778,88</td></tr>
+            <tr><td>Gap final</td><td>Não definido, pois não houve incumbente</td><td>4,52%</td></tr>
+            <tr><td>Nós processados</td><td>0</td><td>64</td></tr>
+            <tr><td>Incumbentes observados</td><td>0</td><td>3</td></tr>
+            <tr><td>Tempo da busca MIP</td><td>aproximadamente 60 s (limite configurado)</td><td>60,14 s</td></tr>
+            <tr><td>Tempo do PSO</td><td>—</td><td>26,93 s quente; 27,26 s com JIT em cache</td></tr>
+            <tr><td>Tempo ponta a ponta medido</td><td>67,89 s</td><td>95,49 s usando o tempo quente do PSO</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="note" style="margin-top:16px;"><strong>Conclusão do experimento:</strong> sem MIP start, o CPLEX não encontrou solução inteira no limite de 60 s. A solução do PSO foi aceita imediatamente como incumbente e permitiu ao MIP melhorar o custo em 659.669,00 durante a busca. O PSO aumenta o tempo ponta a ponta, mas fornece uma solução factível de partida e um gap mensurável em um cenário no qual a execução sem solução inicial não produziu incumbente. O bound da relaxação medido isoladamente pode diferir ligeiramente do primeiro bound do MIP por causa do pré-processamento e dos cortes do CPLEX.</div>
-      <div class="note" style="margin-top:16px;"><strong>Telemetria do PSO usada no MIP start:</strong> as 1000 partículas permaneceram factíveis nas dez iterações; o melhor custo (5.391.676,00) apareceu na população inicial. Foram feitas 100 mutações por iteração, uma reinicialização de 150 partículas na iteração 6, e 12 auditorias completas sem falhas. A diversidade de perfis de <code>X</code> caiu de 1000 para 155 ao final; as atribuições de veículo e os perfis completos de <code>Q</code> permaneceram distintos para as 1000 partículas.</div>
+      <div class="note" style="margin-top:16px;"><strong>Conclusão do experimento:</strong> sem MIP start, o CPLEX novamente não encontrou solução inteira no limite de 60 s. Com o MIP start, a solução do PSO tornou-se a primeira incumbente observada e foi melhorada em 677.616,00 durante a busca. O tempo ponta a ponta aumentou em 27,60 s, mas o resultado passou de “sem solução” para uma incumbente de 4.714.060,00 com gap de 4,52%. Os bounds finais praticamente iguais mostram que a principal contribuição do PSO foi fornecer a incumbente e habilitar a exploração da árvore, não fortalecer a relaxação.</div>
+      <div class="note" style="margin-top:16px;"><strong>Telemetria do PSO usada no MIP start:</strong> as 1000 partículas permaneceram factíveis durante as 1000 iterações; o melhor custo (5.391.676,00) apareceu na população inicial. Foram realizadas 1002 auditorias sem falhas, 100000 mutações e 29850 reinicializações. A diversidade final foi de 152 perfis de <code>X</code>, um perfil de quantidade agregada de <code>Q</code>, 1000 perfis de atribuição veicular e 1000 perfis do tensor completo <code>Q</code>.</div>
     </section>
 
     <section>
@@ -436,7 +442,7 @@ gbest ← melhor_solução(população)
       <div class="grid two">
         <article class="card"><h3>Bounds relaxados</h3><p>O PL não possui toda a estrutura de roteamento. Um perfil de produção admissível no relaxamento pode ser difícil de escoar sob visita única e capacidade individual.</p></article>
         <article class="card"><h3>Convergência</h3><p>Inércia e coeficientes variam ao longo da execução; 10% das partículas não elites recebem mutação. Após cinco iterações sem melhoria, 15% das piores são reinicializadas.</p></article>
-        <article class="card"><h3>Escala</h3><p>A representação compacta atingiu a meta de menos de 10 segundos por iteração. A construção dos períodos, agora o maior custo, é o próximo candidato a otimização.</p></article>
+        <article class="card"><h3>Escala</h3><p>O fluxo quente de 1000 partículas por 1000 iterações ficou em 31,06 segundos no ambiente local. O tempo deve ser reavaliado por rank no cluster, onde o modo automático usa uma thread.</p></article>
         <article class="card"><h3>Comparações</h3><p>Devem ser comparados: bounds atuais, bounds baseados em entregas, diferentes seeds, taxa de factibilidade, custo e perfis distintos.</p></article>
       </div>
     </section>
