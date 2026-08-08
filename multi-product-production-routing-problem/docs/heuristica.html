@@ -367,7 +367,7 @@ gbest ← melhor_solução(população)
 
     <section>
       <h2>Telemetria da instância maior</h2>
-      <p class="section-intro">A configuração usa o modelo auxiliar contínuo (PL), com limite de 1 segundo por resolução. A medição foi feita na instância disponível <code>PRP10_C20_P8_V5_T12_S1.dat</code>, com 8 produtos, 20 clientes, 5 veículos, 12 períodos e 1000 partículas. O solver completo de roteamento foi desabilitado e o teste foi controlado com três iterações.</p>
+      <p class="section-intro">A configuração usa o modelo auxiliar contínuo (PL), com limite de 1 segundo por resolução. A medição foi feita na instância disponível <code>PRP10_C20_P8_V5_T12_S1.dat</code>, com 8 produtos, 20 clientes, 5 veículos, 12 períodos e 1000 partículas. O solver completo de roteamento foi desabilitado neste benchmark isolado, controlado com três iterações. A avaliação do fluxo completo aparece na seção seguinte.</p>
       <div class="metrics">
         <div class="metric"><strong>0,397 s</strong><span>PL de bounds</span></div>
         <div class="metric"><strong>1000</strong><span>partículas</span></div>
@@ -398,6 +398,37 @@ gbest ← melhor_solução(população)
         </table>
       </div>
       <div class="note" style="margin-top:16px;"><strong>Diagnóstico:</strong> a representação compacta evita manter <code>R/Z</code> em todas as partículas e reduziu o tempo de aproximadamente 41 s para menos de 8 s por iteração. A validação rápida é aplicada a toda a população; <code>R/Z</code> são materializados para auditorias, saída e warm start. O melhor custo ainda foi encontrado na inicialização, mas os 1000 perfis de <code>X</code> foram preservados nas três iterações pela dinâmica adaptativa e mutação.</div>
+    </section>
+
+    <section>
+      <h2>Impacto do MIP start no modelo completo</h2>
+      <p class="section-intro">Comparação na mesma instância, com uma thread e limite de 60 segundos para o MIP exato. A relaxação inicial foi medida separadamente; o tempo ponta a ponta com PSO inclui a geração do MIP start.</p>
+      <div class="metrics">
+        <div class="metric"><strong>0,25 s</strong><span>primeira solução factível com PSO</span></div>
+        <div class="metric"><strong>4,88%</strong><span>gap final com MIP start</span></div>
+        <div class="metric"><strong>145</strong><span>nós explorados com MIP start</span></div>
+        <div class="metric"><strong>150,10 s</strong><span>fluxo ponta a ponta com PSO</span></div>
+      </div>
+      <div class="panel" style="margin-top:16px; box-shadow:none;">
+        <table>
+          <thead><tr><th>Indicador</th><th>MIP sem solução inicial</th><th>MIP com PSO + MIP start</th></tr></thead>
+          <tbody>
+            <tr><td>Relaxação LP inicial</td><td>4.464.139,02 (5,03 s)</td><td>4.464.139,02 (5,87 s)</td></tr>
+            <tr><td>Status aos 60 s</td><td>Limite de tempo, sem solução inteira</td><td>Limite de tempo, com solução inteira</td></tr>
+            <tr><td>Primeira solução factível</td><td>Não encontrada</td><td>0,25 s; custo 5.391.676,00</td></tr>
+            <tr><td>Melhor incumbente</td><td>Não disponível</td><td>4.732.007,00 aos 36,61 s</td></tr>
+            <tr><td>Melhor bound final</td><td>4.501.248,59</td><td>4.501.248,38</td></tr>
+            <tr><td>Gap final</td><td>Não definido, pois não houve incumbente</td><td>4,88%</td></tr>
+            <tr><td>Nós processados</td><td>0</td><td>145</td></tr>
+            <tr><td>Incumbentes observados</td><td>0</td><td>2</td></tr>
+            <tr><td>Tempo do MIP exato</td><td>60,03 s</td><td>60,19 s</td></tr>
+            <tr><td>Tempo do PSO (10 iterações)</td><td>—</td><td>84,05 s</td></tr>
+            <tr><td>Tempo ponta a ponta</td><td>60,03 s, sem contar a medição isolada do LP</td><td>150,10 s, incluindo PSO, LP medido e MIP</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note" style="margin-top:16px;"><strong>Conclusão do experimento:</strong> sem MIP start, o CPLEX não encontrou solução inteira no limite de 60 s. A solução do PSO foi aceita imediatamente como incumbente e permitiu ao MIP melhorar o custo em 659.669,00 durante a busca. O PSO aumenta o tempo ponta a ponta, mas fornece uma solução factível de partida e um gap mensurável em um cenário no qual a execução sem solução inicial não produziu incumbente. O bound da relaxação medido isoladamente pode diferir ligeiramente do primeiro bound do MIP por causa do pré-processamento e dos cortes do CPLEX.</div>
+      <div class="note" style="margin-top:16px;"><strong>Telemetria do PSO usada no MIP start:</strong> as 1000 partículas permaneceram factíveis nas dez iterações; o melhor custo (5.391.676,00) apareceu na população inicial. Foram feitas 100 mutações por iteração, uma reinicialização de 150 partículas na iteração 6, e 12 auditorias completas sem falhas. A diversidade de perfis de <code>X</code> caiu de 1000 para 155 ao final; as atribuições de veículo e os perfis completos de <code>Q</code> permaneceram distintos para as 1000 partículas.</div>
     </section>
 
     <section>
