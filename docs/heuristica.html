@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Heurística PSO — Dimensionamento e Roteamento</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #5f6b7a;
+      --line: #dce3ec;
+      --paper: #f7f9fc;
+      --white: #ffffff;
+      --blue: #2563eb;
+      --blue-soft: #e9f0ff;
+      --green: #12805c;
+      --green-soft: #e6f7f0;
+      --orange: #b86512;
+      --orange-soft: #fff2df;
+      --purple: #7546b8;
+      --purple-soft: #f1eaff;
+      --shadow: 0 14px 36px rgba(23, 32, 51, .08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 16px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .wrap { width: min(1120px, calc(100% - 40px)); margin: auto; }
+    header {
+      padding: 72px 0 64px;
+      color: #fff;
+      background: radial-gradient(circle at 80% 15%, #4c81ff 0, #1d4ed8 28%, #152b67 72%);
+      overflow: hidden;
+    }
+    .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: .75rem; font-weight: 750; opacity: .78; }
+    h1 { max-width: 820px; margin: 12px 0 18px; font-size: clamp(2.2rem, 6vw, 4.4rem); line-height: 1.04; letter-spacing: -.055em; }
+    .lead { max-width: 720px; margin: 0; font-size: 1.18rem; color: #dce7ff; }
+    main { padding: 44px 0 80px; }
+    section { margin: 0 0 54px; }
+    h2 { margin: 0 0 12px; font-size: clamp(1.55rem, 3vw, 2.35rem); letter-spacing: -.035em; line-height: 1.15; }
+    h3 { margin: 0 0 8px; font-size: 1.05rem; }
+    .section-intro { max-width: 790px; margin: 0 0 24px; color: var(--muted); }
+    .panel, .card, .metric { background: var(--white); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); }
+    .panel { padding: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .grid > * { min-width: 0; }
+    .card { padding: 20px; box-shadow: none; }
+    .card p, .metric p { margin: 5px 0 0; color: var(--muted); }
+    .tag { display: inline-flex; padding: 3px 9px; border-radius: 999px; font-size: .77rem; font-weight: 750; }
+    .tag.blue { color: #1747a8; background: var(--blue-soft); }
+    .tag.green { color: #096344; background: var(--green-soft); }
+    .tag.orange { color: #87480c; background: var(--orange-soft); }
+    .tag.purple { color: #59308e; background: var(--purple-soft); }
+    .formula { margin: 14px 0; padding: 15px 18px; border-left: 4px solid var(--blue); border-radius: 0 12px 12px 0; background: #f4f7ff; overflow-x: auto; font: 600 1rem/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    pre.pseudocode { max-width: 100%; margin: 16px 0 0; padding: 22px; overflow-x: hidden; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; border: 1px solid #293957; border-radius: 15px; background: #172033; color: #e7efff; font: .86rem/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre.pseudocode .comment { color: #91a5c7; }
+    pre.pseudocode .keyword { color: #9cc2ff; font-weight: 750; }
+    pre.pseudocode .value { color: #a9e5c8; }
+    .note { padding: 16px 18px; border-radius: 13px; background: var(--orange-soft); border: 1px solid #f2d2a7; color: #6c400e; }
+    .good { padding: 16px 18px; border-radius: 13px; background: var(--green-soft); border: 1px solid #b8e8d5; color: #0b5d42; }
+    svg { display: block; width: 100%; height: auto; }
+    .diagram { margin-top: 18px; padding: 12px; border-radius: 15px; background: #fbfcff; border: 1px solid var(--line); }
+    .diagram text { font-family: Inter, ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+    .diagram .small { font-size: 13px; fill: var(--muted); }
+    .diagram .box { stroke-width: 1.5; }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 20px; }
+    .metric { padding: 18px; box-shadow: none; }
+    .metric strong { display: block; font-size: 1.55rem; letter-spacing: -.04em; }
+    .metric span { color: var(--muted); font-size: .86rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .94rem; }
+    th, td { padding: 11px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; }
+    code { padding: 2px 5px; border-radius: 5px; background: #eef2f7; color: #26344c; font-size: .92em; }
+    footer { padding: 28px 0 44px; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); }
+    @media (max-width: 800px) {
+      .grid, .grid.two, .metrics { grid-template-columns: 1fr; }
+      header { padding: 50px 0 46px; }
+      .wrap { width: min(100% - 28px, 1120px); }
+      .panel { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="eyebrow">Multi Product Production Routing Problem</div>
+      <h1>Uma heurística PSO que produz, entrega e roteia.</h1>
+      <p class="lead">Cada partícula começa como um vetor contínuo de genes. A heurística transforma esse vetor em uma solução discreta, respeitando produção, estoque, capacidade dos veículos e rotas.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section>
+      <h2>Visão geral</h2>
+      <p class="section-intro">O PSO explora o espaço de decisões. A construção factível funciona como uma ponte: recebe genes contínuos e devolve <code>X</code>, <code>I</code>, <code>Q</code>, visitas e rotas que podem ser avaliados pelo objetivo.</p>
+      <div class="diagram panel">
+        <svg viewBox="0 0 1080 300" role="img" aria-label="Fluxo da heurística PSO">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6d7b90"/></marker>
+          </defs>
+          <rect class="box" x="25" y="92" width="150" height="86" rx="16" fill="#e9f0ff" stroke="#9ab9ff"/>
+          <text x="100" y="126" text-anchor="middle" font-weight="750">PL relaxado</text><text x="100" y="151" text-anchor="middle" class="small">X, I, Q contínuos</text>
+          <path d="M 175 135 H 235" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow)"/>
+          <rect class="box" x="235" y="92" width="150" height="86" rx="16" fill="#f1eaff" stroke="#c6a9ee"/>
+          <text x="310" y="126" text-anchor="middle" font-weight="750">Bounds / metas</text><text x="310" y="151" text-anchor="middle" class="small">LB, UB e Q-alvo</text>
+          <path d="M 385 135 H 445" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow)"/>
+          <rect class="box" x="445" y="92" width="150" height="86" rx="16" fill="#fff2df" stroke="#efc17f"/>
+          <text x="520" y="126" text-anchor="middle" font-weight="750">Partículas</text><text x="520" y="151" text-anchor="middle" class="small">genes X e Q</text>
+          <path d="M 595 135 H 655" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow)"/>
+          <rect class="box" x="655" y="92" width="175" height="86" rx="16" fill="#e6f7f0" stroke="#9bd9c0"/>
+          <text x="742" y="126" text-anchor="middle" font-weight="750">Construção factível</text><text x="742" y="151" text-anchor="middle" class="small">estoque + veículos</text>
+          <path d="M 830 135 H 890" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow)"/>
+          <rect class="box" x="890" y="92" width="165" height="86" rx="16" fill="#edf1f7" stroke="#b7c1cf"/>
+          <text x="972" y="126" text-anchor="middle" font-weight="750">Custo e PSO</text><text x="972" y="151" text-anchor="middle" class="small">pbest / gbest</text>
+          <path d="M 972 178 V 244 H 520 V 178" fill="none" stroke="#8b98aa" stroke-dasharray="6 5" stroke-width="2" marker-end="url(#arrow)"/>
+          <text x="745" y="270" text-anchor="middle" class="small">atualização de velocidade e posição</text>
+        </svg>
+      </div>
+    </section>
+
+    <section>
+      <h2>1. Bounds relaxados</h2>
+      <p class="section-intro">Antes do enxame, o componente <code>LotSizingRelaxation</code> resolve dois PLs globais com variáveis contínuas. O modelo mantém balanços de estoque, capacidade de produção, capacidade de estoque e carga agregada dos veículos; setup, arcos e sequência de rotas ficam fora dessa etapa. O limite atual é de 1 segundo por modelo. O modo inteiro continua disponível por configuração.</p>
+      <div class="grid two">
+        <article class="card"><span class="tag blue">Lower</span><h3>Minimiza entregas</h3><p><code>min Σ Q[p,v,i,t]</code>, considerando clientes. A solução fornece o perfil inferior de produção e entrega.</p></article>
+        <article class="card"><span class="tag purple">Upper</span><h3>Maximiza entregas</h3><p><code>max Σ Q[p,v,i,t]</code>, impondo os valores da solução lower como limites mínimos de <code>X</code> e <code>Q</code>.</p></article>
+      </div>
+      <div class="formula">X[p,t] = LB[p,t] + sigmoid(gene) · (UB[p,t] − LB[p,t])</div>
+      <div class="grid two">
+        <article class="card"><span class="tag orange">X: produção</span><h3>Lower quase rígido</h3><p>A produção começa em <code>max(produção mínima, ceil(LB))</code>. Portanto, em uma partícula construída normalmente, <code>X ≥ LB</code>.</p><p>O gene define um alvo entre <code>LB</code> e <code>UB</code>. Se o déficit exigir mais produção, o mínimo necessário pode ultrapassar o <code>UB</code>.</p></article>
+        <article class="card"><span class="tag purple">Q: entrega</span><h3>Bounds direcionais</h3><p><code>QLB</code> e <code>QUB</code> calculam uma entrega desejada, mas não são impostos como igualdade ou intervalo rígido.</p><p>A entrega final é limitada por déficit, estoque do cliente, capacidade residual do veículo e escoamento da planta.</p></article>
+      </div>
+      <div class="good"><strong>Se o alvo superar a capacidade:</strong> o alvo não é produzido integralmente. O aumento é limitado pela capacidade de produção restante do período; assim, <code>X</code> fica no máximo no que cabe em <code>B</code>. A partícula só é considerada inviável quando até a produção mínima necessária excede a capacidade do período.</div>
+      <div class="note"><strong>Interpretação:</strong> com os dois PLs globais atuais, as matrizes de <code>X</code> são perfis de referência usados pelo PSO. Elas não equivalem a limites individuais obtidos por uma otimização separada para cada coordenada. Além disso, os bounds do PL não conhecem toda a estrutura de visitação e roteamento.</div>
+    </section>
+
+    <section>
+      <h2>2. Decodificação da partícula</h2>
+      <div class="grid">
+        <article class="card"><span class="tag orange">Gene X</span><h3>Produção</h3><p>O gene define a prioridade e a quantidade produzida no período. A produção mínima também cobre déficits e estoque anterior.</p></article>
+        <article class="card"><span class="tag purple">Gene Q</span><h3>Preferência de entrega</h3><p>O gene de entrega não força uma quantidade impossível. Ele orienta quais clientes e veículos recebem primeiro o excedente disponível.</p></article>
+        <article class="card"><span class="tag green">Estado</span><h3>Estoque sequencial</h3><p>O período <code>t+1</code> começa com os estoques calculados no período <code>t</code>, tanto na planta quanto nos clientes.</p></article>
+      </div>
+      <div class="diagram panel">
+        <svg viewBox="0 0 1080 300" role="img" aria-label="Decodificação de gene por sigmoid">
+          <defs><marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6d7b90"/></marker></defs>
+          <rect x="35" y="105" width="170" height="72" rx="14" fill="#fff2df" stroke="#efc17f"/><text x="120" y="135" text-anchor="middle" font-weight="750">gene = 0,8</text><text x="120" y="158" text-anchor="middle" class="small">valor contínuo</text>
+          <path d="M 205 141 H 300" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow2)"/>
+          <rect x="300" y="105" width="170" height="72" rx="14" fill="#e9f0ff" stroke="#9ab9ff"/><text x="385" y="135" text-anchor="middle" font-weight="750">sigmoid(gene)</text><text x="385" y="158" text-anchor="middle" class="small">normalização 0..1</text>
+          <path d="M 470 141 H 565" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow2)"/>
+          <rect x="565" y="105" width="170" height="72" rx="14" fill="#f1eaff" stroke="#c6a9ee"/><text x="650" y="135" text-anchor="middle" font-weight="750">LB + proporção</text><text x="650" y="158" text-anchor="middle" class="small">intervalo relaxado</text>
+          <path d="M 735 141 H 830" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow2)"/>
+          <rect x="830" y="105" width="210" height="72" rx="14" fill="#e6f7f0" stroke="#9bd9c0"/><text x="935" y="135" text-anchor="middle" font-weight="750">produção / meta Q</text><text x="935" y="158" text-anchor="middle" class="small">arredondada e reparada</text>
+          <path d="M 120 218 C 220 245, 310 245, 385 218 M 385 218 C 510 175, 600 175, 650 218 M 650 218 C 780 258, 850 258, 935 218" fill="none" stroke="#d5ddea" stroke-width="3"/>
+          <text x="540" y="278" text-anchor="middle" class="small">genes diferentes preservam alternativas enquanto houver capacidade residual</text>
+        </svg>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. Construção de uma solução factível</h2>
+      <p class="section-intro">A partícula não é avaliada diretamente. Ela é decodificada período a período; cada período recebe um estado de estoque, uma distribuição de entregas, uma atribuição de veículos e rotas.</p>
+      <div class="grid">
+        <article class="card"><span class="tag blue">Passo 1</span><h3>Calcular déficits</h3><p>Para cada cliente e produto, calcula-se <code>max(0, demanda − estoque anterior)</code>. Essa é a entrega obrigatória para manter o estoque não negativo.</p></article>
+        <article class="card"><span class="tag orange">Passo 2</span><h3>Decodificar produção</h3><p>Aplica-se o gene de <code>X</code>, respeitando o limite inferior e a capacidade de produção. A produção também precisa cobrir os déficits do período.</p></article>
+        <article class="card"><span class="tag green">Passo 3</span><h3>Atribuir clientes</h3><p>Clientes com entrega obrigatória são ordenados por carga e atribuídos aos veículos pelo <em>best-fit decreasing</em>, respeitando uma visita por cliente.</p></article>
+      </div>
+      <div class="diagram panel">
+        <svg viewBox="0 0 1080 430" role="img" aria-label="Construção de entregas e veículos">
+          <defs><marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6d7b90"/></marker></defs>
+          <rect x="35" y="155" width="170" height="110" rx="18" fill="#e9f0ff" stroke="#9ab9ff"/><text x="120" y="190" text-anchor="middle" font-weight="750">Planta</text><text x="120" y="218" text-anchor="middle" class="small">estoque anterior</text><text x="120" y="242" text-anchor="middle" class="small">+ produção X</text>
+          <path d="M 205 210 H 305" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow3)"/>
+          <rect x="305" y="120" width="235" height="180" rx="18" fill="#fff2df" stroke="#efc17f"/><text x="422" y="155" text-anchor="middle" font-weight="750">Déficits dos clientes</text><text x="422" y="187" text-anchor="middle" class="small">entrega obrigatória</text><text x="422" y="213" text-anchor="middle" class="small">estoque U[p,i]</text><text x="422" y="239" text-anchor="middle" class="small">ordenação pelos genes Q</text><text x="422" y="265" text-anchor="middle" class="small">best-fit decreasing</text>
+          <path d="M 540 210 H 640" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow3)"/>
+          <rect x="640" y="68" width="380" height="285" rx="20" fill="#e6f7f0" stroke="#9bd9c0"/>
+          <text x="830" y="105" text-anchor="middle" font-weight="750">Frota: um cliente, um veículo</text>
+          <rect x="685" y="135" width="125" height="145" rx="13" fill="#fff" stroke="#b8e8d5"/><text x="747" y="165" text-anchor="middle" font-weight="750">V₁</text><text x="747" y="195" text-anchor="middle" class="small">clientes</text><text x="747" y="221" text-anchor="middle" class="small">carga ≤ C</text><text x="747" y="248" text-anchor="middle" class="small">rota NN</text>
+          <rect x="850" y="135" width="125" height="145" rx="13" fill="#fff" stroke="#b8e8d5"/><text x="912" y="165" text-anchor="middle" font-weight="750">V₂</text><text x="912" y="195" text-anchor="middle" class="small">clientes</text><text x="912" y="221" text-anchor="middle" class="small">carga ≤ C</text><text x="912" y="248" text-anchor="middle" class="small">rota NN</text>
+          <path d="M 830 353 V 392 H 120 V 265" fill="none" stroke="#12805c" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrow3)"/>
+          <text x="475" y="415" text-anchor="middle" class="small">estoque final da planta = estoque anterior + X − entregas</text>
+        </svg>
+      </div>
+      <div class="good"><strong>Regra de drenagem:</strong> a heurística conserva na planta até <code>U[p][0]</code> por produto. Somente o excedente acima dessa capacidade é distribuído para clientes com espaço disponível e veículos com capacidade residual.</div>
+      <div class="grid two" style="margin-top:16px;">
+        <article class="card"><span class="tag green">Passo 4</span><h3>Distribuir excedente</h3><p>Para cada produto, o algoritmo escolhe clientes com capacidade de estoque e veículos compatíveis. O gene de <code>Q</code> ordena as preferências, mas a capacidade sempre prevalece.</p></article>
+        <article class="card"><span class="tag blue">Passo 5</span><h3>Construir e validar</h3><p>As entregas são convertidas em <code>Q</code>, os estoques <code>I</code> são atualizados, as rotas de vizinho mais próximo são criadas e a solução é validada.</p></article>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. Tratamento da infactibilidade</h2>
+      <p class="section-intro">A construção detecta inviabilidade antes de avaliar o custo. Isso evita enviar ao PSO uma solução que viola balanço, estoque ou capacidade veicular.</p>
+      <div class="diagram panel">
+        <svg viewBox="0 0 1080 310" role="img" aria-label="Tratamento de uma partícula inviável">
+          <defs><marker id="arrow4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6d7b90"/></marker></defs>
+          <rect x="35" y="104" width="190" height="78" rx="15" fill="#fff2df" stroke="#efc17f"/><text x="130" y="136" text-anchor="middle" font-weight="750">Partícula decodificada</text><text x="130" y="160" text-anchor="middle" class="small">estado do período</text>
+          <path d="M 225 143 H 320" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow4)"/>
+          <rect x="320" y="80" width="230" height="126" rx="15" fill="#f1eaff" stroke="#c6a9ee"/><text x="435" y="112" text-anchor="middle" font-weight="750">Teste de factibilidade</text><text x="435" y="140" text-anchor="middle" class="small">produção / estoque</text><text x="435" y="162" text-anchor="middle" class="small">carga / visita única</text><text x="435" y="184" text-anchor="middle" class="small">drenagem da planta</text>
+          <path d="M 550 113 H 655" stroke="#12805c" stroke-width="2" marker-end="url(#arrow4)"/><text x="602" y="101" text-anchor="middle" class="small">factível</text>
+          <path d="M 550 184 H 655" stroke="#b86512" stroke-width="2" marker-end="url(#arrow4)"/><text x="602" y="174" text-anchor="middle" class="small">inviável</text>
+          <rect x="655" y="80" width="190" height="66" rx="15" fill="#e6f7f0" stroke="#9bd9c0"/><text x="750" y="108" text-anchor="middle" font-weight="750">Avaliar custo</text><text x="750" y="130" text-anchor="middle" class="small">atualizar pbest / gbest</text>
+          <rect x="655" y="162" width="190" height="66" rx="15" fill="#fff2df" stroke="#efc17f"/><text x="750" y="190" text-anchor="middle" font-weight="750">Inicialização?</text><text x="750" y="212" text-anchor="middle" class="small">reamostrar com limite</text>
+          <path d="M 845 195 H 955" stroke="#b86512" stroke-width="2" marker-end="url(#arrow4)"/>
+          <rect x="955" y="162" width="100" height="66" rx="15" fill="#edf1f7" stroke="#b7c1cf"/><text x="1005" y="190" text-anchor="middle" font-weight="750">Iteração</text><text x="1005" y="212" text-anchor="middle" class="small">reusar anterior</text>
+          <text x="540" y="270" text-anchor="middle" class="small">em atualizações, a solução anterior factível é preservada e a posição/velocidade são restauradas</text>
+        </svg>
+      </div>
+      <div class="grid two">
+        <article class="card"><h3>Na inicialização</h3><p>Uma posição inviável é reamostrada. O número máximo de tentativas é controlado por <code>max_initial_resample_attempts</code>, atualmente 1. Isso impede um laço infinito quando os bounds não conseguem formar uma solução roteável.</p></article>
+        <article class="card"><h3>Durante as iterações</h3><p>A população anterior é passada ao reparo. Se a nova posição falhar, a solução factível anterior é reutilizada; a posição é restaurada e a velocidade é zerada para evitar que o PSO continue acumulando uma direção inviável.</p></article>
+      </div>
+      <div class="note"><strong>Causas possíveis:</strong> produção mínima acima da capacidade do período, déficit de um cliente acima de <code>C</code>, impossibilidade de empacotar clientes nos veículos, falta de estoque disponível para a entrega ou incapacidade de escoar todo o estoque da planta respeitando <code>U[p,i]</code> e as capacidades residuais.</div>
+    </section>
+
+    <section>
+      <h2>5. Rotas e avaliação</h2>
+      <div class="grid two">
+        <article class="card"><span class="tag green">Rota</span><h3>Vizinho mais próximo</h3><p>Depois que os clientes são associados aos veículos, a rota começa na planta, visita os clientes designados e retorna à planta.</p></article>
+        <article class="card"><span class="tag blue">Validação</span><h3>Factibilidade</h3><p>São verificados produção, estoques, balanços planta/cliente, carga por arco e consistência de <code>Q</code>, <code>R</code> e <code>Z</code>.</p></article>
+      </div>
+      <div class="formula">I[p,0,t] = I[p,0,t−1] + X[p,t] − Σ(v,i) Q[p,v,i,t]</div>
+      <div class="formula">I[p,i,t] = I[p,i,t−1] + Σ(v) Q[p,v,i,t] − demanda[p,i,t]</div>
+    </section>
+
+    <section>
+      <h2>Pseudocódigo da heurística</h2>
+      <p class="section-intro">O pseudocódigo abaixo resume o fluxo implementado. O PL é resolvido uma vez por instância; a construção e o reparo são executados repetidamente pelo enxame.</p>
+      <div class="panel">
+        <h3>Algoritmo principal do PSO</h3>
+        <pre class="pseudocode"><span class="keyword">ENTRADA:</span> instância, configuração do PSO, seed
+
+<span class="comment">// Bounds relaxados calculados uma vez</span>
+lower_solution, upper_solution ← resolver_dois_PLs(instância)
+LB_X ← lower_solution.X
+UB_X ← upper_solution.X
+LB_Q ← lower_solution.Q
+UB_Q ← upper_solution.Q
+
+posição ← gerar_genes_aleatórios(tamanho_do_enxame)
+posição[0] ← codificar_solução_lower_como_semente()
+velocidade ← zero
+
+população ← construir_população(posição)
+população ← reparar_inviáveis_na_inicialização(população, limite_de_tentativas)
+pbest ← população
+gbest ← melhor_solução(população)
+
+<span class="keyword">PARA</span> iteração = 1 <span class="keyword">ATÉ</span> número_de_iterações:
+    atualizar_velocidade(posição, velocidade, pbest, gbest)
+    nova_posição ← posição + velocidade
+
+    nova_população ← construir_população(nova_posição,
+                                         solução_anterior = população)
+    <span class="comment">// Se falhar, preservar a solução anterior factível</span>
+    <span class="keyword">PARA CADA</span> partícula:
+        <span class="keyword">SE</span> nova solução for inviável:
+            nova solução ← solução anterior factível
+            restaurar posição anterior e zerar velocidade
+
+    atualizar pbest quando o custo melhorar
+    atualizar gbest quando o custo melhorar
+    registrar factibilidade, custo e diversidade de X/Q
+
+<span class="keyword">RETORNAR:</span> gbest e suas variáveis completas</pre>
+      </div>
+
+      <div class="grid two" style="margin-top:16px;">
+        <div class="panel">
+          <h3>Decodificação da partícula</h3>
+          <pre class="pseudocode"><span class="keyword">PARA</span> cada produto p e período t:
+    mínimo ← déficit total de p − estoque da planta anterior
+    produção[p,t] ← max(mínimo, ceil(LB_X[p,t]))
+    alvo ← LB_X[p,t] + sigmoid(gene_X[p,t]) · (UB_X[p,t] − LB_X[p,t])
+    capacidade_restante ← B − tempo de produção já usado
+    aumento ← min(alvo − produção,
+                  capacidade_restante / tempo_produto[p])
+    produção[p,t] ← produção[p,t] + max(0, aumento)
+    <span class="comment">// Se o alvo > capacidade, produz somente o máximo possível</span>
+    <span class="comment">// Se o mínimo > B, retornar INVIÁVEL</span>
+
+<span class="keyword">PARA</span> cada produto p, cliente i e período t:
+    alvo_Q ← LB_Q + sigmoid(gene_Q) · (UB_Q − LB_Q)
+    usar alvo_Q somente como prioridade de alocação
+
+<span class="keyword">RETORNAR:</span> produção X e metas Q</pre>
+        </div>
+        <div class="panel">
+          <h3>Construção de um período</h3>
+          <pre class="pseudocode"><span class="keyword">PARA</span> cada período t:
+    calcular déficit de cada cliente
+    criar entrega obrigatória por produto
+
+    ordenar clientes por carga decrescente
+    <span class="keyword">PARA</span> cada cliente:
+        escolher veículo compatível pelo best-fit decreasing
+        <span class="keyword">SE</span> nenhum veículo comportar a carga:
+            retornar INVIÁVEL
+
+    estoque_provisório ← estoque_planta_anterior + produção − entregas_obrigatórias
+    excedente ← max(0, estoque_provisório − U[p][0])
+    <span class="keyword">ENQUANTO</span> excedente > 0:
+        escolher produto com espaço disponível
+        escolher cliente/veículo conforme gene Q
+        limitar quantidade por estoque do cliente e capacidade residual
+        atualizar entrega, estoque e capacidade do veículo
+        <span class="keyword">SE</span> não houver candidato:
+            retornar INVIÁVEL
+
+    construir rota de vizinho mais próximo para cada veículo
+    atualizar estoques da planta e dos clientes</pre>
+        </div>
+      </div>
+      <div class="good" style="margin-top:16px;"><strong>Ideia central:</strong> os genes definem preferências e exploração; a construção factível decide as quantidades finais que cabem simultaneamente nos estoques e nos veículos.</div>
+    </section>
+
+    <section>
+      <h2>6. Como o PSO aprende</h2>
+      <div class="grid three">
+        <article class="card"><span class="tag blue">pbest</span><h3>Memória individual</h3><p>Cada partícula conserva sua melhor posição e seu melhor custo.</p></article>
+        <article class="card"><span class="tag purple">gbest</span><h3>Memória coletiva</h3><p>O enxame usa a melhor solução conhecida como atração social.</p></article>
+        <article class="card"><span class="tag orange">reparo</span><h3>Proteção</h3><p>Se uma atualização não constrói factibilidade, a solução anterior é preservada e a posição é restaurada.</p></article>
+      </div>
+      <div class="formula">v ← inércia·v + c₁·r₁·(pbest−posição) + c₂·r₂·(gbest−posição)</div>
+      <div class="grid three" style="margin-top:16px;">
+        <article class="card"><h3>Coeficientes adaptativos</h3><p>A inércia cai de 0,9 para 0,4; a atração social cresce gradualmente para evitar convergência precoce.</p></article>
+        <article class="card"><h3>Mutação da população</h3><p>10% das partículas não elites recebem perturbações em genes de <code>X</code> e <code>Q</code>.</p></article>
+        <article class="card"><h3>Reinjeção</h3><p>Após cinco iterações sem melhoria, 15% das piores posições são reinicializadas.</p></article>
+      </div>
+      <div class="diagram panel">
+        <svg viewBox="0 0 1080 230" role="img" aria-label="Diversidade ao longo do PSO">
+          <line x1="110" y1="180" x2="1000" y2="180" stroke="#b9c4d2" stroke-width="2"/><line x1="110" y1="35" x2="110" y2="180" stroke="#b9c4d2" stroke-width="2"/>
+          <text x="110" y="210" text-anchor="middle" class="small">início</text><text x="1000" y="210" text-anchor="middle" class="small">iterações</text><text x="55" y="45" text-anchor="middle" class="small" transform="rotate(-90 55 45)">diversidade</text>
+          <path d="M 120 58 C 240 65, 280 105, 385 116 S 530 155, 620 158 S 800 169, 985 169" fill="none" stroke="#2563eb" stroke-width="5"/>
+          <circle cx="120" cy="58" r="7" fill="#2563eb"/><circle cx="385" cy="116" r="7" fill="#2563eb"/><circle cx="620" cy="158" r="7" fill="#2563eb"/><circle cx="985" cy="169" r="7" fill="#2563eb"/>
+          <path d="M 120 78 C 240 85, 290 120, 385 128 S 540 160, 620 164 S 800 172, 985 172" fill="none" stroke="#7546b8" stroke-width="3" stroke-dasharray="8 7"/>
+          <text x="770" y="95" class="small" fill="#2563eb">X profiles</text><text x="770" y="125" class="small" fill="#7546b8">Q profiles</text>
+        </svg>
+      </div>
+      <p class="section-intro">O gráfico é esquemático: a telemetria real registra <code>x_profiles</code>, <code>q_quantity_profiles</code>, <code>vehicle_assignment_profiles</code> e <code>q_full_profiles</code> na inicialização e em cada iteração. Assim é possível separar diversidade de quantidade, atribuição de veículos e perfil completo de <code>Q</code>.</p>
+    </section>
+
+    <section>
+      <h2>Telemetria de uma execução observada</h2>
+      <p class="section-intro">Exemplo medido na instância <code>PRP1_C5_P2_V1_T2_S1.dat</code>, com 20 partículas, 50 iterações e sem chamar o solver exato.</p>
+      <div class="metrics">
+        <div class="metric"><strong>0,045 s</strong><span>PL de bounds</span></div>
+        <div class="metric"><strong>0,354 s</strong><span>PSO completo</span></div>
+        <div class="metric"><strong>20/20</strong><span>factíveis no final</span></div>
+        <div class="metric"><strong>1 → 1</strong><span>X profiles: início → final</span></div>
+      </div>
+      <div class="panel" style="margin-top:16px; box-shadow:none;">
+        <table>
+          <thead><tr><th>Indicador</th><th>Resultado</th><th>Leitura</th></tr></thead>
+          <tbody>
+            <tr><td>Melhor custo</td><td><strong>113219</strong></td><td>Encontrado na inicialização</td></tr>
+            <tr><td>Construções inviáveis</td><td>9 em aproximadamente 1020</td><td>2 na população inicial e 7 preservadas da iteração anterior</td></tr>
+            <tr><td>Reamostragem</td><td>2 tentativas, 0 rejeições</td><td>Limite inicial respeitado</td></tr>
+            <tr><td>Diversidade final</td><td>1 perfil X e 1 perfil Q</td><td>Indica convergência prematura nesta configuração</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section>
+      <h2>Telemetria da instância maior</h2>
+      <p class="section-intro">A configuração usa o modelo auxiliar contínuo (PL), com limite de 1 segundo por resolução, e o backend Numba com oito threads locais. A medição foi feita na instância <code>PRP10_C20_P8_V5_T12_S1.dat</code>, com 8 produtos, 20 clientes, 5 veículos, 12 períodos, 1000 partículas e 1000 iterações. O MIP exato foi desabilitado neste benchmark.</p>
+      <div class="metrics">
+        <div class="metric"><strong>31,06 s</strong><span>fluxo quente completo</span></div>
+        <div class="metric"><strong>0,0305 s</strong><span>média por iteração</span></div>
+        <div class="metric"><strong>0,0471 s</strong><span>percentil 95</span></div>
+        <div class="metric"><strong>100%</strong><span>partículas factíveis</span></div>
+      </div>
+      <div class="panel" style="margin-top:16px; box-shadow:none;">
+        <table>
+          <thead><tr><th>Indicador</th><th>Resultado</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>Dimensão</td><td>8 × 20 × 5 × 12</td><td>Produtos × clientes × veículos × períodos</td></tr>
+            <tr><td>Bounds do PL</td><td>lower = 87276; upper = 118049</td><td>Dois PLs globais contínuos concluídos</td></tr>
+            <tr><td>Gap dos PLs</td><td>lower = 0,0%; upper = 0,0%</td><td>Ambas as resoluções retornaram gap zero</td></tr>
+            <tr><td>Tempo dos bounds</td><td>0,419 s</td><td>Incluído no fluxo quente</td></tr>
+            <tr><td>Aquecimento JIT</td><td>12,627 s</td><td>Recompilação completa, registrada fora da meta quente</td></tr>
+            <tr><td>Inicialização</td><td>0,109 s</td><td>Construção, melhores iniciais e auditoria</td></tr>
+            <tr><td>Fluxo quente</td><td>31,063 s</td><td>Bounds, inicialização, 1000 iterações, auditoria e materialização final</td></tr>
+            <tr><td>Fluxo frio</td><td>43,690 s</td><td>Fluxo quente mais compilação JIT completa</td></tr>
+            <tr><td>Tempo por iteração</td><td>média 0,0305 s; p95 0,0471 s</td><td>Máximo observado de 0,269 s em iteração com trabalho adicional</td></tr>
+            <tr><td>Factibilidade</td><td>1000/1000</td><td>Todas as partículas factíveis em todas as etapas</td></tr>
+            <tr><td>Melhor custo</td><td>5391676</td><td>Encontrado na inicialização</td></tr>
+            <tr><td>Quantidade de Q</td><td>1 perfil</td><td>As entregas obrigatórias são determinadas pelos déficits</td></tr>
+            <tr><td>Atribuição de veículos</td><td>1000 perfis</td><td>As partículas distribuem os clientes entre veículos diferentes</td></tr>
+            <tr><td>Q completo</td><td>1000 perfis</td><td>Confirma diversidade quando o eixo dos veículos é preservado</td></tr>
+            <tr><td>Produção X</td><td>1000 → 152 perfis</td><td>Mínimo observado de 151 perfis</td></tr>
+            <tr><td>Mutação</td><td>100000 partículas</td><td>100 partículas por iteração; elite preservada</td></tr>
+            <tr><td>Reinicialização</td><td>29850 partículas</td><td>Ativada após cinco iterações sem melhoria</td></tr>
+            <tr><td>Auditoria</td><td>1002, sem falhas</td><td>Amostra periódica, melhor inicial e solução final</td></tr>
+            <tr><td>Reamostragem</td><td>0 tentativas</td><td>Não foi necessária</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note" style="margin-top:16px;"><strong>Diagnóstico:</strong> o kernel Numba constrói a população em arrays e executa as partículas em paralelo, eliminando milhões de laços, somas e cópias Python. O estado mantém nós e comprimentos das rotas; listas, <code>visits</code> e <code>R/Z</code> são materializados somente para auditoria, saída e warm start. O backend Python permanece como referência de equivalência. Localmente são usadas até oito threads; dentro de um rank MPI, o padrão automático é uma thread para evitar oversubscription.</div>
+      <div class="note" style="margin-top:16px;"><strong>Desempate de rota:</strong> clientes à mesma distância são ordenados pela maior preferência agregada dos genes de <code>Q</code>; persistindo o empate, vence o menor índice. Essa regra é determinística nos backends Python e Numba.</div>
+    </section>
+
+    <section>
+      <h2>Impacto do MIP start no modelo completo</h2>
+      <p class="section-intro">Nova comparação na mesma instância, com uma thread, limite de 60 segundos para o MIP exato e PSO de 1000 partículas por 1000 iterações. A relaxação inicial foi medida separadamente; o tempo ponta a ponta inclui construção do modelo, LP medido, MIP e, no segundo cenário, a geração do MIP start.</p>
+      <div class="metrics">
+        <div class="metric"><strong>26,93 s</strong><span>PSO quente 1000 × 1000</span></div>
+        <div class="metric"><strong>4,52%</strong><span>gap final com MIP start</span></div>
+        <div class="metric"><strong>64</strong><span>nós explorados com MIP start</span></div>
+        <div class="metric"><strong>95,49 s</strong><span>fluxo ponta a ponta com PSO</span></div>
+      </div>
+      <div class="panel" style="margin-top:16px; box-shadow:none;">
+        <table>
+          <thead><tr><th>Indicador</th><th>MIP sem solução inicial</th><th>MIP com PSO + MIP start</th></tr></thead>
+          <tbody>
+            <tr><td>Relaxação LP inicial</td><td>4.464.139,02 (1,60 s)</td><td>4.464.139,02 (1,47 s)</td></tr>
+            <tr><td>Status aos 60 s</td><td>Limite de tempo, sem solução inteira</td><td>Limite de tempo, com solução inteira</td></tr>
+            <tr><td>Primeira solução factível observada</td><td>Não encontrada</td><td>27,95 s; custo 5.391.676,00</td></tr>
+            <tr><td>Evolução das incumbentes</td><td>—</td><td>5.391.676,00 → 4.732.007,00 → 4.714.060,00</td></tr>
+            <tr><td>Melhor incumbente</td><td>Não disponível</td><td>4.714.060,00 aos 44,47 s</td></tr>
+            <tr><td>Primeiro bound observado</td><td>4.465.203,59 aos 30,01 s</td><td>4.465.203,59 aos 27,95 s</td></tr>
+            <tr><td>Melhor bound final</td><td>4.500.779,45</td><td>4.500.778,88</td></tr>
+            <tr><td>Gap final</td><td>Não definido, pois não houve incumbente</td><td>4,52%</td></tr>
+            <tr><td>Nós processados</td><td>0</td><td>64</td></tr>
+            <tr><td>Incumbentes observados</td><td>0</td><td>3</td></tr>
+            <tr><td>Tempo da busca MIP</td><td>aproximadamente 60 s (limite configurado)</td><td>60,14 s</td></tr>
+            <tr><td>Tempo do PSO</td><td>—</td><td>26,93 s quente; 27,26 s com JIT em cache</td></tr>
+            <tr><td>Tempo ponta a ponta medido</td><td>67,89 s</td><td>95,49 s usando o tempo quente do PSO</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note" style="margin-top:16px;"><strong>Conclusão do experimento:</strong> sem MIP start, o CPLEX novamente não encontrou solução inteira no limite de 60 s. Com o MIP start, a solução do PSO tornou-se a primeira incumbente observada e foi melhorada em 677.616,00 durante a busca. O tempo ponta a ponta aumentou em 27,60 s, mas o resultado passou de “sem solução” para uma incumbente de 4.714.060,00 com gap de 4,52%. Os bounds finais praticamente iguais mostram que a principal contribuição do PSO foi fornecer a incumbente e habilitar a exploração da árvore, não fortalecer a relaxação.</div>
+      <div class="note" style="margin-top:16px;"><strong>Telemetria do PSO usada no MIP start:</strong> as 1000 partículas permaneceram factíveis durante as 1000 iterações; o melhor custo (5.391.676,00) apareceu na população inicial. Foram realizadas 1002 auditorias sem falhas, 100000 mutações e 29850 reinicializações. A diversidade final foi de 152 perfis de <code>X</code>, um perfil de quantidade agregada de <code>Q</code>, 1000 perfis de atribuição veicular e 1000 perfis do tensor completo <code>Q</code>.</div>
+    </section>
+
+    <section>
+      <h2>Limitações e próximos experimentos</h2>
+      <div class="grid two">
+        <article class="card"><h3>Bounds relaxados</h3><p>O PL não possui toda a estrutura de roteamento. Um perfil de produção admissível no relaxamento pode ser difícil de escoar sob visita única e capacidade individual.</p></article>
+        <article class="card"><h3>Convergência</h3><p>Inércia e coeficientes variam ao longo da execução; 10% das partículas não elites recebem mutação. Após cinco iterações sem melhoria, 15% das piores são reinicializadas.</p></article>
+        <article class="card"><h3>Escala</h3><p>O fluxo quente de 1000 partículas por 1000 iterações ficou em 31,06 segundos no ambiente local. O tempo deve ser reavaliado por rank no cluster, onde o modo automático usa uma thread.</p></article>
+        <article class="card"><h3>Comparações</h3><p>Devem ser comparados: bounds atuais, bounds baseados em entregas, diferentes seeds, taxa de factibilidade, custo e perfis distintos.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">Documento visual baseado em <code>docs/heuristica.md</code>, <code>LotSizingRelaxation.py</code>, <code>FeasibleParticleHeuristic.py</code> e <code>ParticleSwarmOptimization.py</code>.</div>
+  </footer>
+</body>
+</html>
