@@ -438,6 +438,33 @@ gbest ← melhor_solução(população)
     </section>
 
     <section>
+      <h2>Comparação em outras instâncias configuradas</h2>
+      <p class="section-intro">Experimento com uma thread no CPLEX, limite de 60 segundos para a busca MIP e PSO Numba de 1000 partículas por 1000 iterações. A licença completa do CPLEX foi confirmada antes das execuções; os tempos de parede incluem a preparação do modelo.</p>
+      <div class="panel" style="margin-top:16px; box-shadow:none;">
+        <table>
+          <thead><tr><th>Instância</th><th>MIP sem start</th><th>PSO</th><th>MIP com start do PSO</th><th>Leitura</th></tr></thead>
+          <tbody>
+            <tr><td><code>PRP21_C10_P5_V2_T6_S5</code></td><td>900.685,00; gap 13,96%; 954 nós; 6 incumbentes; primeira em 2,69 s</td><td>4,93 s quente; melhor 1.003.487,00; 100% factível</td><td>822.337,00; gap 5,72%; 1.204 nós; 9 incumbentes; start aceito em 0,10 s; melhor em 31,38 s</td><td>Melhorou a incumbente final em 78.348,00 e reduziu o gap em 8,25 p.p.</td></tr>
+            <tr><td><code>PRP12_C20_P8_V5_T12_S3</code></td><td>Sem incumbente; 0 nós; relaxação 53.719.781,21 em 1,77 s</td><td>26,88 s quente; melhor 54.859.202,00; 100% factível</td><td>53.968.455,00; gap 0,36%; 61 nós; 2 incumbentes; start registrado em 30,79 s</td><td>Transformou uma execução sem solução inteira em solução com gap baixo.</td></tr>
+            <tr><td><code>PRP1_C30_P10_V5_T12_S1</code></td><td>Sem incumbente; 0 nós; relaxação 8.965.524,31 em 8,81 s</td><td>46,20 s quente; melhor 10.502.062,00 na iteração 5; 100% factível</td><td>10.502.062,00; gap reportado 98,80%; 0 nós e nenhuma melhoria posterior observada</td><td>O start forneceu a única incumbente, mas o MIP não avançou na árvore.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel" style="margin-top:16px; box-shadow:none;">
+        <table>
+          <thead><tr><th>Instância</th><th>Relaxação LP</th><th>Busca MIP sem/com start</th><th>Ponta a ponta com start</th><th>Diversidade PSO (X / atribuição / Q completo)</th></tr></thead>
+          <tbody>
+            <tr><td><code>PRP21_C10_P5_V2_T6_S5</code></td><td>732.923,16 (0,03 s)</td><td>60,01 s / 60,01 s</td><td>65,28 s</td><td>144 / 2 / 2</td></tr>
+            <tr><td><code>PRP12_C20_P8_V5_T12_S3</code></td><td>53.719.781,21 (1,77 s)</td><td>60,03 s / 60,11 s</td><td>95,74 s</td><td>153 / 1.000 / 1.000</td></tr>
+            <tr><td><code>PRP1_C30_P10_V5_T12_S1</code></td><td>8.965.524,31 (8,81 s)</td><td>60,22 s / 60,47 s</td><td>133,77 s</td><td>161 / 999 / 999</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note" style="margin-top:16px;"><strong>Interpretação:</strong> o MIP start não altera a relaxação LP, mas dá ao CPLEX uma incumbente factível. O benefício foi claro nas instâncias de 10 e 20 clientes. Na de 30 clientes, ele evita terminar sem solução, porém a lacuna permanece muito alta e não houve nós processados; o gargalo parece ser a preparação/presolve e não apenas a qualidade da incumbente.</div>
+      <div class="note" style="margin-top:16px;"><strong>Telemetria comum:</strong> cada execução do PSO manteve 1000 partículas factíveis; as auditorias completas foram 1002, 1002 e 1003, respectivamente, sem falhas. A quantidade agregada de <code>Q</code> permaneceu em um único perfil nas três instâncias, enquanto as atribuições e o tensor completo de <code>Q</code> preservaram diversidade — exceto na instância pequena, que reteve apenas dois perfis.</div>
+    </section>
+
+    <section>
       <h2>Limitações e próximos experimentos</h2>
       <div class="grid two">
         <article class="card"><h3>Bounds relaxados</h3><p>O PL não possui toda a estrutura de roteamento. Um perfil de produção admissível no relaxamento pode ser difícil de escoar sob visita única e capacidade individual.</p></article>

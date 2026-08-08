@@ -1,5 +1,5 @@
 [project]
-name = "multi-product-production-routing-problem"
+name = "lsvrp"
 version = "0.1.0"
 description = ""
 authors = [
