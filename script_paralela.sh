@@ -8,8 +8,6 @@
 
 module load mpich/4.1.1-gcc-9.4.0
 
-source phd3/bin/activate
-
 cd $PBS_O_WORKDIR
 
-mpirun python -m mpi4py.futures main.py
+mpirun poetry run python -m mpi4py.futures main.py
