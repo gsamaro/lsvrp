@@ -144,6 +144,7 @@ if __name__ == "__main__":
         timeSupervisor,
         {"instancia": log, "dirLogs": f"{output}logs"},
         guardrail_runtime=guardrail_runtime,
+        run_tag=run_tag,
     )
     worker_process.run_parallel(instancies=instancies, solver=method)
 

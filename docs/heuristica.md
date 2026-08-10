@@ -473,3 +473,10 @@ Na implementação do projeto, a heurística construtiva também é utilizada co
 - geração de solução inicial para o `warm start` do CPLEX.
 
 Assim, o PSO opera sobre decisões contínuas de produção e entrega, mas cada partícula é convertida para uma solução completa e factível antes de ser avaliada ou enviada ao solver exato.
+
+
+## Telemetria persistida e performance profiles
+
+Quando `solver.telemetry.enabled` está ativo, cada tarefa salva shards Parquet em `telemetry/`: um resumo da execução, as métricas por iteração do PSO e, quando aplicável, os eventos MIP de primeira solução factível e alcance do gap-alvo. O script `scripts/consolidate_telemetry.py --input out/` consolida esses dados e cria quatro relatórios Plotly autocontidos: performance profiles de primeira factível, gap-alvo e execução concluída, além da taxa de sucesso.
+
+O cenário `pso_mip_start` preserva separadamente o tempo do PSO, do MIP e o total. Timeouts que não atingem um evento não entram na curva daquele evento, mas permanecem no denominador da taxa de sucesso.

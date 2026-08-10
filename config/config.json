@@ -4,6 +4,12 @@
     "timeLimit":3600,
     "method":"PSO",
     "multiobjective":true,
+    "telemetry": {
+      "enabled": false,
+      "experiment_id": "pso-vs-solver-20c-2026-08-10",
+      "gap_target_relative": 0.01,
+      "save_pso_iterations": true
+    },
     "pso": {
       "swarm_size": 1000,
       "max_iterations": 1000,

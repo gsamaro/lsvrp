@@ -1,11 +1,14 @@
 import threading
 import time
 
+from config import Config
+
 from src.helpers.JobGuardrails import JobGuardrails
 from src.helpers.ReadPrpFile import ReadPrpFile as RD
 from src.helpers.TargetsLoader import normalize_instance_file_key
 from src.log.Logger import Logger
 from src.process.ProcessResults import getResults
+from src.helpers.SolverTelemetry import get_config, new_run_id, write_shards
 from src.solvers.MultProductProdctionRoutingProblem import (
     MultProductProdctionRoutingProblem as MPPRP,
 )
@@ -48,6 +51,7 @@ class InstanceProcess:
         self.task_context = task_context or {}
         self._solve_watchdog_stop = None
         self._solve_watchdog_thread = None
+        self.telemetry_config = get_config(Config)
 
     def isProcessFinished(self):
         return self.isFinished
@@ -175,6 +179,7 @@ class InstanceProcess:
 
             self._log_memory_checkpoint("before_build_solver", phase="build_solver")
             phase_started_at = time.time()
+            strategy_started_at = phase_started_at
             instance = self.solverInstancie(data)
             self._log_memory_checkpoint("after_build_solver", phase="build_solver")
             self._log_phase("build_solver", phase_started_at)
@@ -183,6 +188,8 @@ class InstanceProcess:
             phase_started_at = time.time()
             self._start_solve_watchdog()
             instance.solver(timeLimit=self.timeLimit, numThreads=self.numThreads)
+            solve_elapsed_seconds = time.time() - phase_started_at
+            strategy_elapsed_seconds = time.time() - strategy_started_at
             self._stop_solve_watchdog()
             self._log_memory_checkpoint("after_solve", phase="solve")
             self._log_phase("solve", phase_started_at)
@@ -207,6 +214,19 @@ class InstanceProcess:
                 OBJ_BOUND,
                 NEW_TARGETS,
             ) = instance.getResults()
+            if self.telemetry_config["enabled"] and hasattr(instance, "get_telemetry"):
+                telemetry = instance.get_telemetry()
+                strategy = telemetry.get("strategy", self.solver.lower())
+                summary = {
+                    "run_id": new_run_id(self.task_context, strategy),
+                    "experiment_id": self.telemetry_config["experiment_id"],
+                    "run_tag": self.task_context.get("run_tag"), "task_number": self.task_context.get("task_number"),
+                    "instance_file": data.get("file"), "weight": str(data.get("weight")), "alpha": data.get("alpha"),
+                    "threads": self.numThreads, "time_limit_seconds": self.timeLimit,
+                    "solver_variant": strategy, "pipeline_solver_seconds": solve_elapsed_seconds,
+                    "total_seconds": strategy_elapsed_seconds, **telemetry,
+                }
+                write_shards(self.output, summary, telemetry.get("pso_iterations") if self.telemetry_config["save_pso_iterations"] else [], telemetry.get("mip_events", []))
             self._log_memory_checkpoint("after_extract_results", phase="extract_results")
             self._log_phase("extract_results", phase_started_at)
             # FO, f1, f2, f3, f4, GAP, TIME, SOL_COUNT, RELAXED_MODEL_OBJE_VAL, NODE_COUNT, OBJ_BOUND = instance.new_get_results()
