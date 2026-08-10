@@ -1,9 +1,9 @@
 {
   "solver":{
     "threadsLimit":1,
-    "timeLimit":3,
-    "method":"GUROBY",
-    "multiobjective":false,
+    "timeLimit":3600,
+    "method":"PSO",
+    "multiobjective":true,
     "pso": {
       "swarm_size": 1000,
       "max_iterations": 1000,
@@ -62,7 +62,7 @@
     "replace_model": true
   },
   "postprocessing": {
-    "build_target": true,
+    "build_target": false,
     "output": "./out/target/"
   },
   "guardrails": {
