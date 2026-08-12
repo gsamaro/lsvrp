@@ -47,15 +47,15 @@ class InstanceProcess:
     def solverInstancie(self, data):
         # Python 3.8-compatible replacement for match-case
         if self.solver == "GUROBY":
-            self.log.info(f" Solver: GUROBY")
+            self.log.debug("Solver: GUROBY")
             return MPPRP(
                 map=data, dir=self.output, log=self.log, start={"start": False}
             )
         elif self.solver == "PSO":
-            self.log.info(f"Solver: PSO")
+            self.log.debug("Solver: PSO")
             return PSOSolver(map=data, dir=self.output, log=self.log)
         else:
-            print(" VALOR SETADO COMO DEFAULT ----- SEM SOLVER ")
+            self.log.error(f"Solver não suportado: {self.solver}")
             return 0
 
     def process(self):
@@ -139,7 +139,7 @@ class InstanceProcess:
                 NEW_TARGETS,
                 log=self.log,
             )
-            self.log.info(f"Resultados gerados.")
+            self.log.debug("Resultados gerados.")
             self.isFinished = True
         finally:
             if instance is not None and hasattr(instance, "terminate"):

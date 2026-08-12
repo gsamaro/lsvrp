@@ -145,6 +145,7 @@ Edite `config/config.json`. Os blocos observados são:
 
 - `solver`: `threadsLimit`, `timeLimit`, `method`, `multiobjective`.
 - `workers`: `num`.
+- `logging`: `level`, com valores `INFO` (padrão), `DEBUG` e `OFF`.
 - `instance`: `dir`, `output`, `files`.
 - `relaxed_solution`: `replace_model`; o código também consulta `relaxed_solution.use`, mas essa chave não aparece no `config.json` empacotado.
 - `postprocessing`: `build_target`, `output`.
@@ -369,7 +370,8 @@ Saídas:
 Logging:
 
 - Logs ficam em `output/logs`.
-- O logger imprime em stdout e grava em arquivo.
+- O logger imprime em stdout e grava em arquivo usando o mesmo nível configurado.
+- `INFO` registra informações, avisos e erros; `DEBUG` inclui diagnósticos detalhados; `OFF` preserva apenas avisos e erros.
 
 Estilo e nomenclatura:
 

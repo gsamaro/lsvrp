@@ -82,7 +82,7 @@ flowchart TD
 | Convenção observada | Como agir | Evidência |
 |---|---|---|
 | Configuração global via `Config.get_nested(...)` | Antes de passar novos parâmetros, verifique se o padrão do projeto é buscar em `config/config.json` | `config/config.py`, `main.py`, `WorkerProcess.py`, `MultProductProdctionRoutingProblem.py` |
-| Logging por classe `Logger` própria | Use `log.info`, `log.warning`, `log.error`; não substitua por logging padrão sem análise | `src/log/Logger.py` |
+| Logging por classe `Logger` própria | Use `log.debug` para diagnósticos, `log.info` para marcos de execução e `log.warning`/`log.error` para condições operacionais | `src/log/Logger.py` |
 | Escrita de resultados tabulares com pandas | Preserve colunas existentes, hashes e formatos `.xlsx`/`.parquet` | `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py` |
 | Testes com `pytest` e mocks | Ao adicionar testes, prefira estilo `pytest`; testes legados com `unittest` podem permanecer quando já houver infraestrutura útil no arquivo | `tests/test_*.py`, `pyproject.toml` |
 | Uso de constantes globais para pesos e alpha | Alterar pesos muda o espaço experimental inteiro | `constants.py`, `src/process/WorkerProcess.py` |
@@ -207,7 +207,7 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | `config/` | Configuração JSON e classe `Config` | `config.json` é lido uma vez e cacheado |
 | `scripts/` | Runners auxiliares | `generate_reports.py` roda relatórios |
 | `src/helpers/` | Utilitários compartilhados | Parser, metadata, targets e gráficos |
-| `src/log/` | Logger próprio | Grava arquivo e stdout |
+| `src/log/` | Logger próprio | Grava arquivo e stdout conforme `logging.level` |
 | `src/process/` | Orquestração e persistência | Worker, instância, pós-processamento, resultados |
 | `src/reports/` | Relatórios científicos/analíticos | Lê Excel consolidado em `out/<constants.FILE>` |
 | `src/solvers/` | Formulação e heurísticas | DOcplex/CPLEX e heurísticas de rota |
@@ -219,7 +219,7 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | Classe | Responsabilidade | Arquivo |
 |---|---|---|
 | `Config` | Carregar e consultar `config.json` | `config/config.py` |
-| `Logger` | Logging em arquivo/stdout | `src/log/Logger.py` |
+| `Logger` | Logging filtrado em arquivo/stdout (`INFO`, `DEBUG`, `OFF`) | `src/log/Logger.py` |
 | `ReadPrpFile` | Ler instâncias `.dat` | `src/helpers/ReadPrpFile.py` |
 | `WorkerProcess` | Orquestrar tarefas | `src/process/WorkerProcess.py` |
 | `InstanceProcess` | Processar uma instância | `src/process/InstanceProcess.py` |

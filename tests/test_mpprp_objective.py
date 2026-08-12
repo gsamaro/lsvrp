@@ -26,6 +26,9 @@ class DummyLogger:
     def info(self, message):
         pass
 
+    def debug(self, message):
+        pass
+
     def warning(self, message):
         pass
 

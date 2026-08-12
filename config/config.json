@@ -53,6 +53,9 @@
   "workers":{
     "num":"auto"
   },
+  "logging": {
+    "level": "INFO"
+  },
   "instance":{
     "dir": "./data/",
     "output": "./out/",

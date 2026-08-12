@@ -51,6 +51,12 @@ class DummyLogger:
     def info(self, message):
         self.messages.append(("info", message))
 
+    def debug(self, message):
+        self.messages.append(("debug", message))
+
+    def warning(self, message):
+        self.messages.append(("warning", message))
+
     def error(self, message):
         self.messages.append(("error", message))
 

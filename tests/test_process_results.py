@@ -81,6 +81,9 @@ class DummyLogger:
     def info(self, message):
         self.messages.append(("info", message))
 
+    def debug(self, message):
+        self.messages.append(("debug", message))
+
 
 class ProcessResultsTestCase(unittest.TestCase):
     def test_build_routes_from_z_reconstructs_sequence(self):

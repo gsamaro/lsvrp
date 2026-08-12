@@ -80,7 +80,7 @@ def getResults(
     def _log_no_solution_results():
         if not log:
             return
-        log.info("event=no_solution_results phase=write_results")
+        log.debug("event=no_solution_results phase=write_results")
 
     routes = _build_routes_from_Z(Z)
 

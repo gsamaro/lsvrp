@@ -26,9 +26,9 @@ class MultProductProdctionRoutingProblem:
 
     def __init__(self, map, dir, log: Logger, start):
         self.log: Logger = log
-        self.log.info(">> Iniciando MultProductProdctionRoutingProblem.")
+        self.log.debug(">> Iniciando MultProductProdctionRoutingProblem.")
         self.model = Model(name="Multi_Product_Prodction_Routing_Problem")
-        self.log.info(">> Iniciado model.")
+        self.log.debug(">> Iniciado model.")
         self.j = 5
         self.p = map["num_products"]  ##Products
         self.i = map["num_customers"] + 1  ##Customers
@@ -77,10 +77,10 @@ class MultProductProdctionRoutingProblem:
         self._telemetry_events = []
         self._first_feasible_seconds = None
         self._gap_target_seconds = None
-        self.log.info(">> Finalizado MultProductProdctionRoutingProblem.")
+        self.log.debug(">> Finalizado MultProductProdctionRoutingProblem.")
 
     def createDecisionVariables(self):
-        self.log.info(">> Iniciando createDecisionVariables.")
+        self.log.debug(">> Iniciando createDecisionVariables.")
         for p in range(self.p):
             for t in range(self.t):
                 self.model.X_p_t[p, t] = self.model.integer_var(lb=0, name=f"X_{p}_{t}")
@@ -176,7 +176,7 @@ class MultProductProdctionRoutingProblem:
                 mean_val = np.mean(values_k)
                 for t in range(self.t):
                     if self.targets[t][k] == 0:
-                        self.log.info(
+                        self.log.debug(
                             f">> Adjusting target {t}_{k} from {self.targets[t][k]} to {mean_val}"
                         )
                         self.new_targets[t][k] = mean_val
@@ -234,12 +234,12 @@ class MultProductProdctionRoutingProblem:
             + self.weight[4] * sum(self.f5)
         )
         if Config.get_nested("postprocessing", "build_target"):
-            self.log.info(">> FO build_target.")
+            self.log.debug(">> FO build_target.")
             self.model.minimize(objExpr)
         else:
             if Config.get_nested("solver", "multiobjective"):
                 self._adjust_targets()
-                self.log.info(">> FO multiobjective.")
+                self.log.debug(">> FO multiobjective.")
                 self.model.minimize(
                     self.model.sum(
                         self.alpha * self.lambda_
@@ -266,7 +266,7 @@ class MultProductProdctionRoutingProblem:
                     )
                 )
             else:
-                self.log.info(">> FO singleobjective.")
+                self.log.debug(">> FO singleobjective.")
                 self.model.minimize(
                     self.model.sum(self.f1)
                     + self.model.sum(self.f2)
@@ -686,7 +686,7 @@ class MultProductProdctionRoutingProblem:
             self.log.error("Relaxation not generated")
             return
         if REPLACE_MODEL:
-            self.log.info("Relaxation model replaced")
+            self.log.debug("Relaxation model replaced")
             original_model = self.model
             self.model = relaxed
             original_model.end()
@@ -774,45 +774,45 @@ class MultProductProdctionRoutingProblem:
     def solver(self, numThreads=None, timeLimit=None):
         self.createDecisionVariables()
 
-        self.log.info(f"Variabes.start == {self.start['start']}")
+        self.log.debug(f"Variabes.start == {self.start['start']}")
         if self.start["start"] == True:
             self.startVariables()
 
         self.crateObjectiveFunction()
-        self.log.info("Objetivo criado")
+        self.log.debug("Objetivo criado")
         if Config.get_nested("solver", "multiobjective"):
             self.createGoalProgrammingRestrictions()
             self.createEpsilonRestricted()
         self.createEstablishInvetoryBalanceAtPlant()
-        self.log.info("Balanceamento estoque Planta criado")
+        self.log.debug("Balanceamento estoque Planta criado")
         self.creteInventoryBalancingInventoryCustomers()
-        self.log.info("Balanceamento estoque Cliente criado")
+        self.log.debug("Balanceamento estoque Cliente criado")
         self.createPlantsMaximum()
-        self.log.info("Planta max criado")
+        self.log.debug("Planta max criado")
         self.createRelationshipBetweenProduction()
-        self.log.info("Produção criado")
+        self.log.debug("Produção criado")
         self.createDelimitMaximumCapacityItemsAtPlant()
-        self.log.info("Capacidade maxima planta criado")
+        self.log.debug("Capacidade maxima planta criado")
         self.createVehiclePreventTransshipmentIntermediateNodes()
-        self.log.info("Transshipment criado")
+        self.log.debug("Transshipment criado")
         self.createEliminationSubroutes()
-        self.log.info("Subrotas criado")
+        self.log.debug("Subrotas criado")
         self.createVehicleLoadCapacityDelimited()
-        self.log.info("Capacidade maxima veículo criado")
+        self.log.debug("Capacidade maxima veículo criado")
         self.createImposeMostOneRouteEachVehicle()
-        self.log.info("Max rota veículo criado")
+        self.log.debug("Max rota veículo criado")
         self.createEnsureRoutesOnlyPlant()
-        self.log.info("Rota somente entre plantas criado")
+        self.log.debug("Rota somente entre plantas criado")
         self.createVehicleMostVisitCustomerEachPeriod()
-        self.log.info("Veículo visita cliente criado")
+        self.log.debug("Veículo visita cliente criado")
         # self.outModel()
         if Config.get_nested("postprocessing", "build_target"):
             self.generteRelax(
                 REPLACE_MODEL=Config.get_nested("relaxed_solution", "replace_model")
             )
-            self.log.info("Solução relaxada gerada")
+            self.log.debug("Solução relaxada gerada")
         else:
-            self.log.info("Solução não relaxada - usando modelo original")
+            self.log.debug("Solução não relaxada - usando modelo original")
 
         # Set parameters
         if timeLimit is not None:

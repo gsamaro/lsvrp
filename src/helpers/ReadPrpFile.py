@@ -128,7 +128,7 @@ class ReadPrpFile:
                             data["d_pit"].append(b)
                 i += 1
 
-        self.log.info(
+        self.log.debug(
             f"Number of Customers = {num_customers}, Number of Products = {num_products}, Number of Periods = {num_periods}"
         )
 

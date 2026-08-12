@@ -11,7 +11,6 @@ try:
 
     MPI_BOOL = True
 except ImportError:
-    print("mpi4py not running")
     MPI_BOOL = False
 
 from constants import WEIGHTS_OPTIMIZE, WEIGHTS_TARGET, ALPHA
@@ -160,6 +159,7 @@ class WorkerProcess:
                             f"Erro em tarefa MPI ({context['label']}): {e}: stack: {traceback.format_exc()}"
                         )
         else:
+            self.log.warning("mpi4py indisponível; executando tarefas sequencialmente.")
             for task in tasks:
                 context = self._build_task_context(
                     task["instancie"],
@@ -181,7 +181,7 @@ class WorkerProcess:
 
 def process(log, instancie, solver, w, targets_by_file, alpha, context=None):
     context_label = context["label"] if context else instancie["file"]
-    log.info(f">> Processando instância ({context_label}).")
+    log.debug(f">> Processando instância ({context_label}).")
     InstanceProcess(
         instancie["file"],
         instancie["output"],
