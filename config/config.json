@@ -1,9 +1,15 @@
 {
   "solver":{
     "threadsLimit":1,
-    "timeLimit":60,
+    "timeLimit":3600,
     "method":"PSO",
-    "multiobjective":false,
+    "multiobjective":true,
+    "telemetry": {
+      "enabled": false,
+      "experiment_id": "pso-vs-solver-20c-2026-08-10",
+      "gap_target_relative": 0.01,
+      "save_pso_iterations": true
+    },
     "pso": {
       "swarm_size": 1000,
       "max_iterations": 1000,
@@ -56,9 +62,7 @@
     "is_plot": "true",
     "dir": "./data/",
     "output": "./out/",
-    "files": ["DATA_PRP_10C/PRP21_C10_P5_V2_T6_S5.dat", 
-              "DATA_PRP_20C/PRP12_C20_P8_V5_T12_S3.dat",
-              "DATA_PRP_30C/PRP1_C30_P10_V5_T12_S1.dat"]
+    "files": ["DATA_PRP_20C"]
   },
   "relaxed_solution": {
     "replace_model": true

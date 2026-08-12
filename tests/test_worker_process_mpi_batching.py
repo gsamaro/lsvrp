@@ -35,7 +35,8 @@ pso_module = types.ModuleType(
 pso_module.ParticleSwarmOptimization = object
 sys.modules["src.solvers.ParticleSwarmOptimization"] = pso_module
 
-from src.process.WorkerProcess import WorkerProcess
+from src.process.WorkerProcess import WorkerProcess, WEIGHTS
+from constants import ALPHA
 
 if _original_graph_display_module is None:
     sys.modules.pop("src.helpers.GraphDisplay", None)
@@ -189,14 +190,19 @@ class WorkerProcessMPIBatchingTestCase(unittest.TestCase):
             if level == "info" and "MPI_BATCH_START" in message
         ]
 
-        self.assertGreater(len(batch_plan_logs), 1)
-        self.assertGreater(len(batch_start_logs), 1)
-        self.assertTrue(any("batch=1/8" in message for message in batch_plan_logs))
-        self.assertTrue(any("batch=8/8" in message for message in batch_plan_logs))
+        total_tasks = len(instancies) * len(WEIGHTS) * len(ALPHA)
+        expected_batches = (total_tasks + 255) // 256
+        expected_last_batch = total_tasks % 256 or 256
+        expected_last_workers = min(32, expected_last_batch)
+
+        self.assertEqual(len(batch_plan_logs), expected_batches)
+        self.assertEqual(len(batch_start_logs), expected_batches)
+        self.assertTrue(any(f"batch=1/{expected_batches}" in message for message in batch_plan_logs))
+        self.assertTrue(any(f"batch={expected_batches}/{expected_batches}" in message for message in batch_plan_logs))
         self.assertTrue(any("heavy_instance_cap=32" in message for message in batch_plan_logs))
         self.assertTrue(all(max_workers <= 32 for max_workers in FakeExecutor.max_workers_used))
         self.assertTrue(all(max_workers == 32 for max_workers in FakeExecutor.max_workers_used[:-1]))
-        self.assertEqual(FakeExecutor.max_workers_used[-1], 8)
+        self.assertEqual(FakeExecutor.max_workers_used[-1], expected_last_workers)
 
     def test_run_parallel_passes_solver_to_sequential_process(self):
         worker = self._build_worker()

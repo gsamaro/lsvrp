@@ -464,6 +464,13 @@ gbest ← melhor_solução(população)
       <div class="note" style="margin-top:16px;"><strong>Telemetria comum:</strong> cada execução do PSO manteve 1000 partículas factíveis; as auditorias completas foram 1002, 1002 e 1003, respectivamente, sem falhas. A quantidade agregada de <code>Q</code> permaneceu em um único perfil nas três instâncias, enquanto as atribuições e o tensor completo de <code>Q</code> preservaram diversidade — exceto na instância pequena, que reteve apenas dois perfis.</div>
     </section>
 
+
+    <section>
+      <h2>Telemetria persistida e performance profiles</h2>
+      <p class="section-intro">Com <code>solver.telemetry.enabled</code>, cada tarefa grava shards Parquet de resumo, iterações do PSO e eventos MIP. O script <code>scripts/consolidate_telemetry.py --input out/</code> consolida os dados e gera gráficos Plotly autocontidos para primeira solução factível, gap-alvo, execução concluída e taxa de sucesso.</p>
+      <div class="note"><strong>Interpretação:</strong> o cenário PSO+MIP separa tempo do PSO, tempo do MIP e tempo total. Um timeout sem o evento correspondente não entra na curva daquele indicador, mas reduz a taxa de sucesso porque permanece no denominador.</div>
+    </section>
+
     <section>
       <h2>Limitações e próximos experimentos</h2>
       <div class="grid two">

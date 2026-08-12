@@ -19,6 +19,7 @@ from config import Config
 from docplex.mp.model import Model
 from docplex.mp.relax_linear import LinearRelaxer
 from src.log.Logger import Logger
+from src.helpers.SolverTelemetry import get_config
 
 
 class MultProductProdctionRoutingProblem:
@@ -71,6 +72,11 @@ class MultProductProdctionRoutingProblem:
         self.log: Logger = log
         self.start = start
         self.alpha = map["alpha"] if "alpha" in map else None
+        self.telemetry_config = get_config(Config)
+        self._telemetry_started_at = None
+        self._telemetry_events = []
+        self._first_feasible_seconds = None
+        self._gap_target_seconds = None
         self.log.info(">> Finalizado MultProductProdctionRoutingProblem.")
 
     def createDecisionVariables(self):
@@ -729,6 +735,58 @@ class MultProductProdctionRoutingProblem:
             self.objBound = 0
             self.nodeCount = 0
 
+    def _record_mip_telemetry(self, elapsed_seconds, has_incumbent, relative_gap):
+        if not self.telemetry_config["enabled"]:
+            return
+        if has_incumbent and self._first_feasible_seconds is None:
+            self._first_feasible_seconds = float(elapsed_seconds)
+            self._telemetry_events.append({"event": "first_feasible", "elapsed_seconds": float(elapsed_seconds), "source": "mip"})
+        if relative_gap is not None and relative_gap <= self.telemetry_config["gap_target_relative"] and self._gap_target_seconds is None:
+            self._gap_target_seconds = float(elapsed_seconds)
+            self._telemetry_events.append({"event": "gap_target", "elapsed_seconds": float(elapsed_seconds), "gap": float(relative_gap)})
+
+    def get_telemetry(self):
+        details = getattr(self.model, "solve_details", None)
+        status = str(getattr(details, "status", "unknown"))
+        timed_out = "time limit" in status.lower()
+        objective = None
+        if getattr(self, "solution", None) is not None:
+            try:
+                objective = float(self.model.objective_value)
+            except Exception:
+                pass
+        gap = getattr(details, "mip_relative_gap", None)
+        self._record_mip_telemetry(self.time, objective is not None, gap)
+        return {
+            "strategy": "solver",
+            "mip_seconds": float(self.time), "status": status, "timed_out": timed_out,
+            "objective": objective, "best_bound": getattr(details, "best_bound", None),
+            "relative_gap": gap, "node_count": self.nodeCount, "solution_count": self.solCount,
+            "first_feasible_seconds": self._first_feasible_seconds,
+            "gap_target_seconds": self._gap_target_seconds,
+            "mip_events": list(self._telemetry_events), "pso_iterations": [],
+        }
+
+    def _install_mip_telemetry_callback(self):
+        if not self.telemetry_config["enabled"]:
+            return
+        try:
+            from cplex.callbacks import MIPInfoCallback
+            owner = self
+            started_at = time.perf_counter()
+            class TelemetryCallback(MIPInfoCallback):
+                def __call__(self):
+                    try:
+                        elapsed = time.perf_counter() - started_at
+                        incumbent = self.has_incumbent()
+                        gap = self.get_MIP_relative_gap() if incumbent else None
+                        owner._record_mip_telemetry(elapsed, incumbent, gap)
+                    except Exception:
+                        pass
+            self.model.register_callback(TelemetryCallback)
+        except Exception as error:
+            self.log.warning(f"Telemetria MIP sem callback: {error}")
+
     def solver(self, numThreads=None, timeLimit=None):
         self.createDecisionVariables()
 
@@ -779,9 +837,14 @@ class MultProductProdctionRoutingProblem:
         # self.model.context.cplex_parameters.threads = numThreads
 
         start_time = time.time()
+        self._telemetry_started_at = time.perf_counter()
+        self._install_mip_telemetry_callback()
         if not Config.get_nested("relaxed_solution", "use"):
             self.solution = self.model.solve(log_output=False)
         end_time = time.time()
         self.time = end_time - start_time
 
         self.processInformationsSolver()
+        elapsed = time.perf_counter() - self._telemetry_started_at
+        details = getattr(self.model, "solve_details", None)
+        self._record_mip_telemetry(elapsed, self.solCount > 0, getattr(details, "mip_relative_gap", None))

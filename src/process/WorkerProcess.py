@@ -33,7 +33,7 @@ else:
 class WorkerProcess:
 
     def __init__(
-        self, numWorkers=1, timeSupervisor=1, log: Logger = None, guardrail_runtime=None
+        self, numWorkers=1, timeSupervisor=1, log: Logger = None, guardrail_runtime=None, run_tag=None
     ):
         self.taskQueue = queue.Queue()
         self.numWorkers = numWorkers
@@ -44,6 +44,7 @@ class WorkerProcess:
         self.guardrail_runtime = guardrail_runtime or JobGuardrails.build_runtime_context()
         self.guardrails = JobGuardrails.from_config(runtime_context=self.guardrail_runtime)
         self.preventive_stop = False
+        self.run_tag = run_tag
         self.mpi_batch_multiplier = max(
             1, int(Config.get_nested("workers", "mpi_batch_multiplier", default=1) or 1)
         )
@@ -154,6 +155,7 @@ class WorkerProcess:
             "weight": self._format_weight(weight),
             "alpha": alpha,
             "mpi_batch": mpi_batch,
+            "run_tag": self.run_tag,
         }
         if task_number is not None:
             context["task_number"] = task_number

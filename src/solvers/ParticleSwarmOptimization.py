@@ -7,6 +7,7 @@ import numpy as np
 
 from config import Config
 from src.log.Logger import Logger
+from src.helpers.SolverTelemetry import get_config
 from src.solvers.FeasibleParticleHeuristic import FeasibleParticleHeuristic
 from src.solvers.LotSizingRelaxation import LotSizingRelaxation
 from src.solvers.MultProductProdctionRoutingProblem import (
@@ -29,6 +30,8 @@ class ParticleSwarmOptimization:
         self.log = log
         self.problem = ProblemData.from_map(map)
         self.pso_config = self._load_pso_config()
+        self.telemetry_config = get_config(Config)
+        self._pso_first_feasible_seconds = None
         self.bounds_seconds = 0.0
         self.jit_warmup_seconds = 0.0
         self.initialization_seconds = 0.0
@@ -243,6 +246,8 @@ class ParticleSwarmOptimization:
         self._initialize_bests()
         diversity = self._record_population_metrics(iteration=0)
         self.initialization_seconds = time.perf_counter() - initialization_started_at
+        if diversity["feasible"] and self._pso_first_feasible_seconds is None:
+            self._pso_first_feasible_seconds = self.initialization_seconds
         self.log.info(
             "PSO initialization "
             f"feasible={diversity['feasible']}/{len(self.population_state)} "
@@ -826,6 +831,41 @@ class ParticleSwarmOptimization:
             numThreads=numThreads,
             full_best=full_best,
         )
+
+    def get_telemetry(self):
+        if self.solverGurobi is not None and hasattr(self.solverGurobi, "get_telemetry"):
+            exact = self.solverGurobi.get_telemetry()
+            pso_elapsed = float(self.pso_hot_elapsed_seconds)
+            events = []
+            if self._pso_first_feasible_seconds is not None:
+                events.append({"event": "first_feasible", "elapsed_seconds": self.bounds_seconds + self._pso_first_feasible_seconds, "source": "pso"})
+            for event in exact.get("mip_events", []):
+                item = dict(event)
+                item["elapsed_seconds"] = pso_elapsed + float(item["elapsed_seconds"])
+                events.append(item)
+            first = (self.bounds_seconds + self._pso_first_feasible_seconds if self._pso_first_feasible_seconds is not None else None)
+            exact_first = exact.get("first_feasible_seconds")
+            if exact_first is not None:
+                exact_first += pso_elapsed
+                first = exact_first if first is None else min(first, exact_first)
+            gap_target = exact.get("gap_target_seconds")
+            if gap_target is not None:
+                gap_target += pso_elapsed
+            return {**exact, "strategy": "pso_mip_start", "pso_hot_seconds": pso_elapsed,
+                    "pso_cold_seconds": float(self.pso_cold_elapsed_seconds),
+                    "bounds_seconds": float(self.bounds_seconds), "jit_warmup_seconds": float(self.jit_warmup_seconds),
+                    "initialization_seconds": float(self.initialization_seconds),
+                    "first_feasible_seconds": first, "gap_target_seconds": gap_target,
+                    "mip_events": events, "pso_iterations": list(self._population_history)}
+        return {"strategy": "pso_standalone", "mip_seconds": 0.0, "status": "heuristic_complete",
+                "timed_out": False, "objective": self.global_best_cost, "best_bound": None,
+                "relative_gap": None, "node_count": 0, "solution_count": self.solCount,
+                "first_feasible_seconds": (self.bounds_seconds + self._pso_first_feasible_seconds if self._pso_first_feasible_seconds is not None else None),
+                "gap_target_seconds": None,
+                "mip_events": ([{"event": "first_feasible", "elapsed_seconds": self.bounds_seconds + self._pso_first_feasible_seconds, "source": "pso"}] if self._pso_first_feasible_seconds is not None else []),
+                "pso_hot_seconds": float(self.pso_hot_elapsed_seconds), "pso_cold_seconds": float(self.pso_cold_elapsed_seconds),
+                "bounds_seconds": float(self.bounds_seconds), "jit_warmup_seconds": float(self.jit_warmup_seconds),
+                "initialization_seconds": float(self.initialization_seconds), "pso_iterations": list(self._population_history)}
 
     def getResults(self):
         standalone = bool(self.pso_config["return_heuristic_result_without_cplex"])
