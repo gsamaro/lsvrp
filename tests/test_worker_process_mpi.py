@@ -91,8 +91,7 @@ class WorkerProcessMPITestCase(unittest.TestCase):
             }.get(keys, default)
             return WorkerProcess(
                 numWorkers="auto",
-                timeSupervisor=1,
-                log={"instancia": self.logger, "dirLogs": "./out/logs"},
+                log={"instancia": self.logger},
             )
 
     @staticmethod
@@ -100,7 +99,6 @@ class WorkerProcessMPITestCase(unittest.TestCase):
         return {
             "file": f"./data/DATA_PRP_5C/PRP{number}.dat",
             "output": "./out/",
-            "isPloat": False,
             "numThreads": 1,
             "timeLimit": 10,
         }

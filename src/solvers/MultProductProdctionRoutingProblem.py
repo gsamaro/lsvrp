@@ -670,22 +670,6 @@ class MultProductProdctionRoutingProblem:
             getattr(self, "new_targets", None),
         )
 
-    def new_get_results(self):
-        return (
-            self.model.objective_value,
-            self.model.solution.get_value(self.f1),
-            self.model.solution.get_value(self.f2),
-            self.model.solution.get_value(self.f3),
-            self.model.solution.get_value(self.f4),
-            self.model.solution.get_value(self.f5),
-            self.model.solve_details.mip_relative_gap,
-            self.time,
-            self.solCount,
-            self.relaxedModelObjVal,
-            self.nodeCount,
-            self.objBound,
-        )
-
     def terminate(self):
         model = getattr(self, "model", None)
         if model is not None:

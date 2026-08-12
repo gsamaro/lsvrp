@@ -1,5 +1,3 @@
-import json
-
 from src.log.Logger import Logger
 
 
@@ -12,9 +10,6 @@ class ReadPrpFile:
 
     def getDataSet(self):
         return self.dataSet
-
-    def toString(self):
-        self.log.info(json.dumps(self.dataSet, indent=4))
 
     def read(self):
         data = {}

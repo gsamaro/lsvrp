@@ -68,10 +68,8 @@ Bibliotecas declaradas:
 - `docplex` e `cplex`: modelagem e resolução do modelo de otimização.
 - `numpy`: vetores, matrizes e cálculos numéricos.
 - `pandas`, `openpyxl` e `pyarrow`: leitura/escrita de Excel e Parquet.
-- `orjson`: dependência declarada e importada em `ProcessResults.py`; no trecho empacotado, não há uso efetivo visível além do import.
 - `matplotlib`: geração de gráficos de rotas/estoques.
 - `plotly`, `kaleido`, `seaborn`, `nbformat`, `ipykernel`: geração/análise de relatórios e imagens.
-- `tabulate`: formatação tabular.
 - `networkx`, `jinja2`: dependências declaradas; não foi possível determinar a partir do código empacotado onde são usadas.
 
 Bibliotecas opcionais ou condicionais:
@@ -146,8 +144,8 @@ Não foi possível determinar a partir do código se existe um `poetry.lock`, am
 Edite `config/config.json`. Os blocos observados são:
 
 - `solver`: `threadsLimit`, `timeLimit`, `method`, `multiobjective`.
-- `workers`: `num`, `timeSupervisor`.
-- `instance`: `is_plot`, `dir`, `output`, `files`.
+- `workers`: `num`.
+- `instance`: `dir`, `output`, `files`.
 - `relaxed_solution`: `replace_model`; o código também consulta `relaxed_solution.use`, mas essa chave não aparece no `config.json` empacotado.
 - `postprocessing`: `build_target`, `output`.
 
@@ -307,10 +305,8 @@ Referências cruzadas: `config/__init__.py`, `config/config.py`, `config/config.
 - `TargetsLoader.py`: normaliza caminhos de instância e carrega `targets.xlsx` por arquivo, exigindo coluna `file`.
 - `InstanceMetadata.py`: extrai metadados do nome de arquivo com regex `PRP(\d+)_C(\d+)_P(\d+)_V(\d+)_T(\d+)_S(\d+)` e adiciona `instancia`, `clientes`, `produtos`, `veiculos`, `periodos`, `seeds` e `classe`.
 - `Converter.py`: converte matriz de adjacência em rota e aplica transposição antes de converter em pontos de parada.
-- `GraphDisplay.py`: gera figuras Matplotlib de rota, entrega, demanda e estoque. A chamada de plot em `InstanceProcess` está comentada.
-- `Outputs.py`: contém `_union_results`, que delega para `PostProcessingProcess.union_results()`.
 
-Referências cruzadas: `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.py`, `src/helpers/InstanceMetadata.py`, `src/helpers/Converter.py`, `src/helpers/GraphDisplay.py`, `src/helpers/Outputs.py`, `src/process/InstanceProcess.py`.
+Referências cruzadas: `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.py`, `src/helpers/InstanceMetadata.py`, `src/helpers/Converter.py`, `src/process/InstanceProcess.py`.
 
 ### `src/process`
 
@@ -318,9 +314,8 @@ Referências cruzadas: `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.
 - `InstanceProcess.py`: encapsula a execução de uma instância: leitura, criação do solver, solve, extração, escrita de resultados e cleanup.
 - `ProcessResults.py`: transforma variáveis do solver em planilhas e registros Parquet. Calcula `f1` a `f5`, hashes, custos auxiliares e estruturas de rota por período.
 - `PostProcessingProcess.py`: consolida `.xlsx`, adiciona metadados, mescla targets quando disponíveis e gera targets por ideal/nadir quando solicitado.
-- `TablesResult.py`: contém geração de tabelas com `tabulate`; não foi possível determinar a partir do código empacotado se é chamado pelo pipeline principal.
 
-Referências cruzadas: `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/process/TablesResult.py`, `main.py`.
+Referências cruzadas: `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `main.py`.
 
 ### `src/solvers`
 
@@ -378,7 +373,7 @@ Logging:
 
 Estilo e nomenclatura:
 
-- Há nomes com grafia inconsistente preservada no código, por exemplo `Prodction`, `Instancie`, `isPloat`, `crateObjectiveFunction`, `creteInventoryBalancingInventoryCustomers` e `generteRelax`.
+- Há nomes com grafia inconsistente preservada no código, por exemplo `Prodction`, `Instancie`, `crateObjectiveFunction`, `creteInventoryBalancingInventoryCustomers` e `generteRelax`.
 - Essa documentação não renomeia esses símbolos porque eles fazem parte da API interna existente.
 
 Não foi possível determinar a partir do código uma convenção formal de lint/format além do arquivo `.pre-commit-config.yaml`, cujo conteúdo completo deve ser consultado antes de alterar padrões de estilo.

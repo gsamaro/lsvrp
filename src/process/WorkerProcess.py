@@ -1,13 +1,10 @@
 import os
-import queue
-import time
 import traceback
 from concurrent.futures import as_completed
 
 from config import Config
 from src.helpers.TargetsLoader import load_targets_by_file
 from src.log.Logger import Logger
-from src.process.InstanceProcess import InstanceProcess
 
 try:
     from mpi4py.futures import MPIPoolExecutor
@@ -27,11 +24,8 @@ else:
 
 class WorkerProcess:
 
-    def __init__(self, numWorkers=1, timeSupervisor=1, log: Logger = None, run_tag=None):
-        self.taskQueue = queue.Queue()
+    def __init__(self, numWorkers=1, log: Logger = None, run_tag=None):
         self.numWorkers = numWorkers
-        self.timeSupervisor = timeSupervisor
-        self.dirLogs = log["dirLogs"]
         self.log: Logger = log["instancia"]
         self.targets_by_file = None
         self.run_tag = run_tag
@@ -106,45 +100,6 @@ class WorkerProcess:
             f"alpha: {context['alpha']}"
         )
         return context
-
-    def supervisor(self):
-        while True:
-            time.sleep(self.timeSupervisor)
-            size = self.taskQueue.qsize()
-            self.log.info(f"[Supervisor] Tarefas restantes: {size}")
-            if size == 0:
-                self.log.info("[Supervisor] Fila vazia. Aguardando workers terminarem.")
-                break
-
-    def worker(self, worker_id, solver):
-        self._ensure_targets_loaded()
-        while True:
-            try:
-                task = self.taskQueue.get(timeout=2)
-                log = Logger(
-                    log_dir=self.dirLogs,
-                    log_file=f"Worker_{worker_id}.log",
-                    worker_id=worker_id,
-                    task=task,
-                )
-            except queue.Empty:
-                break
-
-            try:
-                InstanceProcess(
-                    task["instancie"]["file"],
-                    task["instancie"]["output"],
-                    isPloat=task["instancie"]["isPloat"],
-                    timeLimit=task["instancie"]["timeLimit"],
-                    numThreads=task["instancie"]["numThreads"],
-                    log=log,
-                    solver=solver,
-                    targets_by_file=self.targets_by_file,
-                ).process()
-            except Exception as e:
-                log.error(f"Ocorreu um erro inesperado: {e}: stack: {traceback.format_exc()}")
-            finally:
-                self.taskQueue.task_done()
 
     def run_parallel(self, instancies=[], solver="GUROBY"):
         self.log.info(">> Iniciando processamento paralelo.")
@@ -230,7 +185,6 @@ def process(log, instancie, solver, w, targets_by_file, alpha, context=None):
     InstanceProcess(
         instancie["file"],
         instancie["output"],
-        isPloat=False,
         timeLimit=instancie["timeLimit"],
         numThreads=instancie["numThreads"],
         log=log,

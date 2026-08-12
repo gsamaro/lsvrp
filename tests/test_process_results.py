@@ -63,9 +63,6 @@ class FakeDataFrame:
         return cls(data)
 
 
-fake_orjson = types.ModuleType("orjson")
-sys.modules.setdefault("orjson", fake_orjson)
-
 fake_pandas = types.ModuleType("pandas")
 fake_pandas.DataFrame = FakeDataFrame
 sys.modules.setdefault("pandas", fake_pandas)

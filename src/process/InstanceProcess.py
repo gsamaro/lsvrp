@@ -22,7 +22,6 @@ class InstanceProcess:
         self,
         instance,
         output,
-        isPloat="false",
         numThreads=None,
         timeLimit=None,
         log: Logger = None,
@@ -33,7 +32,6 @@ class InstanceProcess:
         task_context=None,
     ):
         self.instance = instance
-        self.isPloat = isPloat
         self.numThreads = numThreads
         self.timeLimit = timeLimit
         self.output = output
@@ -45,9 +43,6 @@ class InstanceProcess:
         self.alpha = alpha
         self.task_context = task_context or {}
         self.telemetry_config = get_config(Config)
-
-    def isProcessFinished(self):
-        return self.isFinished
 
     def solverInstancie(self, data):
         # Python 3.8-compatible replacement for match-case
@@ -123,8 +118,6 @@ class InstanceProcess:
                     **telemetry,
                 }
                 write_shards(self.output, summary, telemetry.get("pso_iterations") if self.telemetry_config["save_pso_iterations"] else [], telemetry.get("mip_events", []))
-            # FO, f1, f2, f3, f4, GAP, TIME, SOL_COUNT, RELAXED_MODEL_OBJE_VAL, NODE_COUNT, OBJ_BOUND = instance.new_get_results()
-
             results = getResults(
                 data,
                 self.output,
@@ -147,11 +140,6 @@ class InstanceProcess:
                 log=self.log,
             )
             self.log.info(f"Resultados gerados.")
-            # new_get_results(self.output, FO,f1,f2,f3,f4,GAP,TIME,SOL_COUNT,RELAXED_MODEL_OBJE_VAL,NODE_COUNT,OBJ_BOUND)
-
-            # if(self.isPloat=='true'):
-            #     graphResults(results['periods'],{'coordsX':data['coordXY']['x'],'coordsY':data['coordXY']['y']},self.output)
-
             self.isFinished = True
         finally:
             if instance is not None and hasattr(instance, "terminate"):

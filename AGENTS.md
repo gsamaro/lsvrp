@@ -98,7 +98,6 @@ Preserve nomes existentes, inclusive erros de grafia, para evitar quebrar import
 | `MultProductProdctionRoutingProblem` | Solver principal DOcplex/CPLEX | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `MultProductProdctionRoutingProblemGreedyConstructiveHeuristic` | Heurística construtiva | `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py` |
 | `Instancie`, `instancie`, `instancies` | Instância/problema a processar | `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py` |
-| `isPloat`, `ploat` | Plot/geração de gráficos; chamada principal está comentada | `main.py`, `src/helpers/GraphDisplay.py`, `src/process/InstanceProcess.py` |
 | `crateObjectiveFunction` | Criação da função objetivo | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `generteRelax` | Geração de relaxação linear | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `FO`, `GAP`, `TIME`, `EPSILON` | Métricas de solver e objetivo | `src/process/InstanceProcess.py`, `src/process/ProcessResults.py` |
@@ -225,7 +224,6 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | `WorkerProcess` | Orquestrar tarefas | `src/process/WorkerProcess.py` |
 | `InstanceProcess` | Processar uma instância | `src/process/InstanceProcess.py` |
 | `PostProcessingProcess` | Unir resultados e criar targets | `src/process/PostProcessingProcess.py` |
-| `TablesResult` | Gerar tabelas tabuladas | `src/process/TablesResult.py` |
 | `MultProductProdctionRoutingProblem` | Modelo principal | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `MultProductProdctionRoutingProblemGreedyConstructiveHeuristic` | Heurística construtiva/warm start | `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py` |
 | `GreedyRandomizedConstructionRoute` | Construção greedy randomizada de rotas | `src/solvers/GreedyRandomizedConstructionRoute.py` |
@@ -313,11 +311,9 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | Classe IV filtrada por `main.py` | Alterar filtro muda escopo experimental | `main.py`, `README.md` |
 | `relaxed_solution.use` é consultado, mas não aparece no `config.json` empacotado | Default ausente pode alterar se `model.solve()` roda | `config/config.json`, `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `WEIGHTS` é escolhido no import de `WorkerProcess.py` | Mudar `postprocessing.build_target` em runtime depois do import pode não afetar `WEIGHTS` | `src/process/WorkerProcess.py` |
-| Gráficos existem, mas chamada está comentada | `is_plot` pode não produzir gráficos no fluxo atual | `src/helpers/GraphDisplay.py`, `src/process/InstanceProcess.py` |
 | Nomes com erros de digitação são usados como API interna | Renomear pode quebrar imports/chamadas | `src/solvers/*.py`, `src/process/*.py` |
 | Relatórios leem `out/<constants.FILE>`, não necessariamente o último `union_results` | IA pode gerar relatório sobre arquivo errado | `constants.py`, `src/reports/utils.py` |
 | `targets.xlsx` exige colunas específicas | Merge pode ser silenciosamente ignorado com warning | `src/process/PostProcessingProcess.py`, `src/helpers/TargetsLoader.py` |
-| `TablesResult.py` existe, mas uso no pipeline principal não foi identificado | Evite assumir que é parte ativa da execução | `src/process/TablesResult.py`, buscas por referência |
 
 ## Decisões arquiteturais importantes
 

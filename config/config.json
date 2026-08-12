@@ -51,11 +51,9 @@
     }
   },
   "workers":{
-    "num":"auto",
-    "timeSupervisor":10
+    "num":"auto"
   },
   "instance":{
-    "is_plot": "true",
     "dir": "./data/",
     "output": "./out/",
     "files": ["DATA_PRP_20C"]

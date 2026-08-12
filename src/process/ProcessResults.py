@@ -1,9 +1,7 @@
-import json
 import os
 from hashlib import sha1
 
 import numpy as np
-import orjson
 import pandas as pd
 from src.helpers.InstanceMetadata import enrich_with_instance_metadata
 
@@ -389,67 +387,4 @@ def getResults(
         "objBound": OBJ_BOUND,
     }
 
-    # caminho_arquivo = os.path.join(dir, "result.json")
-    # with open(caminho_arquivo, "w", encoding="utf-8") as arquivo:
-    #     json.dump(
-    #         results,
-    #         arquivo,
-    #         indent=4,
-    #         ensure_ascii=False,
-    #     )
-
     return results
-
-
-def new_get_results(
-    dir,
-    FO,
-    f1,
-    f2,
-    f3,
-    f4,
-    f5,
-    GAP,
-    TIME,
-    SOL_COUNT,
-    RELAXED_MODEL_OBJE_VAL,
-    NODE_COUNT,
-    OBJ_BOUND,
-):
-    df = pd.DataFrame.from_records(
-        [
-            (
-                dir,
-                sha1(dir.encode()).hexdigest(),
-                FO,
-                f1,
-                f2,
-                f3,
-                f4,
-                f5,
-                GAP,
-                TIME,
-                SOL_COUNT,
-                RELAXED_MODEL_OBJE_VAL,
-                NODE_COUNT,
-                OBJ_BOUND,
-            )
-        ],
-        columns=[
-            "dir",
-            "hash",
-            "FO",
-            "f1",
-            "f2",
-            "f3",
-            "f4",
-            "f5",
-            "GAP",
-            "TIME",
-            "SOL_COUNT",
-            "RELAXED_MODEL_OBJE_VAL",
-            "NODE_COUNT",
-            "OBJ_BOUND",
-        ],
-    )
-    df.to_excel(os.path.join(dir, "result.xlsx"), index=False)
