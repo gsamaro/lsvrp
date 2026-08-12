@@ -52,11 +52,7 @@
   },
   "workers":{
     "num":"auto",
-    "timeSupervisor":10,
-    "mpi_batch_multiplier":1,
-    "mpi_batch_max_tasks":256,
-    "mpi_submit_guardrail_enabled":true,
-    "mpi_heavy_instance_cap":32
+    "timeSupervisor":10
   },
   "instance":{
     "is_plot": "true",
@@ -70,20 +66,5 @@
   "postprocessing": {
     "build_target": false,
     "output": "./out/target/"
-  },
-  "guardrails": {
-    "enabled": false,
-    "walltime_seconds": 259200,
-    "walltime_warning_ratio": 0.85,
-    "walltime_stop_ratio": 0.95,
-    "memory_per_node_gb": 488,
-    "memory_warning_ratio": 0.85,
-    "memory_stop_ratio": 0.95,
-    "check_interval_seconds": 60,
-    "log_solver_phase_timing": true,
-    "solve_watchdog_enabled": true,
-    "solve_watchdog_interval_seconds": 60,
-    "log_memory_checkpoints": true,
-    "log_rank_identity": true
   }
 }

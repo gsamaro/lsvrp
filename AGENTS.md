@@ -76,7 +76,6 @@ flowchart TD
 | Resultados | Escrever métricas por período e variáveis detalhadas | `src/process/ProcessResults.py` |
 | Pós-processamento | Unir planilhas e gerar targets | `src/process/PostProcessingProcess.py` |
 | Relatórios | Gerar figuras Plotly e tabelas LaTeX | `scripts/generate_reports.py`, `src/reports/*.py` |
-| Guardrails | Monitorar walltime, memória, rank MPI e logs de progresso | `src/helpers/JobGuardrails.py` |
 
 ## Convenções de código
 
@@ -86,7 +85,6 @@ flowchart TD
 | Logging por classe `Logger` própria | Use `log.info`, `log.warning`, `log.error`; não substitua por logging padrão sem análise | `src/log/Logger.py` |
 | Escrita de resultados tabulares com pandas | Preserve colunas existentes, hashes e formatos `.xlsx`/`.parquet` | `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py` |
 | Testes com `pytest` e mocks | Ao adicionar testes, prefira estilo `pytest`; testes legados com `unittest` podem permanecer quando já houver infraestrutura útil no arquivo | `tests/test_*.py`, `pyproject.toml` |
-| Guardrails como parte do fluxo de execução | Não remova checkpoints ou snapshots sem avaliar impacto em execuções longas/HPC | `src/helpers/JobGuardrails.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py` |
 | Uso de constantes globais para pesos e alpha | Alterar pesos muda o espaço experimental inteiro | `constants.py`, `src/process/WorkerProcess.py` |
 
 Não foi possível determinar a partir do código um padrão formal obrigatório de formatação além de `.pre-commit-config.yaml`, porque o conteúdo empacotado não foi suficiente para inferir política completa de estilo.
@@ -129,17 +127,17 @@ Checklist operacional:
 | 3 | Muda leitura de dados? | `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.py` |
 | 4 | Muda formulação matemática? | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | 5 | Muda formato de saída? | `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/reports/utils.py` |
-| 6 | Muda execução longa/HPC? | `src/helpers/JobGuardrails.py`, `src/process/WorkerProcess.py`, `script_*.sh` |
+| 6 | Muda execução longa/HPC? | `src/process/WorkerProcess.py`, `script_*.sh` |
 | 7 | Muda relatórios? | `src/reports/*.py`, `scripts/generate_reports.py`, `constants.py` |
 
 ## Fluxo esperado para corrigir bugs
 
 1. Reproduza o bug com a menor entrada possível.
 2. Identifique se o erro acontece em leitura, montagem de tarefas, solver, serialização, pós-processamento ou relatório.
-3. Use logs e guardrails existentes antes de adicionar novos mecanismos.
+3. Use os logs existentes antes de adicionar novos mecanismos.
 4. Preserve o formato de saída salvo, salvo se o bug for justamente no contrato de saída.
 5. Adicione teste que falhe antes da correção quando isso for possível sem CPLEX/MPI real.
-6. Se o bug envolver MPI, use os testes de batching e mocks como guia; execução MPI local pode não ser possível conforme `AGENTS.md` original.
+6. Se o bug envolver MPI, use os testes do executor e mocks como guia; execução MPI local pode não ser possível conforme `AGENTS.md` original.
 
 ## Arquivos que nunca devem ser alterados sem análise
 
@@ -148,11 +146,10 @@ Checklist operacional:
 | `src/solvers/MultProductProdctionRoutingProblem.py` | Contém a formulação principal, variáveis, objetivo e restrições | Impacto matemático, CPLEX, resultados, testes |
 | `src/process/ProcessResults.py` | Define contrato de saída Excel/Parquet e nomes de colunas usados por relatórios | Compatibilidade com `PostProcessingProcess` e `src/reports` |
 | `constants.py` | Define pesos, alpha e arquivo base de relatórios | Impacto em todas as combinações experimentais |
-| `config/config.json` | Controla solver, workers, diretórios, multiobjetivo, guardrails | Execução local, HPC, targets |
-| `src/process/WorkerProcess.py` | Controla paralelismo, MPI, batching e seleção de pesos | Execução sequencial/MPI e guardrails |
+| `config/config.json` | Controla solver, workers, diretórios e multiobjetivo | Execução local, HPC, targets |
+| `src/process/WorkerProcess.py` | Controla paralelismo, MPI e seleção de pesos | Execução sequencial/MPI |
 | `main.py` | Orquestra execução completa e filtro de instâncias | Descoberta de arquivos, logs, pós-processamento |
 | `src/helpers/ReadPrpFile.py` | Parser do formato `.dat` | Compatibilidade com instâncias existentes |
-| `src/helpers/JobGuardrails.py` | Segurança operacional de execuções longas | Walltime, memória, logs, HPC |
 | `src/process/PostProcessingProcess.py` | Consolida resultados e gera targets | Esquema de colunas e `targets.xlsx` |
 | `script_*.sh` | Scripts de produção/HPC | Filas, módulos, ambiente virtual, MPI |
 
@@ -169,14 +166,12 @@ Checklist operacional:
 | 7 | `src/process/ProcessResults.py` | Persistência de resultados |
 | 8 | `src/process/PostProcessingProcess.py` | União e targets |
 | 9 | `src/helpers/ReadPrpFile.py` | Parser de instâncias |
-| 10 | `src/helpers/JobGuardrails.py` | Monitoramento operacional |
 
 ## Fluxo de execução
 
 ```mermaid
 sequenceDiagram
     participant Main as main.py
-    participant Guard as JobGuardrails
     participant Worker as WorkerProcess
     participant Inst as InstanceProcess
     participant Parser as ReadPrpFile
@@ -212,7 +207,7 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 |---|---|---|
 | `config/` | Configuração JSON e classe `Config` | `config.json` é lido uma vez e cacheado |
 | `scripts/` | Runners auxiliares | `generate_reports.py` roda relatórios |
-| `src/helpers/` | Utilitários compartilhados | Parser, metadata, targets, guardrails, gráficos |
+| `src/helpers/` | Utilitários compartilhados | Parser, metadata, targets e gráficos |
 | `src/log/` | Logger próprio | Grava arquivo e stdout |
 | `src/process/` | Orquestração e persistência | Worker, instância, pós-processamento, resultados |
 | `src/reports/` | Relatórios científicos/analíticos | Lê Excel consolidado em `out/<constants.FILE>` |
@@ -226,8 +221,6 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 |---|---|---|
 | `Config` | Carregar e consultar `config.json` | `config/config.py` |
 | `Logger` | Logging em arquivo/stdout | `src/log/Logger.py` |
-| `GuardrailSnapshot` | Snapshot imutável de estado operacional | `src/helpers/JobGuardrails.py` |
-| `JobGuardrails` | Monitorar walltime/memória/MPI | `src/helpers/JobGuardrails.py` |
 | `ReadPrpFile` | Ler instâncias `.dat` | `src/helpers/ReadPrpFile.py` |
 | `WorkerProcess` | Orquestrar tarefas | `src/process/WorkerProcess.py` |
 | `InstanceProcess` | Processar uma instância | `src/process/InstanceProcess.py` |
@@ -265,7 +258,6 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 - A nova lógica afeta colunas de Excel/Parquet?
 - A nova lógica afeta `targets.xlsx`?
 - A nova lógica precisa funcionar em MPI e sequencial?
-- A nova lógica deve respeitar guardrails?
 - Há teste unitário existente que pode ser expandido?
 - A execução com solver exige ambiente CPLEX? Se sim, considere teste unitário com mock.
 - O nome novo segue o vocabulário existente sem quebrar imports?
@@ -281,7 +273,7 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 - O código é parte do fluxo `build_target`?
 - O código é parte do fluxo multiobjetivo?
 - A remoção altera hashes, nomes de arquivos ou diretórios?
-- A remoção afeta logs/guardrails de execução longa?
+- A remoção afeta logs de execução longa?
 - Foi feita busca global com `rg`?
 - Foi documentado por que a remoção é segura?
 - Atualize o arquivo @docs/mathematical-mode.md, quando atualizar a formulação matemática.
@@ -307,7 +299,6 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 |---|---|---|
 | Use `./run_with_zshrc.sh` para testar execução real do solver localmente | Carrega `~/.zshrc` e ambiente CPLEX/Poetry segundo instrução existente | `AGENTS.md`, `run_with_zshrc.sh` |
 | Prefira testes unitários com mocks para solver/MPI | CPLEX e MPI podem não estar disponíveis localmente | `tests/test_*.py`, `AGENTS.md` |
-| Preserve logs de guardrail | Execuções são longas e podem rodar em cluster | `src/helpers/JobGuardrails.py`, `script_*.sh` |
 | Trate `mpi4py` como opcional no código | Import é condicional e há fallback sequencial | `src/process/WorkerProcess.py` |
 | Mantenha compatibilidade de colunas | Relatórios dependem de `weight_hash`, `alpha`, `f1`..`f5`, `p1`..`p5`, targets e metadados | `src/process/ProcessResults.py`, `src/reports/utils.py`, `src/reports/*.py` |
 | Ao mexer em nomes de instância, verifique regex | Metadados dependem do formato `PRP...` | `src/helpers/InstanceMetadata.py` |
@@ -336,7 +327,6 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | Configuração JSON cacheada | Mudanças em `config.json` durante o processo podem não ser recarregadas | `config/config.py` |
 | Execução por produto cartesiano de instâncias, pesos e `ALPHA` | Número de tarefas cresce rapidamente | `src/process/WorkerProcess.py`, `constants.py` |
 | MPI opcional com fallback sequencial | Código deve funcionar sem `mpi4py` | `src/process/WorkerProcess.py` |
-| Guardrails embutidos no pipeline | Execuções longas têm monitoramento de tempo/memória | `src/helpers/JobGuardrails.py`, `src/process/*.py` |
 | Saídas por hash | Nomes de arquivos dependem de instância, peso e alpha | `src/process/ProcessResults.py` |
 | Multiobjetivo por targets e desvios positivos | `targets` são parte do modelo quando `solver.multiobjective` está ativo | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/helpers/TargetsLoader.py` |
 | `build_target` incompatível com `multiobjective` na entrada principal | `main.py` lança exceção quando ambos são verdadeiros | `main.py` |
@@ -370,8 +360,6 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | `WEIGHTS_OPTIMIZE` | Pesos usados na execução normal | `constants.py`, `src/process/WorkerProcess.py` |
 | `WEIGHTS_TARGET` | Pesos unitários usados em `build_target` | `constants.py`, `src/process/WorkerProcess.py` |
 | `targets.xlsx` | Planilha de metas por arquivo/período | `src/helpers/TargetsLoader.py`, `src/process/PostProcessingProcess.py` |
-| Guardrail | Monitoramento preventivo de walltime/memória/MPI | `src/helpers/JobGuardrails.py` |
-| MPI batch | Lote de tarefas submetido ao `MPIPoolExecutor` | `src/process/WorkerProcess.py` |
 
 ### Formulação matemática do problema
 
