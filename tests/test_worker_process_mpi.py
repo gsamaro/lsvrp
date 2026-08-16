@@ -23,8 +23,8 @@ pso_module = types.ModuleType("src.solvers.ParticleSwarmOptimization")
 pso_module.ParticleSwarmOptimization = object
 sys.modules["src.solvers.ParticleSwarmOptimization"] = pso_module
 
-from src.process.WorkerProcess import WorkerProcess, WEIGHTS, process
-from constants import ALPHA
+from src.process.WorkerProcess import WorkerProcess, process
+from constants import ALPHA, WEIGHTS_OPTIMIZE, WEIGHTS_TARGET
 
 if _original_graph_display_module is None:
     sys.modules.pop("src.helpers.GraphDisplay", None)
@@ -91,14 +91,14 @@ class WorkerProcessMPITestCase(unittest.TestCase):
         FakeExecutor.submitted = []
 
     def _build_worker(self):
-        with patch("src.process.WorkerProcess.Config.get_nested") as get_nested:
-            get_nested.side_effect = lambda *keys, default=None: {
-                ("postprocessing", "output"): None,
-            }.get(keys, default)
-            return WorkerProcess(
-                numWorkers="auto",
-                log={"instancia": self.logger},
-            )
+        return WorkerProcess(numWorkers="auto", log=self.logger)
+
+    @staticmethod
+    def _config_value(build_target):
+        return lambda *keys, default=None: {
+            ("postprocessing", "output"): None,
+            ("postprocessing", "build_target"): build_target,
+        }.get(keys, default)
 
     @staticmethod
     def _instance(number):
@@ -112,9 +112,10 @@ class WorkerProcessMPITestCase(unittest.TestCase):
     def test_mpi_uses_one_executor_and_submits_all_tasks(self):
         worker = self._build_worker()
         instancies = [self._instance(1), self._instance(2)]
-        total_tasks = len(instancies) * len(WEIGHTS) * len(ALPHA)
+        total_tasks = len(instancies) * len(WEIGHTS_OPTIMIZE) * len(ALPHA)
 
-        with patch("src.process.WorkerProcess.MPI_BOOL", True):
+        with patch("src.process.WorkerProcess.Config.get_nested") as get_nested, patch("src.process.WorkerProcess.MPI_BOOL", True):
+            get_nested.side_effect = self._config_value(False)
             with patch("src.process.WorkerProcess.MPIPoolExecutor", FakeExecutor, create=True):
                 with patch("src.process.WorkerProcess.as_completed", side_effect=lambda futures: list(futures)):
                     with patch.object(worker, "_resolve_num_workers", return_value=3):
@@ -136,11 +137,12 @@ class WorkerProcessMPITestCase(unittest.TestCase):
         def fake_process(log, instancie, solver, w, targets_by_file, alpha, context=None):
             captured.append((solver, context))
 
-        with patch("src.process.WorkerProcess.MPI_BOOL", False):
+        with patch("src.process.WorkerProcess.Config.get_nested") as get_nested, patch("src.process.WorkerProcess.MPI_BOOL", False):
+            get_nested.side_effect = self._config_value(False)
             with patch("src.process.WorkerProcess.process", side_effect=fake_process):
                 worker.run_parallel(instancies=[self._instance(1)], solver="PSO")
 
-        self.assertEqual(len(captured), len(WEIGHTS) * len(ALPHA))
+        self.assertEqual(len(captured), len(WEIGHTS_OPTIMIZE) * len(ALPHA))
         self.assertTrue(all(solver == "PSO" for solver, _ in captured))
         self.assertTrue(
             all(
@@ -148,6 +150,22 @@ class WorkerProcessMPITestCase(unittest.TestCase):
                 for _, context in captured
             )
         )
+
+    def test_run_parallel_resolves_target_weights_without_reloading_module(self):
+        worker = self._build_worker()
+        captured = []
+
+        def fake_process(log, instancie, solver, w, targets_by_file, alpha, context=None):
+            captured.append(w)
+
+        with patch("src.process.WorkerProcess.Config.get_nested") as get_nested, patch(
+            "src.process.WorkerProcess.MPI_BOOL", False
+        ), patch("src.process.WorkerProcess.process", side_effect=fake_process):
+            get_nested.side_effect = self._config_value(True)
+            worker.run_parallel(instancies=[self._instance(1)])
+
+        self.assertEqual(len(captured), len(WEIGHTS_TARGET) * len(ALPHA))
+        self.assertEqual(captured[0], WEIGHTS_TARGET[0])
 
     def test_process_instantiates_instance_process(self):
         instancie = self._instance(1)

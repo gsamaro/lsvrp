@@ -364,14 +364,15 @@ Dados e nomes de instância:
 
 - O parser espera arquivos `.dat` com seções textuais específicas, como `Number of Customers`, `B =`, `U_pi =`, `coordXY =` e `d_pit =`.
 - Metadados são extraídos de nomes no formato `PRP{instancia}_C{clientes}_P{produtos}_V{veiculos}_T{periodos}_S{seed}`.
-- A execução principal ignora arquivos `PRP` cuja instância seja `>=31`.
+- A execução principal ignora arquivos `PRP` cuja instância seja `>=31`; `RuntimeContext.build_instances(...)` aplica esse filtro antes de criar diretórios de saída.
 
 Pesos e alpha:
 
 - `constants.WEIGHTS_OPTIMIZE` contém seis vetores de cinco pesos.
 - `constants.WEIGHTS_TARGET` contém cinco vetores unitários.
 - `constants.ALPHA` contém `[0.01, 0.99]`.
-- `WorkerProcess` usa `WEIGHTS_TARGET` quando `postprocessing.build_target` é verdadeiro; caso contrário usa `WEIGHTS_OPTIMIZE`.
+- `WorkerProcess` resolve os pesos uma vez no início de cada `run_parallel()`: usa `WEIGHTS_TARGET` quando `postprocessing.build_target` é verdadeiro e `WEIGHTS_OPTIMIZE` caso contrário.
+- `WorkerProcess` recebe o `Logger` diretamente no construtor.
 
 Saídas:
 
@@ -379,6 +380,7 @@ Saídas:
 - Variáveis detalhadas são gravadas em `parquets/<hash>_fobs.parquet`.
 - A consolidação gera `<run_tag>-union_results.xlsx` ou `union_results.xlsx` no modo `build_target`.
 - `targets.xlsx` é lido/escrito em `postprocessing.output`.
+- Se a consolidação falhar durante `build_target`, a entrada principal registra o erro e encerra antes de tentar gerar `targets.xlsx`.
 
 Logging:
 
