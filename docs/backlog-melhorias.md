@@ -31,6 +31,8 @@ a implementação deve refletir essa decisão explicitamente.
 
 ### BL-02 — Remover o retorno detalhado legado de `ProcessResults`
 
+**Status.** Endereçado no PR [#12](https://github.com/gsamaro/lsvrp/pull/12).
+
 **Problema.** O pipeline grava os arquivos e descarta o retorno de
 `getResults()`, porém a função ainda reconstrói rotas e uma estrutura detalhada
 de períodos em memória. Testes unitários são os únicos consumidores internos
