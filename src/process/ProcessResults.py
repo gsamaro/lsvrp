@@ -1,9 +1,7 @@
-import json
 import os
 from hashlib import sha1
 
 import numpy as np
-import orjson
 import pandas as pd
 from src.helpers.InstanceMetadata import enrich_with_instance_metadata
 
@@ -78,46 +76,11 @@ def getResults(
     OBJ_BOUND,
     NEW_TARGETS,
     log=None,
-    guardrails=None,
-    task_context=None,
 ):
-    task_context = task_context or {}
-
-    def _log_memory_checkpoint(checkpoint):
-        if not log or not guardrails or not guardrails.is_enabled():
-            return
-        if not guardrails.log_memory_checkpoints:
-            return
-        snapshot = guardrails.snapshot()
-        log.info(
-            guardrails.format_snapshot(
-                snapshot,
-                context={
-                    **task_context,
-                    "event": "memory_checkpoint",
-                    "phase": "write_results",
-                    "checkpoint": checkpoint,
-                },
-            )
-        )
-
     def _log_no_solution_results():
         if not log:
             return
-        if guardrails and guardrails.is_enabled():
-            snapshot = guardrails.snapshot()
-            log.info(
-                guardrails.format_snapshot(
-                    snapshot,
-                    context={
-                        **task_context,
-                        "event": "no_solution_results",
-                        "phase": "write_results",
-                    },
-                )
-            )
-            return
-        log.info("event=no_solution_results phase=write_results")
+        log.debug("event=no_solution_results phase=write_results")
 
     routes = _build_routes_from_Z(Z)
 
@@ -180,7 +143,6 @@ def getResults(
         else:
             p_cols[col] = [np.nan] * n
 
-    _log_memory_checkpoint("before_build_df_aux")
     df_aux = pd.DataFrame(
         {
             "time": list(range(n)),
@@ -228,9 +190,7 @@ def getResults(
 
     excel_base_name = f"{file_name_hash[:6]}_fobs"
     excel_path = os.path.join(dir, f"{excel_base_name}.xlsx")
-    _log_memory_checkpoint("before_to_excel")
     df_aux.to_excel(excel_path, index=False)
-    _log_memory_checkpoint("after_to_excel")
 
     parquet_dir = os.path.join(dir, "parquets")
     os.makedirs(parquet_dir, exist_ok=True)
@@ -240,7 +200,6 @@ def getResults(
         rec = {"hash_file": hash_file, "var": var, **idx, "value": value}
         records.append(rec)
 
-    _log_memory_checkpoint("before_build_records")
     records = []
 
     # Z[t][v][i][k]
@@ -330,9 +289,7 @@ def getResults(
                 float(P[t][j]),
             )
 
-    _log_memory_checkpoint("before_dataframe_from_records")
     df_parquet = pd.DataFrame.from_records(records)
-    _log_memory_checkpoint("after_dataframe_from_records")
     if not df_parquet.empty:
         first_cols = [c for c in ["hash_file", "var"] if c in df_parquet.columns]
         other_cols = [
@@ -342,9 +299,7 @@ def getResults(
         ]
         last_cols = [c for c in ["value"] if c in df_parquet.columns and c not in first_cols]
         df_parquet = df_parquet[first_cols + other_cols + last_cols]
-    _log_memory_checkpoint("before_to_parquet")
     df_parquet.to_parquet(parquet_path, index=False)
-    _log_memory_checkpoint("after_to_parquet")
 
     periods = []
     for t in range(len(routes)):
@@ -432,67 +387,4 @@ def getResults(
         "objBound": OBJ_BOUND,
     }
 
-    # caminho_arquivo = os.path.join(dir, "result.json")
-    # with open(caminho_arquivo, "w", encoding="utf-8") as arquivo:
-    #     json.dump(
-    #         results,
-    #         arquivo,
-    #         indent=4,
-    #         ensure_ascii=False,
-    #     )
-
     return results
-
-
-def new_get_results(
-    dir,
-    FO,
-    f1,
-    f2,
-    f3,
-    f4,
-    f5,
-    GAP,
-    TIME,
-    SOL_COUNT,
-    RELAXED_MODEL_OBJE_VAL,
-    NODE_COUNT,
-    OBJ_BOUND,
-):
-    df = pd.DataFrame.from_records(
-        [
-            (
-                dir,
-                sha1(dir.encode()).hexdigest(),
-                FO,
-                f1,
-                f2,
-                f3,
-                f4,
-                f5,
-                GAP,
-                TIME,
-                SOL_COUNT,
-                RELAXED_MODEL_OBJE_VAL,
-                NODE_COUNT,
-                OBJ_BOUND,
-            )
-        ],
-        columns=[
-            "dir",
-            "hash",
-            "FO",
-            "f1",
-            "f2",
-            "f3",
-            "f4",
-            "f5",
-            "GAP",
-            "TIME",
-            "SOL_COUNT",
-            "RELAXED_MODEL_OBJE_VAL",
-            "NODE_COUNT",
-            "OBJ_BOUND",
-        ],
-    )
-    df.to_excel(os.path.join(dir, "result.xlsx"), index=False)

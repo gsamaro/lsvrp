@@ -28,7 +28,7 @@
       background: var(--paper);
       font: 16px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    .wrap { width: min(1280px, calc(100% - 32px)); margin: auto; }
+    .wrap { width: min(1480px, calc(100% - 32px)); margin: auto; }
     header {
       padding: 72px 0 64px;
       color: #fff;
@@ -73,6 +73,8 @@
     .metric span { color: var(--muted); font-size: .86rem; }
     table { width: 100%; border-collapse: collapse; font-size: .94rem; }
     th, td { padding: 11px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+    .gap-table td { white-space: nowrap; }
+    .gap-table small { display: block; margin-top: 3px; color: var(--muted); }
     th { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; }
     code { padding: 2px 5px; border-radius: 5px; background: #eef2f7; color: #26344c; font-size: .92em; }
     footer { padding: 28px 0 44px; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); }
@@ -94,7 +96,30 @@
   </header>
 
   <main class="wrap">
-    <section>
+    <section id="sumario">
+      <h2>Sumário</h2>
+      <div class="panel">
+        <ol>
+          <li><a href="#visao-geral">Visão geral</a></li>
+          <li><a href="#bounds-relaxados">1. Bounds relaxados</a></li>
+          <li><a href="#decodificacao">2. Decodificação da partícula</a></li>
+          <li><a href="#construcao">3. Construção de uma solução factível</a></li>
+          <li><a href="#infactibilidade">4. Tratamento da infactibilidade</a></li>
+          <li><a href="#rotas-avaliacao">5. Rotas e avaliação</a></li>
+          <li><a href="#pseudocodigo">Pseudocódigo da heurística</a></li>
+          <li><a href="#aprendizado-pso">6. Como o PSO aprende</a></li>
+          <li><a href="#telemetria-execucao">Telemetria de uma execução observada</a></li>
+          <li><a href="#telemetria-maior">Telemetria da instância maior</a></li>
+          <li><a href="#mip-start">Impacto do MIP start no modelo completo</a></li>
+          <li><a href="#outras-instancias">Comparação em outras instâncias configuradas</a></li>
+          <li><a href="#gaps-20c">Comparação dos gaps da instância 20C</a></li>
+          <li><a href="#telemetria-persistida">Telemetria persistida e performance profiles</a></li>
+          <li><a href="#limitacoes">Limitações e próximos experimentos</a></li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="visao-geral">
       <h2>Visão geral</h2>
       <p class="section-intro">O PSO explora o espaço de decisões. A construção factível funciona como uma ponte: recebe genes contínuos e devolve <code>X</code>, <code>I</code>, <code>Q</code>, visitas e rotas que podem ser avaliados pelo objetivo.</p>
       <div class="diagram panel">
@@ -122,7 +147,7 @@
       </div>
     </section>
 
-    <section>
+    <section id="bounds-relaxados">
       <h2>1. Bounds relaxados</h2>
       <p class="section-intro">Antes do enxame, o componente <code>LotSizingRelaxation</code> resolve dois PLs globais com variáveis contínuas. O modelo mantém balanços de estoque, capacidade de produção, capacidade de estoque e carga agregada dos veículos; setup, arcos e sequência de rotas ficam fora dessa etapa. O limite atual é de 1 segundo por modelo. O modo inteiro continua disponível por configuração.</p>
       <div class="grid two">
@@ -138,7 +163,7 @@
       <div class="note"><strong>Interpretação:</strong> com os dois PLs globais atuais, as matrizes de <code>X</code> são perfis de referência usados pelo PSO. Elas não equivalem a limites individuais obtidos por uma otimização separada para cada coordenada. Além disso, os bounds do PL não conhecem toda a estrutura de visitação e roteamento.</div>
     </section>
 
-    <section>
+    <section id="decodificacao">
       <h2>2. Decodificação da partícula</h2>
       <div class="grid">
         <article class="card"><span class="tag orange">Gene X</span><h3>Produção</h3><p>O gene define a prioridade e a quantidade produzida no período. A produção mínima também cobre déficits e estoque anterior.</p></article>
@@ -161,7 +186,7 @@
       </div>
     </section>
 
-    <section>
+    <section id="construcao">
       <h2>3. Construção de uma solução factível</h2>
       <p class="section-intro">A partícula não é avaliada diretamente. Ela é decodificada período a período; cada período recebe um estado de estoque, uma distribuição de entregas, uma atribuição de veículos e rotas.</p>
       <div class="grid">
@@ -191,7 +216,7 @@
       </div>
     </section>
 
-    <section>
+    <section id="infactibilidade">
       <h2>4. Tratamento da infactibilidade</h2>
       <p class="section-intro">A construção detecta inviabilidade antes de avaliar o custo. Isso evita enviar ao PSO uma solução que viola balanço, estoque ou capacidade veicular.</p>
       <div class="diagram panel">
@@ -216,7 +241,7 @@
       <div class="note"><strong>Causas possíveis:</strong> produção mínima acima da capacidade do período, déficit de um cliente acima de <code>C</code>, impossibilidade de empacotar clientes nos veículos, falta de estoque disponível para a entrega ou incapacidade de escoar todo o estoque da planta respeitando <code>U[p,i]</code> e as capacidades residuais.</div>
     </section>
 
-    <section>
+    <section id="rotas-avaliacao">
       <h2>5. Rotas e avaliação</h2>
       <div class="grid two">
         <article class="card"><span class="tag green">Rota</span><h3>Vizinho mais próximo</h3><p>Depois que os clientes são associados aos veículos, a rota começa na planta, visita os clientes designados e retorna à planta.</p></article>
@@ -226,7 +251,7 @@
       <div class="formula">I[p,i,t] = I[p,i,t−1] + Σ(v) Q[p,v,i,t] − demanda[p,i,t]</div>
     </section>
 
-    <section>
+    <section id="pseudocodigo">
       <h2>Pseudocódigo da heurística</h2>
       <p class="section-intro">O pseudocódigo abaixo resume o fluxo implementado. O PL é resolvido uma vez por instância; a construção e o reparo são executados repetidamente pelo enxame.</p>
       <div class="panel">
@@ -317,7 +342,7 @@ gbest ← melhor_solução(população)
       <div class="good" style="margin-top:16px;"><strong>Ideia central:</strong> os genes definem preferências e exploração; a construção factível decide as quantidades finais que cabem simultaneamente nos estoques e nos veículos.</div>
     </section>
 
-    <section>
+    <section id="aprendizado-pso">
       <h2>6. Como o PSO aprende</h2>
       <div class="grid three">
         <article class="card"><span class="tag blue">pbest</span><h3>Memória individual</h3><p>Cada partícula conserva sua melhor posição e seu melhor custo.</p></article>
@@ -343,7 +368,7 @@ gbest ← melhor_solução(população)
       <p class="section-intro">O gráfico é esquemático: a telemetria real registra <code>x_profiles</code>, <code>q_quantity_profiles</code>, <code>vehicle_assignment_profiles</code> e <code>q_full_profiles</code> na inicialização e em cada iteração. Assim é possível separar diversidade de quantidade, atribuição de veículos e perfil completo de <code>Q</code>.</p>
     </section>
 
-    <section>
+    <section id="telemetria-execucao">
       <h2>Telemetria de uma execução observada</h2>
       <p class="section-intro">Exemplo medido na instância <code>PRP1_C5_P2_V1_T2_S1.dat</code>, com 20 partículas, 50 iterações e sem chamar o solver exato.</p>
       <div class="metrics">
@@ -365,7 +390,7 @@ gbest ← melhor_solução(população)
       </div>
     </section>
 
-    <section>
+    <section id="telemetria-maior">
       <h2>Telemetria da instância maior</h2>
       <p class="section-intro">A configuração usa o modelo auxiliar contínuo (PL), com limite de 1 segundo por resolução, e o backend Numba com oito threads locais. A medição foi feita na instância <code>PRP10_C20_P8_V5_T12_S1.dat</code>, com 8 produtos, 20 clientes, 5 veículos, 12 períodos, 1000 partículas e 1000 iterações. O MIP exato foi desabilitado neste benchmark.</p>
       <div class="metrics">
@@ -404,7 +429,7 @@ gbest ← melhor_solução(população)
       <div class="note" style="margin-top:16px;"><strong>Desempate de rota:</strong> clientes à mesma distância são ordenados pela maior preferência agregada dos genes de <code>Q</code>; persistindo o empate, vence o menor índice. Essa regra é determinística nos backends Python e Numba.</div>
     </section>
 
-    <section>
+    <section id="mip-start">
       <h2>Impacto do MIP start no modelo completo</h2>
       <p class="section-intro">Nova comparação na mesma instância, com uma thread, limite de 60 segundos para o MIP exato e PSO de 1000 partículas por 1000 iterações. A relaxação inicial foi medida separadamente; o tempo ponta a ponta inclui construção do modelo, LP medido, MIP e, no segundo cenário, a geração do MIP start.</p>
       <div class="metrics">
@@ -437,7 +462,7 @@ gbest ← melhor_solução(população)
       <div class="note" style="margin-top:16px;"><strong>Telemetria do PSO usada no MIP start:</strong> as 1000 partículas permaneceram factíveis durante as 1000 iterações; o melhor custo (5.391.676,00) apareceu na população inicial. Foram realizadas 1002 auditorias sem falhas, 100000 mutações e 29850 reinicializações. A diversidade final foi de 152 perfis de <code>X</code>, um perfil de quantidade agregada de <code>Q</code>, 1000 perfis de atribuição veicular e 1000 perfis do tensor completo <code>Q</code>.</div>
     </section>
 
-    <section>
+    <section id="outras-instancias">
       <h2>Comparação em outras instâncias configuradas</h2>
       <p class="section-intro">Experimento com uma thread no CPLEX, limite de 60 segundos para a busca MIP e PSO Numba de 1000 partículas por 1000 iterações. A licença completa do CPLEX foi confirmada antes das execuções; os tempos de parede incluem a preparação do modelo.</p>
       <div class="panel" style="margin-top:16px; box-shadow:none; overflow-x:auto;">
@@ -465,13 +490,51 @@ gbest ← melhor_solução(população)
     </section>
 
 
-    <section>
+    <section id="gaps-20c">
+      <h2>Comparação dos gaps da instância 20C</h2>
+      <p class="section-intro">A tabela compara, célula a célula, os gaps da tabela antiga com os resultados atuais para a instância 20C. O delta é calculado como <code>atual − antigo</code> e está expresso em pontos percentuais (p.p.). Valores negativos indicam redução do gap.</p>
+      <div class="good">
+        <strong>Resumo:</strong>
+        <ul>
+          <li>Gap médio antigo: <strong>94,1%</strong></li>
+          <li>Gap médio novo: <strong>77,6%</strong></li>
+          <li>Redução média: <strong>16,5 pontos percentuais</strong></li>
+          <li>Maior redução: <strong>α = 0,99, w₄</strong>, de 96,4% para 65,6% (−30,8 p.p.)</li>
+          <li>Menor redução: <strong>α = 0,01, w₂</strong>, de 92,8% para 83,6% (−9,2 p.p.)</li>
+          <li>A melhoria é mais expressiva para <strong>α = 0,99</strong>, especialmente nos pesos <strong>w₄, w₅ e w₆</strong>.</li>
+        </ul>
+      </div>
+      <div class="panel" style="overflow-x:auto;">
+        <table class="gap-table" style="min-width:1450px; font-size:.82rem;">
+          <thead>
+            <tr>
+              <th rowspan="2">Clientes</th>
+              <th rowspan="2">Classe</th>
+              <th colspan="6">alpha = 0,01</th>
+              <th colspan="6">alpha = 0,99</th>
+            </tr>
+            <tr>
+              <th>w₁</th><th>w₂</th><th>w₃</th><th>w₄</th><th>w₅</th><th>w₆</th>
+              <th>w₁</th><th>w₂</th><th>w₃</th><th>w₄</th><th>w₅</th><th>w₆</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><th rowspan="4">20C</th><th>I</th><td>89,9% → 80,2%<br><small>−9,7 p.p.</small></td><td>92,5% → 82,7%<br><small>−9,8 p.p.</small></td><td>92,7% → 81,9%<br><small>−10,8 p.p.</small></td><td>93,7% → 72,9%<br><small>−20,8 p.p.</small></td><td>89,2% → 71,9%<br><small>−17,3 p.p.</small></td><td>94,2% → 78,0%<br><small>−16,2 p.p.</small></td><td>94,7% → 79,5%<br><small>−15,2 p.p.</small></td><td>95,2% → 85,5%<br><small>−9,7 p.p.</small></td><td>96,3% → 83,6%<br><small>−12,7 p.p.</small></td><td>96,3% → 64,2%<br><small>−32,1 p.p.</small></td><td>93,3% → 67,8%<br><small>−25,5 p.p.</small></td><td>97,3% → 73,2%<br><small>−24,1 p.p.</small></td></tr>
+            <tr><th>II</th><td>91,0% → 81,4%<br><small>−9,6 p.p.</small></td><td>93,3% → 84,2%<br><small>−9,1 p.p.</small></td><td>93,6% → 82,7%<br><small>−10,9 p.p.</small></td><td>94,4% → 73,0%<br><small>−21,4 p.p.</small></td><td>90,5% → 74,5%<br><small>−16,0 p.p.</small></td><td>94,7% → 79,5%<br><small>−15,2 p.p.</small></td><td>95,4% → 81,2%<br><small>−14,2 p.p.</small></td><td>95,5% → 85,9%<br><small>−9,6 p.p.</small></td><td>96,6% → 86,0%<br><small>−10,6 p.p.</small></td><td>96,5% → 66,6%<br><small>−29,9 p.p.</small></td><td>93,9% → 70,1%<br><small>−23,8 p.p.</small></td><td>97,7% → 75,6%<br><small>−22,1 p.p.</small></td></tr>
+            <tr><th>III</th><td>90,8% → 81,2%<br><small>−9,6 p.p.</small></td><td>92,7% → 83,9%<br><small>−8,8 p.p.</small></td><td>93,3% → 81,9%<br><small>−11,4 p.p.</small></td><td>93,9% → 71,7%<br><small>−22,2 p.p.</small></td><td>89,6% → 73,0%<br><small>−16,6 p.p.</small></td><td>94,6% → 78,8%<br><small>−15,8 p.p.</small></td><td>94,9% → 80,6%<br><small>−14,3 p.p.</small></td><td>95,6% → 85,7%<br><small>−9,9 p.p.</small></td><td>96,5% → 84,3%<br><small>−12,2 p.p.</small></td><td>96,5% → 65,9%<br><small>−30,6 p.p.</small></td><td>91,7% → 68,1%<br><small>−23,6 p.p.</small></td><td>97,5% → 75,2%<br><small>−22,3 p.p.</small></td></tr>
+            <tr><th>Todos</th><td>90,6% → 80,9%<br><small>−9,7 p.p.</small></td><td>92,8% → 83,6%<br><small>−9,2 p.p.</small></td><td>93,2% → 82,2%<br><small>−11,0 p.p.</small></td><td>94,0% → 72,5%<br><small>−21,5 p.p.</small></td><td>89,7% → 73,1%<br><small>−16,6 p.p.</small></td><td>94,5% → 78,8%<br><small>−15,7 p.p.</small></td><td>95,0% → 80,4%<br><small>−14,6 p.p.</small></td><td>95,4% → 85,7%<br><small>−9,7 p.p.</small></td><td>96,5% → 84,6%<br><small>−11,9 p.p.</small></td><td>96,4% → 65,6%<br><small>−30,8 p.p.</small></td><td>93,0% → 68,6%<br><small>−24,4 p.p.</small></td><td>97,5% → 74,6%<br><small>−22,9 p.p.</small></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="telemetria-persistida">
       <h2>Telemetria persistida e performance profiles</h2>
       <p class="section-intro">Com <code>solver.telemetry.enabled</code>, cada tarefa grava shards Parquet de resumo, iterações do PSO e eventos MIP. O script <code>scripts/consolidate_telemetry.py --input out/</code> consolida os dados e gera gráficos Plotly autocontidos para primeira solução factível, gap-alvo, execução concluída e taxa de sucesso.</p>
       <div class="note"><strong>Interpretação:</strong> o cenário PSO+MIP separa tempo do PSO, tempo do MIP e tempo total. Um timeout sem o evento correspondente não entra na curva daquele indicador, mas reduz a taxa de sucesso porque permanece no denominador.</div>
     </section>
 
-    <section>
+    <section id="limitacoes">
       <h2>Limitações e próximos experimentos</h2>
       <div class="grid two">
         <article class="card"><h3>Bounds relaxados</h3><p>O PL não possui toda a estrutura de roteamento. Um perfil de produção admissível no relaxamento pode ser difícil de escoar sob visita única e capacidade individual.</p></article>

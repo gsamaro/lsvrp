@@ -45,16 +45,16 @@ flowchart TD
 Módulos existentes:
 
 - `config`: carrega `config/config.json` e expõe acesso simples por chave.
-- `main.py`: ponto de entrada principal; monta a lista de instâncias, cria logs, inicializa guardrails, chama execução paralela e pós-processamento.
+- `main.py`: ponto de entrada principal; monta a lista de instâncias, cria logs, chama execução paralela e pós-processamento.
 - `src/process`: contém a orquestração de workers, execução de uma instância, escrita de resultados, união de planilhas e tabelas.
 - `src/solvers`: contém o modelo matemático principal em DOcplex/CPLEX e uma heurística construtiva com 2-opt para rotas.
-- `src/helpers`: contém leitura de instâncias, conversões de rota, gráficos, metadados, carregamento de targets, guardrails e união auxiliar de saídas.
+- `src/helpers`: contém leitura de instâncias, conversões de rota, gráficos, metadados, carregamento de targets e união auxiliar de saídas.
 - `src/log`: logging simples em arquivo e stdout.
 - `src/reports`: gera figuras e tabelas LaTeX a partir de resultados consolidados.
 - `scripts`: contém o runner `generate_reports.py`.
-- `tests`: contém testes unitários para guardrails, batching MPI, watchdog de instância e geração de resultados.
+- `tests`: contém testes unitários para execução MPI, fallback sequencial e geração de resultados.
 
-Referências cruzadas: `config/config.py`, `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py`, `src/helpers/JobGuardrails.py`, `src/reports/__init__.py`, `scripts/generate_reports.py`, `tests/test_job_guardrails.py`, `tests/test_worker_process_mpi_batching.py`, `tests/test_instance_process_watchdog.py`, `tests/test_process_results.py`.
+Referências cruzadas: `config/config.py`, `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py`, `src/reports/__init__.py`, `scripts/generate_reports.py`, `tests/test_worker_process_mpi.py`, `tests/test_process_results.py`.
 
 ## Tecnologias utilizadas
 
@@ -68,15 +68,13 @@ Bibliotecas declaradas:
 - `docplex` e `cplex`: modelagem e resolução do modelo de otimização.
 - `numpy`: vetores, matrizes e cálculos numéricos.
 - `pandas`, `openpyxl` e `pyarrow`: leitura/escrita de Excel e Parquet.
-- `orjson`: dependência declarada e importada em `ProcessResults.py`; no trecho empacotado, não há uso efetivo visível além do import.
 - `matplotlib`: geração de gráficos de rotas/estoques.
 - `plotly`, `kaleido`, `seaborn`, `nbformat`, `ipykernel`: geração/análise de relatórios e imagens.
-- `tabulate`: formatação tabular.
 - `networkx`, `jinja2`: dependências declaradas; não foi possível determinar a partir do código empacotado onde são usadas.
 
 Bibliotecas opcionais ou condicionais:
 
-- `mpi4py`: usado condicionalmente em `WorkerProcess.py` para `MPIPoolExecutor` e em `JobGuardrails.py` para descobrir rank MPI. Não está listado em `pyproject.toml`.
+- `mpi4py`: usado condicionalmente em `WorkerProcess.py` para `MPIPoolExecutor`. Não está listado em `pyproject.toml`.
 - CPLEX precisa estar funcional para `docplex.mp.model.Model.solve()`.
 
 Ferramentas e ambientes:
@@ -85,7 +83,7 @@ Ferramentas e ambientes:
 - MPICH é carregado nesses scripts via `module load mpich/4.1.1-gcc-9.4.0`.
 - `pre-commit` é configurado no arquivo `.pre-commit-config.yaml`.
 
-Referências cruzadas: `pyproject.toml`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/WorkerProcess.py`, `src/helpers/JobGuardrails.py`, `src/process/ProcessResults.py`, `src/helpers/GraphDisplay.py`, `src/reports/performance_fob.py`, `src/reports/performance_weights.py`, `src/reports/gap_analysis.py`, `src/reports/sensitivity.py`, `.pre-commit-config.yaml`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`.
+Referências cruzadas: `pyproject.toml`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/WorkerProcess.py`, `src/process/ProcessResults.py`, `src/helpers/GraphDisplay.py`, `src/reports/performance_fob.py`, `src/reports/performance_weights.py`, `src/reports/gap_analysis.py`, `src/reports/sensitivity.py`, `.pre-commit-config.yaml`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`.
 
 ## Estrutura do projeto
 
@@ -114,7 +112,7 @@ Diretórios e arquivos importantes:
 
 - `config/`: configuração central. `Config` faz cache de `config.json` e oferece `get()` e `get_nested()`.
 - `scripts/`: comandos auxiliares; `generate_reports.py` executa geração de relatórios por categoria.
-- `src/helpers/`: utilitários de parsing, metadata, gráficos, targets e guardrails.
+- `src/helpers/`: utilitários de parsing, metadata, gráficos e targets.
 - `src/log/`: logger próprio com escrita em arquivo e impressão em stdout.
 - `src/process/`: pipeline de execução e persistência dos resultados.
 - `src/reports/`: geração de tabelas LaTeX e figuras a partir de um arquivo Excel definido por `constants.FILE`.
@@ -146,11 +144,11 @@ Não foi possível determinar a partir do código se existe um `poetry.lock`, am
 Edite `config/config.json`. Os blocos observados são:
 
 - `solver`: `threadsLimit`, `timeLimit`, `method`, `multiobjective`.
-- `workers`: `num`, `timeSupervisor`, parâmetros de batching MPI e limites preventivos.
-- `instance`: `is_plot`, `dir`, `output`, `files`.
+- `workers`: `num`.
+- `logging`: `level`, com valores `INFO` (padrão), `DEBUG` e `OFF`.
+- `instance`: `dir`, `output`, `files`.
 - `relaxed_solution`: `replace_model`; o código também consulta `relaxed_solution.use`, mas essa chave não aparece no `config.json` empacotado.
 - `postprocessing`: `build_target`, `output`.
-- `guardrails`: limites de walltime, memória, intervalo de logs, watchdog e identificação MPI.
 
 Exemplo observado:
 
@@ -188,6 +186,19 @@ Também existe o wrapper:
 ```
 
 Esse wrapper carrega `~/.zshrc` e usa `PYTHON_BIN` se definido; caso contrário usa um caminho absoluto de virtualenv Poetry presente no script. Esse caminho é específico da máquina do autor e pode não existir em outro ambiente.
+
+### Consolidação independente de resultados
+
+Para consolidar planilhas Excel já existentes sem executar a otimização, informe a
+pasta de resultados:
+
+```bash
+python scripts/generate_union_results.py --input-dir out
+```
+
+O comando procura planilhas `.xlsx` recursivamente, ignora arquivos de targets e
+consolidados anteriores, e grava `<run_tag>-union_results.xlsx` na própria pasta.
+Ele não gera nem mescla `targets.xlsx`.
 
 ### Execução com MPI/HPC
 
@@ -245,19 +256,18 @@ python -m unittest discover tests
 
 Não foi possível determinar a partir do código se há comando oficial de teste via Poetry, Makefile ou CI.
 
-Referências cruzadas: `pyproject.toml`, `config/config.json`, `config/config.py`, `main.py`, `run_with_zshrc.sh`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`, `scripts/generate_reports.py`, `constants.py`, `tests/test_job_guardrails.py`, `tests/test_worker_process_mpi_batching.py`, `tests/test_instance_process_watchdog.py`, `tests/test_process_results.py`.
+Referências cruzadas: `pyproject.toml`, `config/config.json`, `config/config.py`, `main.py`, `run_with_zshrc.sh`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`, `scripts/generate_reports.py`, `constants.py`, `tests/test_worker_process_mpi.py`, `tests/test_process_results.py`.
 
 ## Fluxo geral
 
 1. `main.py` carrega configurações via `Config.get_nested()`.
 2. `main.py` cria um `run_tag` com data, hash curto do commit Git e hash de timestamp.
-3. `JobGuardrails` cria contexto de execução com tempo inicial, job id, host, MPI size/rank, PID e PPID.
-4. `main.py` remove `output/logs` se existir e inicia `Logger`.
-5. `main.py` expande `instance.files`: se o item contém `.dat`, trata como arquivo específico; caso contrário lista arquivos dentro de `instance.dir + pasta`.
-6. Arquivos `PRP` com índice maior ou igual a 31 são ignorados.
-7. Para cada arquivo restante, `main.py` cria diretório de saída por instância e monta a lista `instancies`.
-8. `WorkerProcess.run_parallel()` expande cada instância para todas as combinações de pesos e `ALPHA`.
-9. Se `mpi4py` estiver disponível, `WorkerProcess` usa `MPIPoolExecutor` em lotes; caso contrário executa sequencialmente.
+3. `main.py` remove `output/logs` se existir e inicia `Logger`.
+4. `main.py` expande `instance.files`: se o item contém `.dat`, trata como arquivo específico; caso contrário lista arquivos dentro de `instance.dir + pasta`.
+5. Arquivos `PRP` com índice maior ou igual a 31 são ignorados.
+6. Para cada arquivo restante, `main.py` cria diretório de saída por instância e monta a lista `instancies`.
+7. `WorkerProcess.run_parallel()` expande cada instância para todas as combinações de pesos e `ALPHA`.
+8. Se `mpi4py` estiver disponível, `WorkerProcess` usa um único `MPIPoolExecutor` para todas as tarefas; caso contrário executa sequencialmente.
 10. Cada tarefa chama `InstanceProcess.process()`.
 11. `InstanceProcess` lê a instância com `ReadPrpFile`, adiciona `weight`, `alpha` e `targets`, constrói o solver e chama `solver()`.
 12. O solver cria variáveis, objetivo, restrições e resolve o modelo.
@@ -293,7 +303,7 @@ sequenceDiagram
     Main->>Post: build_target() se configurado
 ```
 
-Referências cruzadas: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/helpers/JobGuardrails.py`, `constants.py`.
+Referências cruzadas: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `constants.py`.
 
 ## Estrutura de módulos
 
@@ -308,22 +318,18 @@ Referências cruzadas: `config/__init__.py`, `config/config.py`, `config/config.
 - `ReadPrpFile.py`: parser de arquivos `.dat`. Extrai número de clientes, produtos, veículos e períodos, além de parâmetros `B`, `b_p`, `c_p`, `s_p`, `M`, `U_pi`, `I_pi0`, `h_pi`, `C`, `f`, `a_ik`, `coordXY` e `d_pit`.
 - `TargetsLoader.py`: normaliza caminhos de instância e carrega `targets.xlsx` por arquivo, exigindo coluna `file`.
 - `InstanceMetadata.py`: extrai metadados do nome de arquivo com regex `PRP(\d+)_C(\d+)_P(\d+)_V(\d+)_T(\d+)_S(\d+)` e adiciona `instancia`, `clientes`, `produtos`, `veiculos`, `periodos`, `seeds` e `classe`.
-- `JobGuardrails.py`: monitora walltime, memória RSS, host, job id e MPI rank/size; emite snapshots e decide estados `ok`, `warning` ou `stop`.
 - `Converter.py`: converte matriz de adjacência em rota e aplica transposição antes de converter em pontos de parada.
-- `GraphDisplay.py`: gera figuras Matplotlib de rota, entrega, demanda e estoque. A chamada de plot em `InstanceProcess` está comentada.
-- `Outputs.py`: contém `_union_results`, que delega para `PostProcessingProcess.union_results()`.
 
-Referências cruzadas: `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.py`, `src/helpers/InstanceMetadata.py`, `src/helpers/JobGuardrails.py`, `src/helpers/Converter.py`, `src/helpers/GraphDisplay.py`, `src/helpers/Outputs.py`, `src/process/InstanceProcess.py`.
+Referências cruzadas: `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.py`, `src/helpers/InstanceMetadata.py`, `src/helpers/Converter.py`, `src/process/InstanceProcess.py`.
 
 ### `src/process`
 
-- `WorkerProcess.py`: cria tarefas para cada instância, peso e alpha; controla execução MPI ou sequencial; carrega targets; aplica guardrails antes/depois de lotes; calcula tamanho de lote MPI.
+- `WorkerProcess.py`: cria tarefas para cada instância, peso e alpha; carrega targets; usa um único executor MPI ou fallback sequencial.
 - `InstanceProcess.py`: encapsula a execução de uma instância: leitura, criação do solver, solve, extração, escrita de resultados e cleanup.
 - `ProcessResults.py`: transforma variáveis do solver em planilhas e registros Parquet. Calcula `f1` a `f5`, hashes, custos auxiliares e estruturas de rota por período.
 - `PostProcessingProcess.py`: consolida `.xlsx`, adiciona metadados, mescla targets quando disponíveis e gera targets por ideal/nadir quando solicitado.
-- `TablesResult.py`: contém geração de tabelas com `tabulate`; não foi possível determinar a partir do código empacotado se é chamado pelo pipeline principal.
 
-Referências cruzadas: `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/process/TablesResult.py`, `main.py`.
+Referências cruzadas: `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `main.py`.
 
 ### `src/solvers`
 
@@ -374,20 +380,20 @@ Saídas:
 - A consolidação gera `<run_tag>-union_results.xlsx` ou `union_results.xlsx` no modo `build_target`.
 - `targets.xlsx` é lido/escrito em `postprocessing.output`.
 
-Logging e guardrails:
+Logging:
 
 - Logs ficam em `output/logs`.
-- O logger imprime em stdout e grava em arquivo.
-- Guardrails registram eventos como `job_start`, `pre_batch_check`, `task_completion`, `phase_solve`, `memory_checkpoint`, `solve_watchdog` e `job_end`.
+- O logger imprime em stdout e grava em arquivo usando o mesmo nível configurado.
+- `INFO` registra informações, avisos e erros; `DEBUG` inclui diagnósticos detalhados; `OFF` preserva apenas avisos e erros.
 
 Estilo e nomenclatura:
 
-- Há nomes com grafia inconsistente preservada no código, por exemplo `Prodction`, `Instancie`, `isPloat`, `crateObjectiveFunction`, `creteInventoryBalancingInventoryCustomers` e `generteRelax`.
+- Há nomes com grafia inconsistente preservada no código, por exemplo `Prodction`, `Instancie`, `crateObjectiveFunction`, `creteInventoryBalancingInventoryCustomers` e `generteRelax`.
 - Essa documentação não renomeia esses símbolos porque eles fazem parte da API interna existente.
 
 Não foi possível determinar a partir do código uma convenção formal de lint/format além do arquivo `.pre-commit-config.yaml`, cujo conteúdo completo deve ser consultado antes de alterar padrões de estilo.
 
-Referências cruzadas: `config/config.json`, `config/config.py`, `constants.py`, `main.py`, `src/helpers/ReadPrpFile.py`, `src/helpers/InstanceMetadata.py`, `src/process/WorkerProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/log/Logger.py`, `src/helpers/JobGuardrails.py`, `.pre-commit-config.yaml`.
+Referências cruzadas: `config/config.json`, `config/config.py`, `constants.py`, `main.py`, `src/helpers/ReadPrpFile.py`, `src/helpers/InstanceMetadata.py`, `src/process/WorkerProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/log/Logger.py`, `.pre-commit-config.yaml`.
 
 ## Pontos de entrada
 
@@ -397,7 +403,7 @@ Pontos de entrada executáveis observados:
 - `scripts/generate_reports.py`: entrada para geração de relatórios.
 - `run_with_zshrc.sh`: wrapper local para `main.py`.
 - `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`: scripts PBS que executam `main.py` via MPI.
-- Testes unitários executáveis diretamente por arquivo ou por descoberta do `unittest`: `tests/test_instance_process_watchdog.py`, `tests/test_job_guardrails.py`, `tests/test_process_results.py`, `tests/test_worker_process_mpi_batching.py`.
+- Testes unitários executáveis diretamente por arquivo ou por descoberta do `unittest`: `tests/test_process_results.py`, `tests/test_worker_process_mpi.py`.
 
 Pontos de entrada internos relevantes:
 
@@ -407,7 +413,7 @@ Pontos de entrada internos relevantes:
 - `MultProductProdctionRoutingProblem.solver()`: monta e resolve o modelo principal.
 - `PostProcessingProcess.union_results()` e `PostProcessingProcess.build_target()`: consolidam saídas e targets.
 
-Referências cruzadas: `main.py`, `scripts/generate_reports.py`, `run_with_zshrc.sh`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/PostProcessingProcess.py`, `tests/test_instance_process_watchdog.py`, `tests/test_job_guardrails.py`, `tests/test_process_results.py`, `tests/test_worker_process_mpi_batching.py`.
+Referências cruzadas: `main.py`, `scripts/generate_reports.py`, `run_with_zshrc.sh`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/PostProcessingProcess.py`, `tests/test_process_results.py`, `tests/test_worker_process_mpi.py`.
 
 ## Dependências externas
 
@@ -419,9 +425,9 @@ Referências cruzadas: `pyproject.toml`, `config/config.json`, `src/solvers/Mult
 
 ### MPI e ambiente HPC
 
-`WorkerProcess.py` tenta importar `mpi4py` e `MPIPoolExecutor`. Se a importação falhar, define `MPI_BOOL=False` e executa as tarefas sequencialmente. Os scripts PBS usam `mpirun python -m mpi4py.futures main.py`. `JobGuardrails` lê variáveis de ambiente PBS, SLURM, OMPI, PMI e PMIX para inferir tamanho/rank MPI.
+`WorkerProcess.py` tenta importar `mpi4py` e `MPIPoolExecutor`. Se a importação falhar, define `MPI_BOOL=False` e executa as tarefas sequencialmente. Os scripts PBS usam `mpirun python -m mpi4py.futures main.py`; quando MPI está disponível, todas as tarefas são submetidas a um único executor.
 
-Referências cruzadas: `src/process/WorkerProcess.py`, `src/helpers/JobGuardrails.py`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`.
+Referências cruzadas: `src/process/WorkerProcess.py`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`.
 
 ### Sistema de arquivos
 
@@ -456,11 +462,10 @@ Esta documentação foi gerada exclusivamente a partir dos arquivos presentes em
 - Configuração: `config/config.json`, `config/config.py`.
 - Execução principal: `main.py`.
 - Paralelismo e MPI: `src/process/WorkerProcess.py`, scripts `script_*.sh`.
-- Guardrails: `src/helpers/JobGuardrails.py`.
 - Leitura de dados: `src/helpers/ReadPrpFile.py`.
 - Targets: `src/helpers/TargetsLoader.py`, `src/process/PostProcessingProcess.py`.
 - Resultados: `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`.
 - Heurísticas: `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py`, `src/solvers/GreedyRandomizedConstructionRoute.py`, `src/solvers/TwoOptOnRoute.py`.
 - Relatórios: `scripts/generate_reports.py`, `src/reports/*.py`, `constants.py`.
 - Dependências: `pyproject.toml`.
-- Testes: `tests/test_instance_process_watchdog.py`, `tests/test_job_guardrails.py`, `tests/test_process_results.py`, `tests/test_worker_process_mpi_batching.py`.
+- Testes: `tests/test_process_results.py`, `tests/test_worker_process_mpi.py`.

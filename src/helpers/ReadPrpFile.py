@@ -1,5 +1,3 @@
-import json
-
 from src.log.Logger import Logger
 
 
@@ -12,9 +10,6 @@ class ReadPrpFile:
 
     def getDataSet(self):
         return self.dataSet
-
-    def toString(self):
-        self.log.info(json.dumps(self.dataSet, indent=4))
 
     def read(self):
         data = {}
@@ -133,7 +128,7 @@ class ReadPrpFile:
                             data["d_pit"].append(b)
                 i += 1
 
-        self.log.info(
+        self.log.debug(
             f"Number of Customers = {num_customers}, Number of Products = {num_products}, Number of Periods = {num_periods}"
         )
 

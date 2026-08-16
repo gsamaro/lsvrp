@@ -46,7 +46,7 @@ class ParticleSwarmOptimization:
         bounds_config = self.pso_config["lot_sizing_bounds"]
         if bounds_config["enabled"]:
             bounds_started_at = time.perf_counter()
-            self.log.info(">> Calculando bounds relaxados de dimensionamento de lotes.")
+            self.log.debug(">> Calculando bounds relaxados de dimensionamento de lotes.")
             time_limit = bounds_config["time_limit"]
             if time_limit is None:
                 time_limit = Config.get_nested("solver", "timeLimit", default=None)
@@ -67,7 +67,7 @@ class ParticleSwarmOptimization:
                 "q_upper": np.asarray(relaxed["upper_solution"]["Q"], dtype=float),
             }
             self.relaxed_base = relaxed.get("base") or relaxed["lower_solution"]
-            self.log.info(
+            self.log.debug(
                 f">> Bounds agregados do PL: lower={relaxed['lower']} "
                 f"upper={relaxed['upper']} "
                 f"lower_gap={relaxed['lower_gap']} "
@@ -112,7 +112,7 @@ class ParticleSwarmOptimization:
         self._phase_times = self._new_phase_times()
         self._random_states = None
         self._adapter_seconds_accounted = 0.0
-        self.log.info(
+        self.log.debug(
             f"PSO execution backend={self.pso_config['execution_backend']} "
             f"parallel_workers={self.parallel_workers}"
         )
@@ -248,7 +248,7 @@ class ParticleSwarmOptimization:
         self.initialization_seconds = time.perf_counter() - initialization_started_at
         if diversity["feasible"] and self._pso_first_feasible_seconds is None:
             self._pso_first_feasible_seconds = self.initialization_seconds
-        self.log.info(
+        self.log.debug(
             "PSO initialization "
             f"feasible={diversity['feasible']}/{len(self.population_state)} "
             f"x_profiles={diversity['x_profiles']} "
@@ -719,7 +719,7 @@ class ParticleSwarmOptimization:
             f"best_first_seen_iteration={first_best_iteration} "
             f"final_feasible={final['feasible']}/{final['population_size']}"
         )
-        self.log.info(
+        self.log.debug(
             "PSO final diagnostics "
             f"pre_repair_infeasible={invalid_before_repair}/{total_population_candidates} "
             f"resample_infeasible={self._resample_infeasible}/{self._resample_attempts} "
@@ -781,7 +781,7 @@ class ParticleSwarmOptimization:
             diversity["elapsed_seconds"] = (
                 time.perf_counter() - iteration_started_at
             )
-            self.log.info(
+            self.log.debug(
                 f"PSO iteration={iteration_number} "
                 f"best_cost={self.global_best_cost} "
                 f"feasible={diversity['feasible']}/{len(self.population_state)} "
@@ -818,7 +818,7 @@ class ParticleSwarmOptimization:
         self.pso_cold_elapsed_seconds = (
             self.pso_hot_elapsed_seconds + self.jit_warmup_seconds
         )
-        self.log.info(
+        self.log.debug(
             "PSO timing "
             f"bounds_seconds={self.bounds_seconds:.6f} "
             f"jit_warmup_seconds={self.jit_warmup_seconds:.6f} "

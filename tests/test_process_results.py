@@ -63,9 +63,6 @@ class FakeDataFrame:
         return cls(data)
 
 
-fake_orjson = types.ModuleType("orjson")
-sys.modules.setdefault("orjson", fake_orjson)
-
 fake_pandas = types.ModuleType("pandas")
 fake_pandas.DataFrame = FakeDataFrame
 sys.modules.setdefault("pandas", fake_pandas)
@@ -84,23 +81,8 @@ class DummyLogger:
     def info(self, message):
         self.messages.append(("info", message))
 
-
-class DummyGuardrails:
-    def is_enabled(self):
-        return True
-
-    @property
-    def log_memory_checkpoints(self):
-        return True
-
-    def snapshot(self):
-        return object()
-
-    def format_snapshot(self, snapshot, context=None):
-        context = context or {}
-        event = context.get("event", "unknown")
-        phase = context.get("phase", "unknown")
-        return f"guardrail event={event} phase={phase}"
+    def debug(self, message):
+        self.messages.append(("debug", message))
 
 
 class ProcessResultsTestCase(unittest.TestCase):
@@ -145,7 +127,6 @@ class ProcessResultsTestCase(unittest.TestCase):
     def test_get_results_without_solution_does_not_fail(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = DummyLogger()
-            guardrails = DummyGuardrails()
             data = {
                 "file": "./data/DATA_PRP_30C/PRP22_C30_P10_V5_T12_S2.dat",
                 "weight": np.array([0.2, 0.2, 0.2, 0.2, 0.2]),
@@ -181,8 +162,6 @@ class ProcessResultsTestCase(unittest.TestCase):
                 0,
                 None,
                 log=logger,
-                guardrails=guardrails,
-                task_context={"mpi_batch": 1, "task_number": 1},
             )
 
             generated_files = os.listdir(tmpdir)
@@ -196,7 +175,6 @@ class ProcessResultsTestCase(unittest.TestCase):
     def test_get_results_writes_parquet_even_when_some_index_columns_are_missing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = DummyLogger()
-            guardrails = DummyGuardrails()
             data = {
                 "file": "./data/DATA_PRP_30C/PRP22_C30_P10_V5_T12_S2.dat",
                 "weight": np.array([0.2, 0.2, 0.2, 0.2, 0.2]),
@@ -232,8 +210,6 @@ class ProcessResultsTestCase(unittest.TestCase):
                 0,
                 None,
                 log=logger,
-                guardrails=guardrails,
-                task_context={"mpi_batch": 1, "task_number": 1},
             )
 
             parquet_dir = os.path.join(tmpdir, "parquets")
@@ -253,7 +229,6 @@ class ProcessResultsTestCase(unittest.TestCase):
     def test_get_results_reconstructs_routes_without_converter(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = DummyLogger()
-            guardrails = DummyGuardrails()
             data = {
                 "file": "./data/DATA_PRP_30C/PRP22_C30_P10_V5_T12_S2.dat",
                 "weight": np.array([0.2, 0.2, 0.2, 0.2, 0.2]),
@@ -298,8 +273,6 @@ class ProcessResultsTestCase(unittest.TestCase):
                 0,
                 None,
                 log=logger,
-                guardrails=guardrails,
-                task_context={"mpi_batch": 1, "task_number": 1},
             )
 
             self.assertEqual(results["periods"][0]["veicles"][0]["points"][0]["point"], 0)
