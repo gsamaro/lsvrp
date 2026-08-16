@@ -326,7 +326,7 @@ Referências cruzadas: `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.
 
 - `WorkerProcess.py`: cria tarefas para cada instância, peso e alpha; carrega targets; usa um único executor MPI ou fallback sequencial.
 - `InstanceProcess.py`: encapsula a execução de uma instância: leitura, criação do solver, solve, extração, escrita de resultados e cleanup.
-- `ProcessResults.py`: transforma variáveis do solver em planilhas e registros Parquet. Calcula `f1` a `f5`, hashes, custos auxiliares e estruturas de rota por período.
+- `ProcessResults.py`: transforma variáveis do solver em planilhas e registros Parquet. Calcula `f1` a `f5`, hashes e custos auxiliares.
 - `PostProcessingProcess.py`: consolida `.xlsx`, adiciona metadados, mescla targets quando disponíveis e gera targets por ideal/nadir quando solicitado.
 
 Referências cruzadas: `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `main.py`.

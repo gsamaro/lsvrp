@@ -10,7 +10,7 @@ sys.modules["src.helpers.GraphDisplay"] = graph_display_module
 
 _original_process_results_module = sys.modules.get("src.process.ProcessResults")
 process_results_module = types.ModuleType("src.process.ProcessResults")
-process_results_module.getResults = lambda *args, **kwargs: {"periods": []}
+process_results_module.getResults = lambda *args, **kwargs: None
 sys.modules["src.process.ProcessResults"] = process_results_module
 
 _original_solver_module = sys.modules.get("src.solvers.MultProductProdctionRoutingProblem")

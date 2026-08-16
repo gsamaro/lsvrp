@@ -13,49 +13,6 @@ def _build_hash_rows(file_name_hash, times):
     ]
 
 
-def _build_routes_from_Z(Z, depot=0):
-    routes = []
-
-    for period_routes in Z:
-        period = []
-        for vehicle_matrix in period_routes:
-            outgoing = {}
-            incoming = {}
-
-            for i_idx, row in enumerate(vehicle_matrix):
-                for k_idx, value in enumerate(row):
-                    if float(value) > 0.5:
-                        outgoing[i_idx] = k_idx
-                        incoming[k_idx] = i_idx
-
-            if not outgoing:
-                period.append([])
-                continue
-
-            start = depot if depot in outgoing else next(
-                (node for node in outgoing if node not in incoming),
-                next(iter(outgoing)),
-            )
-
-            route = [start]
-            visited_edges = set()
-            current = start
-
-            while current in outgoing:
-                nxt = outgoing[current]
-                edge = (current, nxt)
-                if edge in visited_edges:
-                    break
-                visited_edges.add(edge)
-                route.append(nxt)
-                current = nxt
-
-            period.append(route)
-        routes.append(period)
-
-    return routes
-
-
 def getResults(
     data,
     dir,
@@ -81,8 +38,6 @@ def getResults(
         if not log:
             return
         log.debug("event=no_solution_results phase=write_results")
-
-    routes = _build_routes_from_Z(Z)
 
     weight = data["weight"]
 
@@ -300,91 +255,3 @@ def getResults(
         last_cols = [c for c in ["value"] if c in df_parquet.columns and c not in first_cols]
         df_parquet = df_parquet[first_cols + other_cols + last_cols]
     df_parquet.to_parquet(parquet_path, index=False)
-
-    periods = []
-    for t in range(len(routes)):
-        veicles = []
-        for v in range(len(routes[t])):
-            points = []
-            v_qtd_max = 0
-            for i in range(len(routes[t][v])):
-                products = []
-                r_current = 0
-
-                for p in range(len(Q[t][v])):
-                    if i != len(routes[t][v]) - 1:
-                        r_current = R[t][v][p][routes[t][v][i + 1]][routes[t][v][i]]
-
-                    products.append(
-                        {"p": p + 1, "qtd": Q[t][v][p][routes[t][v][i]], "r": r_current}
-                    )
-                    v_qtd_max = v_qtd_max + Q[t][v][p][routes[t][v][i]]
-                points.append(
-                    {
-                        "point": routes[t][v][i],
-                        "x": data["coordXY"]["x"][routes[t][v][i]],
-                        "y": data["coordXY"]["y"][routes[t][v][i]],
-                        "products": products,
-                    }
-                )
-            veicles.append({"v": v + 1, "points": points, "v_qtd_max": v_qtd_max})
-
-        productions = []
-        for p in range(len(X[t])):
-            productions.append(
-                {"p": p + 1, "qtd": X[t][p], "isProduction": int(Y[t][p])}
-            )
-
-        est = []
-        est_i = []
-        dem = []
-        for i in range(len(I[t])):
-            e_p_current = []
-            e_i_p_current = []
-            d_p_current = []
-            e_current = 0
-            e_i_current = 0
-            d_current = 0
-            for p in range(len(I[t][i])):
-                if t == 0:
-                    e_i_current = data["I_pi0"][p][i]
-                else:
-                    e_i_current = I[t - 1][i][p]
-
-                e_current = I[t][i][p]
-
-                if i != len(I[t]) - 1:
-                    d_current = data["d_pit"][p][i][t]
-
-                e_i_p_current.append({"p": p + 1, "qtd": e_i_current})
-                e_p_current.append({"p": p + 1, "qtd": e_current})
-                d_p_current.append({"p": p + 1, "qtd": d_current})
-            est_i.append({"point": i, "products": e_i_p_current})
-            est.append({"point": i, "products": e_p_current})
-            dem.append({"point": i + 1, "products": d_p_current})
-
-        periods.append(
-            {
-                "t": t + 1,
-                "veicles": veicles,
-                "productions": productions,
-                "dem": dem,
-                "estq": est,
-                "estq_i": est_i,
-            }
-        )
-
-    results = {
-        "hash": file_name_hash,
-        "periods": periods,
-        "P": P,
-        "FO": FO,
-        "gap": GAP,
-        "time": TIME,
-        "solCount": SOL_COUNT,
-        "relaxeModelObjeVal": RELAXED_MODEL_OBJE_VAL,
-        "nodeCount": NODE_COUNT,
-        "objBound": OBJ_BOUND,
-    }
-
-    return results

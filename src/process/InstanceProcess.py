@@ -62,7 +62,6 @@ class InstanceProcess:
 
         data = None
         instance = None
-        results = None
         Z = X = Y = I = R = Q = P = None
         FO = GAP = TIME = EPSILON = SOL_COUNT = RELAXED_MODEL_OBJE_VAL = None
         NODE_COUNT = OBJ_BOUND = NEW_TARGETS = None
@@ -118,7 +117,7 @@ class InstanceProcess:
                     **telemetry,
                 }
                 write_shards(self.output, summary, telemetry.get("pso_iterations") if self.telemetry_config["save_pso_iterations"] else [], telemetry.get("mip_events", []))
-            results = getResults(
+            getResults(
                 data,
                 self.output,
                 Z,
@@ -149,7 +148,6 @@ class InstanceProcess:
                     if self.log:
                         self.log.error(f"Erro ao liberar modelo: {e}")
 
-            del results
             del Z, X, Y, I, R, Q, P
             del FO, GAP, TIME, EPSILON, SOL_COUNT, RELAXED_MODEL_OBJE_VAL
             del NODE_COUNT, OBJ_BOUND, NEW_TARGETS
