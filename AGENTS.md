@@ -22,13 +22,13 @@ Não foi possível determinar a partir do código a formulação matemática aca
 Para execuções no sandbox que realmente testem o código do projeto, carregar `~/.zshrc` antes de chamar Poetry. O runner recomendado para testes é `pytest`, inclusive para testes legados baseados em `unittest`, porque o `pytest` também os coleta.
 
 ```bash
-source "$HOME/.zshrc" && poetry run pytest tests/test_...
+source "$HOME/.zshrc" && PYTHONPATH=. poetry run pytest tests/test_...
 ```
 
 Para executar um arquivo específico, use:
 
 ```bash
-source "$HOME/.zshrc" && poetry run pytest tests/test_greedy_constructive_heuristic.py
+source "$HOME/.zshrc" && PYTHONPATH=. poetry run pytest tests/test_worker_process_mpi.py
 ```
 
 Quando o objetivo for executar o fluxo completo do projeto, usar `./run_with_zshrc.sh` como ponto de entrada, porque ele já carrega `~/.zshrc` e chama o `python` do ambiente Poetry antes de entrar em `main.py`.
@@ -46,10 +46,11 @@ Observação do ambiente: durante a execução dos testes apareceu o aviso do `p
 ```mermaid
 flowchart TD
     CFG["config/config.json"] --> MAIN["main.py"]
-    MAIN --> DISC["Descoberta de instâncias .dat"]
+    MAIN --> RUNTIME["RuntimeContext"]
+    RUNTIME --> DISC["Descoberta de instâncias .dat"]
     DISC --> WP["WorkerProcess"]
     WP -->|cria tarefas instância x peso x alpha| TASKS["Tarefas"]
-    TASKS -->|MPI se disponível| MPI["MPIPoolExecutor"]
+    TASKS -->|MPI se disponível| MPI["MPIPoolExecutor único"]
     TASKS -->|fallback| SEQ["Execução sequencial"]
     MPI --> IP["InstanceProcess"]
     SEQ --> IP
@@ -69,13 +70,13 @@ flowchart TD
 
 | Camada | Responsabilidade | Arquivos |
 |---|---|---|
-| Configuração | Carregar `config.json` com cache estático | `config/config.py`, `config/config.json` |
+| Configuração | Normalizar defaults, validar controles e carregar `config.json` com cache estático | `config/config.py`, `config/config.json` |
 | Runtime | Montar contexto, logs, instâncias e finalizar pós-processamento | `src/process/RuntimeContext.py` |
 | Entrada principal | Orquestrar runtime, worker e pós-processamento | `main.py` |
 | Orquestração | Receber `Logger` direto, expandir instâncias por pesos/alpha e executar em paralelo ou sequencial | `src/process/WorkerProcess.py` |
 | Execução unitária | Ler uma instância, instanciar solver, resolver, extrair e salvar resultados | `src/process/InstanceProcess.py` |
 | Modelo | Criar variáveis, objetivo, restrições, resolver e extrair solução | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| Heurística | Construir solução heurística e opcionalmente warm start | `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py`, `src/solvers/GreedyRandomizedConstructionRoute.py`, `src/solvers/TwoOptOnRoute.py` |
+| PSO | Construir e avaliar partículas, com suporte a bounds relaxados | `src/solvers/ParticleSwarmOptimization.py`, `src/solvers/FeasibleParticleHeuristic.py`, `src/solvers/LotSizingRelaxation.py` |
 | Resultados | Escrever métricas por período e variáveis detalhadas | `src/process/ProcessResults.py` |
 | Pós-processamento | Unir planilhas e gerar targets | `src/process/PostProcessingProcess.py` |
 | Relatórios | Gerar figuras Plotly e tabelas LaTeX | `scripts/generate_reports.py`, `src/reports/*.py` |
@@ -84,7 +85,7 @@ flowchart TD
 
 | Convenção observada | Como agir | Evidência |
 |---|---|---|
-| Configuração global via `Config.get_nested(...)` | Antes de passar novos parâmetros, verifique se o padrão do projeto é buscar em `config/config.json` | `config/config.py`, `main.py`, `WorkerProcess.py`, `MultProductProdctionRoutingProblem.py` |
+| Configuração global via `Config.get_nested(...)` | Antes de passar novos parâmetros, defina default/validação central ou preserve o default específico do PSO | `config/config.py`, `main.py`, `WorkerProcess.py`, `MultProductProdctionRoutingProblem.py` |
 | Logging por classe `Logger` própria | Use `log.debug` para diagnósticos, `log.info` para marcos de execução e `log.warning`/`log.error` para condições operacionais | `src/log/Logger.py` |
 | Escrita de resultados tabulares com pandas | Preserve colunas existentes, hashes e formatos `.xlsx`/`.parquet` | `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py` |
 | Testes com `pytest` e mocks | Ao adicionar testes, prefira estilo `pytest`; testes legados com `unittest` podem permanecer quando já houver infraestrutura útil no arquivo | `tests/test_*.py`, `pyproject.toml` |
@@ -99,7 +100,7 @@ Preserve nomes existentes, inclusive erros de grafia, para evitar quebrar import
 | Nome existente | Significado no código | Arquivos |
 |---|---|---|
 | `MultProductProdctionRoutingProblem` | Solver principal DOcplex/CPLEX | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| `MultProductProdctionRoutingProblemGreedyConstructiveHeuristic` | Heurística construtiva | `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py` |
+| `ParticleSwarmOptimization` | Solver PSO | `src/solvers/ParticleSwarmOptimization.py` |
 | `Instancie`, `instancie`, `instancies` | Instância/problema a processar | `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py` |
 | `crateObjectiveFunction` | Criação da função objetivo | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `generteRelax` | Geração de relaxação linear | `src/solvers/MultProductProdctionRoutingProblem.py` |
@@ -150,7 +151,7 @@ Checklist operacional:
 | `constants.py` | Define pesos, alpha e arquivo base de relatórios | Impacto em todas as combinações experimentais |
 | `config/config.json` | Controla solver, workers, diretórios e multiobjetivo | Execução local, HPC, targets |
 | `src/process/WorkerProcess.py` | Controla paralelismo, MPI e seleção de pesos | Execução sequencial/MPI |
-| `main.py` | Orquestra execução completa e filtro de instâncias | Descoberta de arquivos, logs, pós-processamento |
+| `main.py` e `RuntimeContext.py` | Orquestram execução completa e filtro de instâncias | Descoberta de arquivos, logs, pós-processamento |
 | `src/helpers/ReadPrpFile.py` | Parser do formato `.dat` | Compatibilidade com instâncias existentes |
 | `src/process/PostProcessingProcess.py` | Consolida resultados e gera targets | Esquema de colunas e `targets.xlsx` |
 | `script_*.sh` | Scripts de produção/HPC | Filas, módulos, ambiente virtual, MPI |
@@ -160,20 +161,22 @@ Checklist operacional:
 | Prioridade | Arquivo | Papel |
 |---:|---|---|
 | 1 | `main.py` | Entrada principal |
-| 2 | `config/config.json` | Configuração de execução |
-| 3 | `constants.py` | Pesos, alpha e arquivo de relatório |
-| 4 | `src/process/WorkerProcess.py` | Orquestração de tarefas |
-| 5 | `src/process/InstanceProcess.py` | Pipeline de uma instância |
-| 6 | `src/solvers/MultProductProdctionRoutingProblem.py` | Modelo de otimização |
-| 7 | `src/process/ProcessResults.py` | Persistência de resultados |
-| 8 | `src/process/PostProcessingProcess.py` | União e targets |
-| 9 | `src/helpers/ReadPrpFile.py` | Parser de instâncias |
+| 2 | `src/process/RuntimeContext.py` | Preparação e finalização da execução |
+| 3 | `config/config.json` | Configuração de execução |
+| 4 | `constants.py` | Pesos, alpha e arquivo de relatório |
+| 5 | `src/process/WorkerProcess.py` | Orquestração de tarefas |
+| 6 | `src/process/InstanceProcess.py` | Pipeline de uma instância |
+| 7 | `src/solvers/MultProductProdctionRoutingProblem.py` | Modelo de otimização |
+| 8 | `src/process/ProcessResults.py` | Persistência de resultados |
+| 9 | `src/process/PostProcessingProcess.py` | União e targets |
+| 10 | `src/helpers/ReadPrpFile.py` | Parser de instâncias |
 
 ## Fluxo de execução
 
 ```mermaid
 sequenceDiagram
     participant Main as main.py
+    participant Runtime as RuntimeContext
     participant Worker as WorkerProcess
     participant Inst as InstanceProcess
     participant Parser as ReadPrpFile
@@ -181,10 +184,11 @@ sequenceDiagram
     participant Results as ProcessResults
     participant Post as PostProcessingProcess
 
-    Main->>Guard: build_runtime_context()
-    Main->>Main: monta lista de instâncias
+    Main->>Runtime: build_runtime_context()
+    Main->>Runtime: create_run_logger() e build_instances()
     Main->>Worker: run_parallel(instancies, solver)
     Worker->>Worker: expande WEIGHTS x ALPHA
+    Worker->>Worker: MPIPoolExecutor único ou fallback sequencial
     Worker->>Inst: process()
     Inst->>Parser: getDataSet()
     Parser-->>Inst: dados da instância
@@ -201,7 +205,7 @@ sequenceDiagram
     Main->>Post: build_target() se configurado
 ```
 
-Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/helpers/ReadPrpFile.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`.
+Evidência: `main.py`, `src/process/RuntimeContext.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/helpers/ReadPrpFile.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`.
 
 ## Responsabilidades de cada diretório
 
@@ -209,11 +213,11 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 |---|---|---|
 | `config/` | Configuração JSON e classe `Config` | `config.json` é lido uma vez e cacheado |
 | `scripts/` | Runners auxiliares | `generate_reports.py` roda relatórios |
-| `src/helpers/` | Utilitários compartilhados | Parser, metadata, targets e gráficos |
+| `src/helpers/` | Utilitários compartilhados | Parser, metadata, telemetria e targets |
 | `src/log/` | Logger próprio | Grava arquivo e stdout conforme `logging.level` |
 | `src/process/` | Orquestração e persistência | Worker, instância, pós-processamento, resultados |
 | `src/reports/` | Relatórios científicos/analíticos | Lê Excel consolidado em `out/<constants.FILE>` |
-| `src/solvers/` | Formulação e heurísticas | DOcplex/CPLEX e heurísticas de rota |
+| `src/solvers/` | Formulação e PSO | DOcplex/CPLEX, PSO e auxiliares |
 | `tests/` | Testes unitários | Use `pytest` como runner padrão. Testes legados podem usar classes `unittest`, desde que continuem coletáveis pelo `pytest`; inclui mocks e stubs |
 | raiz | Entradas, constantes, scripts PBS e metadados | `main.py`, `constants.py`, `pyproject.toml`, `script_*.sh` |
 
@@ -228,9 +232,9 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | `InstanceProcess` | Processar uma instância | `src/process/InstanceProcess.py` |
 | `PostProcessingProcess` | Unir resultados e criar targets | `src/process/PostProcessingProcess.py` |
 | `MultProductProdctionRoutingProblem` | Modelo principal | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| `MultProductProdctionRoutingProblemGreedyConstructiveHeuristic` | Heurística construtiva/warm start | `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py` |
-| `GreedyRandomizedConstructionRoute` | Construção greedy randomizada de rotas | `src/solvers/GreedyRandomizedConstructionRoute.py` |
-| `TwoOptOnRoute` | Melhoria 2-opt | `src/solvers/TwoOptOnRoute.py` |
+| `ParticleSwarmOptimization` | Solver PSO | `src/solvers/ParticleSwarmOptimization.py` |
+| `FeasibleParticleHeuristic` | Construção de partículas viáveis | `src/solvers/FeasibleParticleHeuristic.py` |
+| `LotSizingRelaxation` | Bounds relaxados de dimensionamento de lotes | `src/solvers/LotSizingRelaxation.py` |
 
 ## Funções principais
 
@@ -315,8 +319,8 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 |---|---|---|
 | `method` configurado como `"GUROBY"` mas solver usa DOcplex/CPLEX | IA pode procurar integração com Gurobi inexistente | `config/config.json`, `src/process/InstanceProcess.py`, `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `mpi4py` usado mas não declarado em `pyproject.toml` | Ambiente local pode falhar ou cair no fallback sequencial | `pyproject.toml`, `src/process/WorkerProcess.py` |
-| Classe IV filtrada por `main.py` | Alterar filtro muda escopo experimental | `main.py`, `README.md` |
-| `relaxed_solution.use` é consultado, mas não aparece no `config.json` empacotado | Default ausente pode alterar se `model.solve()` roda | `config/config.json`, `src/solvers/MultProductProdctionRoutingProblem.py` |
+| Classe IV filtrada por `RuntimeContext` | Alterar filtro muda escopo experimental | `src/process/RuntimeContext.py`, `README.md` |
+| `relaxed_solution.use` controla a resolução do modelo | O default central e o JSON usam `false`, preservando a resolução normal | `config/config.py`, `config/config.json`, `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `build_target` depende de consolidação válida | Sem `union_results`, a entrada encerra antes de tentar criar `targets.xlsx` | `main.py`, `src/process/PostProcessingProcess.py` |
 | Nomes com erros de digitação são usados como API interna | Renomear pode quebrar imports/chamadas | `src/solvers/*.py`, `src/process/*.py` |
 | Relatórios leem `out/<constants.FILE>`, não necessariamente o último `union_results` | IA pode gerar relatório sobre arquivo errado | `constants.py`, `src/reports/utils.py` |
@@ -326,13 +330,13 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 
 | Decisão observada | Impacto | Evidência |
 |---|---|---|
-| Pipeline centrado em `main.py` | Execução completa começa em um único script | `main.py` |
+| Pipeline preparado por `RuntimeContext` e iniciado em `main.py` | Execução completa começa em um único script | `main.py`, `src/process/RuntimeContext.py` |
 | Configuração JSON cacheada | Mudanças em `config.json` durante o processo podem não ser recarregadas | `config/config.py` |
 | Execução por produto cartesiano de instâncias, pesos e `ALPHA` | Número de tarefas cresce rapidamente | `src/process/WorkerProcess.py`, `constants.py` |
 | MPI opcional com fallback sequencial | Código deve funcionar sem `mpi4py` | `src/process/WorkerProcess.py` |
 | Saídas por hash | Nomes de arquivos dependem de instância, peso e alpha | `src/process/ProcessResults.py` |
 | Multiobjetivo por targets e desvios positivos | `targets` são parte do modelo quando `solver.multiobjective` está ativo | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/helpers/TargetsLoader.py` |
-| `build_target` incompatível com `multiobjective` na entrada principal | `main.py` lança exceção quando ambos são verdadeiros | `main.py` |
+| `build_target` incompatível com `multiobjective` na preparação da execução | `RuntimeContext` lança exceção quando ambos são verdadeiros | `src/process/RuntimeContext.py` |
 | Relatórios separados do pipeline principal | São executados por script próprio | `scripts/generate_reports.py`, `src/reports/*.py` |
 
 ## Glossário técnico
