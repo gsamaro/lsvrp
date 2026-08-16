@@ -1,7 +1,7 @@
 import sys
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 _original_graph_display_module = sys.modules.get("src.helpers.GraphDisplay")
 graph_display_module = types.ModuleType("src.helpers.GraphDisplay")
@@ -23,7 +23,7 @@ pso_module = types.ModuleType("src.solvers.ParticleSwarmOptimization")
 pso_module.ParticleSwarmOptimization = object
 sys.modules["src.solvers.ParticleSwarmOptimization"] = pso_module
 
-from src.process.WorkerProcess import WorkerProcess, WEIGHTS
+from src.process.WorkerProcess import WorkerProcess, WEIGHTS, process
 from constants import ALPHA
 
 if _original_graph_display_module is None:
@@ -148,6 +148,38 @@ class WorkerProcessMPITestCase(unittest.TestCase):
                 for _, context in captured
             )
         )
+
+    def test_process_instantiates_instance_process(self):
+        instancie = self._instance(1)
+        context = {
+            "label": "arquivo: ./data/DATA_PRP_5C/PRP1.dat | peso: [0.2] | alpha: 0.01"
+        }
+        instance_process = MagicMock()
+
+        with patch("src.process.WorkerProcess.InstanceProcess", instance_process):
+            process(
+                self.logger,
+                instancie,
+                "PSO",
+                [0.2],
+                {"PRP1.dat": {}},
+                0.01,
+                context,
+            )
+
+        instance_process.assert_called_once_with(
+            instancie["file"],
+            instancie["output"],
+            timeLimit=instancie["timeLimit"],
+            numThreads=instancie["numThreads"],
+            log=self.logger,
+            solver="PSO",
+            weight=[0.2],
+            targets_by_file={"PRP1.dat": {}},
+            alpha=0.01,
+            task_context=context,
+        )
+        instance_process.return_value.process.assert_called_once_with()
 
 
 if __name__ == "__main__":
