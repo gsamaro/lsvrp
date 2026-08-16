@@ -182,12 +182,12 @@ Isso não está presente na formulação LaTeX como processo computacional, apen
 
 | Variável | Domínio no LaTeX | Domínio observado no código | Significado | Arquivo onde é criada |
 | --- | --- | --- | --- | --- |
-| `x_{pt}` | `x_{pt} \ge 0` | inteira não negativa (`integer_var`) | quantidade produzida do item `p` no período `t` | `src/solvers/MultProductProdctionRoutingProblem.py`, `createDecisionVariables` |
+| `x_{pt}` | `x_{pt} \ge 0` | contínua não negativa (`continuous_var`) | quantidade produzida do item `p` no período `t` | `src/solvers/MultProductProdctionRoutingProblem.py`, `createDecisionVariables` |
 | `y_{pt}` | binária | binária | ativa produção/setup do item `p` no período `t` | mesmo arquivo |
-| `I_{pit}` | `I_{pit} \ge 0` | inteira não negativa (`integer_var`) | estoque do item `p` no local `i` ao final do período `t` | mesmo arquivo |
+| `I_{pit}` | `I_{pit} \ge 0` | contínua não negativa (`continuous_var`) | estoque do item `p` no local `i` ao final do período `t` | mesmo arquivo |
 | `z_{vikt}` | binária | binária | uso do arco `(i,k)` pelo veículo `v` no período `t` | mesmo arquivo |
-| `r_{pvikt}` | `r_{pvikt} \ge 0` | inteira não negativa (`integer_var`) | fluxo do item `p` no arco `(i,k)` do veículo `v` no período `t` | mesmo arquivo |
-| `q_{pvit}` | `q_{pvit} \ge 0` | inteira não negativa (`integer_var`) | quantidade entregue do item `p` pelo veículo `v` ao cliente/local `i` no período `t` | mesmo arquivo |
+| `r_{pvikt}` | `r_{pvikt} \ge 0` | contínua não negativa (`continuous_var`) | fluxo do item `p` no arco `(i,k)` do veículo `v` no período `t` | mesmo arquivo |
+| `q_{pvit}` | `q_{pvit} \ge 0` | contínua não negativa (`continuous_var`) | quantidade entregue do item `p` pelo veículo `v` ao cliente/local `i` no período `t` | mesmo arquivo |
 | `f_t^1` | auxiliar | expressão linear | custo auxiliar periódico | construído em `crateObjectiveFunction` |
 | `f_t^2` | auxiliar | expressão linear | custo auxiliar periódico | construído em `crateObjectiveFunction` |
 | `f_t^3` | auxiliar | expressão linear | custo auxiliar periódico | construído em `crateObjectiveFunction` |
@@ -199,7 +199,7 @@ Isso não está presente na formulação LaTeX como processo computacional, apen
 
 ## Observação importante
 
-No código, as variáveis `x`, `I`, `r` e `q` são modeladas como inteiras. No LaTeX fornecido, elas aparecem apenas com restrições de não negatividade, sem explicitação de integralidade.
+No código, as variáveis `x`, `I`, `r` e `q` são contínuas e não negativas. No LaTeX fornecido, elas também aparecem apenas com restrições de não negatividade, sem explicitação de integralidade.
 
 # 7. Função Objetivo
 
@@ -229,6 +229,17 @@ Pelo LaTeX:
 | `f_t^5` | custo variável de transporte | \eqref{eq:custo_variavel_transporte} |
 
 ## Implementação observada
+
+### Domínio dos arcos de roteamento
+
+As variáveis de arco de rota `Z_{v,i,k,t}` e de fluxo `R_{p,v,i,k,t}`
+devem existir somente para pares de nós distintos (`i != k`). Laços
+diagonais não representam deslocamento, não participam das restrições de
+capacidade ou custo e não devem ampliar o modelo MIP.
+
+O contrato de saída permanece matricial: a extração de `Z` e `R` continua
+emitindo as posições diagonais como `0`, e um MIP start que contenha essas
+posições deve ignorá-las ao ser carregado.
 
 Em `src/solvers/MultProductProdctionRoutingProblem.py`, `crateObjectiveFunction` constrói:
 
@@ -688,7 +699,7 @@ flowchart TD
 | Nomeação de `f_t^1` e `f_t^2` | `f_t^1` = setup, `f_t^2` = produção | `self.f1` = produção, `self.f2` = setup | Divergência nominal relevante; o código preserva os dois componentes, mas com índices trocados. |
 | Função objetivo multiobjetivo | `\alpha \lambda + (1-\alpha)\sum_{t,j} v_t^j p_t^j / \overline{b}_t^j` | em `crateObjectiveFunction`, `alpha * lambda_` é repetido cinco vezes por período, uma para cada componente | O código implementa um peso efetivo maior para `\lambda` do que o sugerido pelo LaTeX. |
 | Peso `v_t^j` | peso indexado por `j` e `t` | `weight[j]`, sem índice temporal explícito | O código usa pesos constantes por componente, não pesos por período. |
-| Domínio de `x, I, r, q` | apenas não negatividade explícita | `integer_var` | O código impõe integralidade nessas variáveis; a formulação fornecida não a explicita. |
+| Domínio de `x, I, r, q` | apenas não negatividade explícita | `continuous_var` | Código e formulação fornecida coincidem: as variáveis são contínuas e não negativas. |
 | Targets ajustados | texto diz "média dos valores não nulos"; fórmula usa média no horizonte `\sum_t b_t^j / T` | `_adjust_targets` usa `np.mean(values_k)` sobre todos os valores disponíveis | O código coincide com a média simples dos valores presentes, mas não há filtro explícito de não nulos. |
 | Conjunto `I` | usado como clientes em alguns pontos e como locais em outros | `self.i = num_customers + 1` incluindo planta | A implementação resolve a ambiguidade tratando `i` como conjunto de locais. |
 | Objetivo singleobjective | não aparece no LaTeX fornecido | existe caminho alternativo `self.model.minimize(self.f1 + self.f2 + self.f3 + self.f4 + self.f5)` | O repositório contém um modo adicional não documentado na formulação oficial. |

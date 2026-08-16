@@ -83,30 +83,34 @@ class MultProductProdctionRoutingProblem:
         self.log.debug(">> Iniciando createDecisionVariables.")
         for p in range(self.p):
             for t in range(self.t):
-                self.model.X_p_t[p, t] = self.model.integer_var(lb=0, name=f"X_{p}_{t}")
+                self.model.X_p_t[p, t] = self.model.continuous_var(lb=0, name=f"X_{p}_{t}")
                 self.model.Y_p_t[p, t] = self.model.binary_var(name=f"Y_{p}_{t}")
             for i in range(self.i):
                 for t in range(self.t):
-                    self.model.I_p_i_t[p, i, t] = self.model.integer_var(
+                    self.model.I_p_i_t[p, i, t] = self.model.continuous_var(
                         lb=0, name=f"I_{p}_{i}_{t}"
                     )
             for v in range(self.v):
                 for i in range(self.i):
                     for k in range(self.k):
+                        if i == k:
+                            continue
                         for t in range(self.t):
                             self.model.R_p_v_i_k_t[p, v, i, k, t] = (
-                                self.model.integer_var(
+                                self.model.continuous_var(
                                     lb=0, name=f"R_{p}_{v}_{i}_{k}_{t}"
                                 )
                             )
                 for i in range(self.i):
                     for t in range(self.t):
-                        self.model.Q_p_v_i_t[p, v, i, t] = self.model.integer_var(
+                        self.model.Q_p_v_i_t[p, v, i, t] = self.model.continuous_var(
                             lb=0, name=f"Q_{p}_{v}_{i}_{t}"
                         )
         for v in range(self.v):
             for i in range(self.i):
                 for k in range(self.k):
+                    if i == k:
+                        continue
                     for t in range(self.t):
                         self.model.Z_v_i_k_t[v, i, k, t] = self.model.binary_var(
                             name=f"Z_{v}_{i}_{k}_{t}"
@@ -138,6 +142,8 @@ class MultProductProdctionRoutingProblem:
             for v in range(self.v):
                 for i in range(self.i):
                     for k in range(self.k):
+                        if i == k:
+                            continue
                         for t in range(self.t):
                             warm_start.add_var_value(
                                 self.model.R_p_v_i_k_t[p, v, i, k, t],
@@ -152,6 +158,8 @@ class MultProductProdctionRoutingProblem:
         for v in range(self.v):
             for i in range(self.i):
                 for k in range(self.k):
+                    if i == k:
+                        continue
                     for t in range(self.t):
                         warm_start.add_var_value(
                             self.model.Z_v_i_k_t[v, i, k, t],
@@ -524,6 +532,9 @@ class MultProductProdctionRoutingProblem:
                 for i in range(self.i):
                     k_list = []
                     for k in range(self.k):
+                        if i == k:
+                            k_list.append(0.0)
+                            continue
                         # variable = abs(self.model.Z_v_i_k_t[v,i,k,t].solution_value)
                         variable = abs(
                             self.model.get_var_by_name(
@@ -611,6 +622,9 @@ class MultProductProdctionRoutingProblem:
                     for i in range(self.i):
                         i_list = []
                         for k in range(self.k):
+                            if i == k:
+                                i_list.append(0.0)
+                                continue
                             # print("\n============ cliente ",i," -> cliente ",k," ============")
                             i_list.append(
                                 float(
