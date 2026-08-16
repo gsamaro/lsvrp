@@ -5,6 +5,7 @@ from concurrent.futures import as_completed
 from config import Config
 from src.helpers.TargetsLoader import load_targets_by_file
 from src.log.Logger import Logger
+from src.process.InstanceProcess import InstanceProcess
 
 try:
     from mpi4py.futures import MPIPoolExecutor
