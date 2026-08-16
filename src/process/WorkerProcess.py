@@ -16,17 +16,12 @@ except ImportError:
 
 from constants import WEIGHTS_OPTIMIZE, WEIGHTS_TARGET, ALPHA
 
-if Config.get_nested("postprocessing", "build_target"):
-    WEIGHTS = WEIGHTS_TARGET
-else:
-    WEIGHTS = WEIGHTS_OPTIMIZE
-
 
 class WorkerProcess:
 
     def __init__(self, numWorkers=1, log: Logger = None, run_tag=None):
         self.numWorkers = numWorkers
-        self.log: Logger = log["instancia"]
+        self.log: Logger = log
         self.targets_by_file = None
         self.run_tag = run_tag
 
@@ -41,6 +36,11 @@ class WorkerProcess:
 
         targets_path = os.path.join(post_out, "targets.xlsx")
         self.targets_by_file = load_targets_by_file(targets_path, log=self.log)
+
+    def _resolve_weights(self):
+        if Config.get_nested("postprocessing", "build_target"):
+            return WEIGHTS_TARGET
+        return WEIGHTS_OPTIMIZE
 
     def _available_mpi_workers(self):
         pbs_np = os.environ.get("PBS_NP")
@@ -104,10 +104,11 @@ class WorkerProcess:
     def run_parallel(self, instancies=[], solver="GUROBY"):
         self.log.info(">> Iniciando processamento paralelo.")
         self._ensure_targets_loaded()
+        weights = self._resolve_weights()
         tasks = []
         task_number = 1
         for instancie in instancies:
-            for weight in WEIGHTS:
+            for weight in weights:
                 for alpha in ALPHA:
                     tasks.append(
                         {

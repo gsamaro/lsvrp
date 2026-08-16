@@ -70,8 +70,9 @@ flowchart TD
 | Camada | Responsabilidade | Arquivos |
 |---|---|---|
 | Configuração | Carregar `config.json` com cache estático | `config/config.py`, `config/config.json` |
-| Entrada principal | Montar run, logs, instâncias e pós-processamento | `main.py` |
-| Orquestração | Expandir instâncias por pesos/alpha e executar em paralelo ou sequencial | `src/process/WorkerProcess.py` |
+| Runtime | Montar contexto, logs, instâncias e finalizar pós-processamento | `src/process/RuntimeContext.py` |
+| Entrada principal | Orquestrar runtime, worker e pós-processamento | `main.py` |
+| Orquestração | Receber `Logger` direto, expandir instâncias por pesos/alpha e executar em paralelo ou sequencial | `src/process/WorkerProcess.py` |
 | Execução unitária | Ler uma instância, instanciar solver, resolver, extrair e salvar resultados | `src/process/InstanceProcess.py` |
 | Modelo | Criar variáveis, objetivo, restrições, resolver e extrair solução | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | Heurística | Construir solução heurística e opcionalmente warm start | `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py`, `src/solvers/GreedyRandomizedConstructionRoute.py`, `src/solvers/TwoOptOnRoute.py` |
@@ -237,6 +238,10 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 |---|---|---|
 | `_get_git_commit_hash6()` | Obter hash curto para `run_tag` | `main.py` |
 | `_build_run_tag(now)` | Criar identificador da execução | `main.py` |
+| `build_runtime_context()` | Ler e normalizar a configuração da execução | `src/process/RuntimeContext.py` |
+| `is_supported_prp_file()` | Manter o filtro experimental de PRP 1–30 | `src/process/RuntimeContext.py` |
+| `build_instances(...)` | Descobrir instâncias elegíveis e criar diretórios de saída | `src/process/RuntimeContext.py` |
+| `finalize_postprocessing(...)` | Consolidar resultados e impedir targets sem consolidação | `src/process/RuntimeContext.py` |
 | `WorkerProcess.run_parallel()` | Criar e executar tarefas | `src/process/WorkerProcess.py` |
 | `process(...)` | Função submetida ao executor/fallback | `src/process/WorkerProcess.py` |
 | `InstanceProcess.process()` | Pipeline de uma instância | `src/process/InstanceProcess.py` |
@@ -312,7 +317,7 @@ Evidência: `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProc
 | `mpi4py` usado mas não declarado em `pyproject.toml` | Ambiente local pode falhar ou cair no fallback sequencial | `pyproject.toml`, `src/process/WorkerProcess.py` |
 | Classe IV filtrada por `main.py` | Alterar filtro muda escopo experimental | `main.py`, `README.md` |
 | `relaxed_solution.use` é consultado, mas não aparece no `config.json` empacotado | Default ausente pode alterar se `model.solve()` roda | `config/config.json`, `src/solvers/MultProductProdctionRoutingProblem.py` |
-| `WEIGHTS` é escolhido no import de `WorkerProcess.py` | Mudar `postprocessing.build_target` em runtime depois do import pode não afetar `WEIGHTS` | `src/process/WorkerProcess.py` |
+| `build_target` depende de consolidação válida | Sem `union_results`, a entrada encerra antes de tentar criar `targets.xlsx` | `main.py`, `src/process/PostProcessingProcess.py` |
 | Nomes com erros de digitação são usados como API interna | Renomear pode quebrar imports/chamadas | `src/solvers/*.py`, `src/process/*.py` |
 | Relatórios leem `out/<constants.FILE>`, não necessariamente o último `union_results` | IA pode gerar relatório sobre arquivo errado | `constants.py`, `src/reports/utils.py` |
 | `targets.xlsx` exige colunas específicas | Merge pode ser silenciosamente ignorado com warning | `src/process/PostProcessingProcess.py`, `src/helpers/TargetsLoader.py` |

@@ -69,7 +69,6 @@ class MultProductProdctionRoutingProblem:
         self.relaxedModelObjVal = 0
         self.objBound = 0
         self.nodeCount = 0
-        self.log: Logger = log
         self.start = start
         self.alpha = map["alpha"] if "alpha" in map else None
         self.telemetry_config = get_config(Config)
@@ -519,15 +518,10 @@ class MultProductProdctionRoutingProblem:
         except Exception:
             P = []
 
-        """self.log.info("*******************************")
-        self.log.info("============ Z ================")
-        self.log.info("*******************************")"""
         Z = []
         for t in range(self.t):
-            # self.log.info(f"\n\n============ periodo {t} ============")
             v_list = []
             for v in range(self.v):
-                # self.log.info(f"\n============ veiculo {v} ============")
                 i_list = []
                 for i in range(self.i):
                     k_list = []
@@ -535,87 +529,47 @@ class MultProductProdctionRoutingProblem:
                         if i == k:
                             k_list.append(0.0)
                             continue
-                        # variable = abs(self.model.Z_v_i_k_t[v,i,k,t].solution_value)
                         variable = abs(
                             self.model.get_var_by_name(
                                 f"Z_{v}_{i}_{k}_{t}"
                             ).solution_value
                         )
-                        # self.log.info(f" origem: {i} destino: {k} == {variable}")
                         k_list.append(variable)
                     i_list.append(k_list)
                 v_list.append(i_list)
             Z.append(v_list)
-        # self.log.info("\n\n===============================\n\n")
-
-        for t in range(len(Z)):
-            # self.log.info(f"\n\n============ periodo {t} ============")
-            v_list = []
-            for v in range(len(Z[t])):
-                # self.log.info(f"\n============ veiculo {v} ============")
-                for i in range(len(Z[t][v])):
-                    string = ""
-                    for k in range(len(Z[t][v][i])):
-                        string += str(Z[t][v][i][k]) + "\t"
-                    # self.log.info(string)
-
-        # self.log.info("*******************************")
-        # self.log.info("============ Y ================")
-        # self.log.info("*******************************")
         Y = []
         for t in range(self.t):
-            # self.log.info(f"\n\n============ periodo {t} ============")
             p_list_y = []
             for p in range(self.p):
                 variable = abs(self.model.get_var_by_name(f"Y_{p}_{t}").solution_value)
                 p_list_y.append(variable)
-                # print("produto: ",p," == ", variable)
             Y.append(p_list_y)
-        # self.log.info("\n\n===============================\n\n")
 
-        # self.log.info("*******************************")
-        # self.log.info("============ X ================")
-        # self.log.info("*******************************")
         X = []
         for t in range(self.t):
-            # self.log.info(f"\n\n============ periodo {t} ============")
             p_list_x = []
             for p in range(self.p):
                 variable = self.model.get_var_by_name(f"X_{p}_{t}").solution_value
                 p_list_x.append(variable)
-                # print("produto: ",p," == ", variable)
             X.append(p_list_x)
-        # self.log.info("\n\n===============================\n\n")
 
-        # self.log.info("*******************************")
-        # self.log.info("============ I ================")
-        # self.log.info("*******************************")
         I = []
         for t in range(self.t):
-            # print("\n\n============ periodo ",t," ============")
             p_list_i = []
             for i in range(self.i):
                 i_list_i = []
-                # print("\n============ cliente ",i," ============")
                 for p in range(self.p):
-                    # print("produto: ",p," == ", self.I_p_i_t[p,i,t].x)
                     variable = self.model.get_var_by_name(
                         f"I_{p}_{i}_{t}"
                     ).solution_value
                     i_list_i.append(variable)
                 p_list_i.append(i_list_i)
             I.append(p_list_i)
-        # self.log.info("\n\n===============================\n\n")
-
-        # self.log.info("*******************************")
-        # self.log.info("============ R ================")
-        # self.log.info("*******************************")
         R = []
         for t in range(self.t):
-            # self.log.info(f"\n\n============ periodo {t} ============")
             t_list = []
             for v in range(self.v):
-                # self.log.info(f"\n============ veiculo {v} ============")
                 v_list = []
                 for p in range(self.p):
                     p_list = []
@@ -625,7 +579,6 @@ class MultProductProdctionRoutingProblem:
                             if i == k:
                                 i_list.append(0.0)
                                 continue
-                            # print("\n============ cliente ",i," -> cliente ",k," ============")
                             i_list.append(
                                 float(
                                     self.model.get_var_by_name(
@@ -633,29 +586,18 @@ class MultProductProdctionRoutingProblem:
                                     ).solution_value
                                 )
                             )
-                            # self.log.info(f"\nperiodo {t} -> veiculo {v} -> cliente {i} -> cliente {k} -> produto {p} == { float(self.R_p_v_i_k_t[p,v,i,k,t].x)}")
-                            # print("produto: ",p," == ", self.R_p_v_i_k_t[p,v,i,k,t].x)
                         p_list.append(i_list)
                     v_list.append(p_list)
                 t_list.append(v_list)
             R.append(t_list)
-        # self.log.info("\n\n===============================\n\n")
-
-        # self.log.info("*******************************")
-        # self.log.info("============ Q ================")
-        # self.log.info("*******************************")
         Q = []
         for t in range(self.t):
-            # self.log.info(f"\n\n============ periodo {t} ============")
             t_list = []
             for v in range(self.v):
-                # self.log.info(f"\n============ veiculo {v} ============")
                 v_list = []
                 for p in range(self.p):
-                    # self.log.info(f"\n============ cliente {i} ============")
                     p_list = []
                     for i in range(self.i):
-                        # self.log.info(f"produto:{p} == {self.Q_p_v_i_t[p,v,i,t].x}")
                         variable = self.model.get_var_by_name(
                             f"Q_{p}_{v}_{i}_{t}"
                         ).solution_value
@@ -663,8 +605,6 @@ class MultProductProdctionRoutingProblem:
                     v_list.append(p_list)
                 t_list.append(v_list)
             Q.append(t_list)
-        # self.log.info("\n\n===============================\n\n")
-
         return (
             Z,
             X,

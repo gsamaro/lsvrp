@@ -125,6 +125,13 @@ class MPPRPObjectiveTestCase(unittest.TestCase):
 
         self.assertEqual(1, solver.model.number_of_mip_starts)
 
+    def test_solution_extraction_has_no_dead_route_diagnostics(self):
+        module_path = Path(__file__).resolve().parents[1] / "src/solvers/MultProductProdctionRoutingProblem.py"
+        source = module_path.read_text(encoding="utf-8")
+
+        self.assertNotIn('string += str(Z[t][v][i][k])', source)
+        self.assertNotIn('self.log.info("============ Z ================")', source)
+
 
 if __name__ == "__main__":
     unittest.main()
