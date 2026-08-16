@@ -37,6 +37,8 @@ Para outras execuções no sandbox, como `git commit`, revisão de arquivos, lei
 
 O GitHub está configurado neste repositório por HTTPS nos remotes `origin` e `upstream`. Ao realizar operações Git com o GitHub, como `commit`, `push`, `pull` ou criação de branches, preserve o uso de HTTPS e não altere os remotes para SSH.
 
+Para comandos Git que dependam de autenticação no GitHub, use o bash externo já autenticado, em vez da sessão de sandbox.
+
 Observação do ambiente: durante a execução dos testes apareceu o aviso do `pyenv` (`pyenv: cannot rehash ...`), mas isso não impediu a suíte de rodar quando o comando foi executado via `poetry run`.
 
 ## Arquitetura
