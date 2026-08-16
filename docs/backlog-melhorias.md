@@ -78,6 +78,8 @@ novo ou ampliado teste unitário de entrada principal/pós-processamento.
 
 ### BL-04 — Corrigir a documentação arquitetural obsoleta
 
+**Status.** Endereçado no PR [#14](https://github.com/gsamaro/lsvrp/pull/14).
+
 **Problema.** `AGENTS.md` ainda descreve guardrails, batches, `TablesResult`,
 `GraphDisplay` e opções de plot como componentes ativos, embora tenham sido
 removidos.
@@ -188,6 +190,8 @@ variáveis ou objetivo.
 
 ### BL-09 — Centralizar defaults e validar configuração
 
+**Status.** Endereçado no PR [#14](https://github.com/gsamaro/lsvrp/pull/14).
+
 **Problema.** Há consultas espalhadas a `Config.get_nested()` e chaves
 ausentes podem assumir comportamentos implícitos — por exemplo,
 `relaxed_solution.use` é lida pelo modelo, mas não consta no JSON atual.
@@ -206,6 +210,8 @@ chaves realmente utilizadas e decidir o comportamento esperado de cada uma.
 solvers e testes de configuração novos.
 
 ### BL-10 — Enxugar os mocks legados do teste MPI
+
+**Status.** Endereçado no PR [#14](https://github.com/gsamaro/lsvrp/pull/14).
 
 **Problema.** `test_worker_process_mpi.py` injeta módulos que `WorkerProcess`
 não importa diretamente, incluindo um módulo de gráfico já removido.
