@@ -56,6 +56,8 @@ opt-in se houver consumidor externo confirmado.
 
 ### BL-03 — Não gerar targets quando a consolidação falhar
 
+**Status.** Endereçado no PR [#13](https://github.com/gsamaro/lsvrp/pull/13).
+
 **Problema.** `union_results()` retorna `None` quando não encontra ou não lê
 arquivos Excel. Com `build_target=true`, a etapa seguinte tenta usar esse valor
 como caminho e produz uma falha secundária, menos clara.
@@ -101,6 +103,8 @@ teste.
 
 ### BL-05 — Resolver pesos no momento da execução
 
+**Status.** Endereçado no PR [#13](https://github.com/gsamaro/lsvrp/pull/13).
+
 **Problema.** `WEIGHTS` é escolhido durante a importação de `WorkerProcess`, a
 partir de `postprocessing.build_target`. Isto acopla o comportamento a cache e
 ordem de importação da configuração.
@@ -118,6 +122,8 @@ entre `WEIGHTS_TARGET` e `WEIGHTS_OPTIMIZE` dentro de `run_parallel()`.
 `tests/test_worker_process_mpi.py`.
 
 ### BL-06 — Simplificar a interface de `WorkerProcess`
+
+**Status.** Endereçado no PR [#13](https://github.com/gsamaro/lsvrp/pull/13).
 
 **Problema.** O construtor é anotado para `Logger`, mas exige o formato
 `{"instancia": log}` e extrai a chave internamente.
@@ -137,6 +143,8 @@ uma transição explícita em vez de manter o contrato implícito.
 
 ### BL-07 — Extrair descoberta de instâncias de `main.py`
 
+**Status.** Endereçado no PR [#13](https://github.com/gsamaro/lsvrp/pull/13).
+
 **Problema.** A entrada principal concentra leitura de configuração, descoberta
 de arquivos, filtro de instâncias PRP e criação de diretórios.
 
@@ -154,6 +162,8 @@ explícita, após confirmar se ele é uma regra experimental vigente.
 **Arquivos principais.** `main.py`, `tests/test_main_import.py` ou novo teste.
 
 ### BL-08 — Limpar redundâncias e comentários mortos do modelo
+
+**Status.** Endereçado no PR [#13](https://github.com/gsamaro/lsvrp/pull/13).
 
 **Problema.** O modelo contém longos blocos de logs/prints comentados, um loop
 que monta strings de `Z` sem utilizar o resultado e atribuição duplicada de
