@@ -1,47 +1,8 @@
-import sys
-import types
 import unittest
 from unittest.mock import MagicMock, patch
 
-_original_graph_display_module = sys.modules.get("src.helpers.GraphDisplay")
-graph_display_module = types.ModuleType("src.helpers.GraphDisplay")
-graph_display_module.graphResults = lambda *args, **kwargs: None
-sys.modules["src.helpers.GraphDisplay"] = graph_display_module
-
-_original_process_results_module = sys.modules.get("src.process.ProcessResults")
-process_results_module = types.ModuleType("src.process.ProcessResults")
-process_results_module.getResults = lambda *args, **kwargs: None
-sys.modules["src.process.ProcessResults"] = process_results_module
-
-_original_solver_module = sys.modules.get("src.solvers.MultProductProdctionRoutingProblem")
-solver_module = types.ModuleType("src.solvers.MultProductProdctionRoutingProblem")
-solver_module.MultProductProdctionRoutingProblem = object
-sys.modules["src.solvers.MultProductProdctionRoutingProblem"] = solver_module
-
-_original_pso_module = sys.modules.get("src.solvers.ParticleSwarmOptimization")
-pso_module = types.ModuleType("src.solvers.ParticleSwarmOptimization")
-pso_module.ParticleSwarmOptimization = object
-sys.modules["src.solvers.ParticleSwarmOptimization"] = pso_module
-
 from src.process.WorkerProcess import WorkerProcess, process
 from constants import ALPHA, WEIGHTS_OPTIMIZE, WEIGHTS_TARGET
-
-if _original_graph_display_module is None:
-    sys.modules.pop("src.helpers.GraphDisplay", None)
-else:
-    sys.modules["src.helpers.GraphDisplay"] = _original_graph_display_module
-if _original_process_results_module is None:
-    sys.modules.pop("src.process.ProcessResults", None)
-else:
-    sys.modules["src.process.ProcessResults"] = _original_process_results_module
-if _original_solver_module is None:
-    sys.modules.pop("src.solvers.MultProductProdctionRoutingProblem", None)
-else:
-    sys.modules["src.solvers.MultProductProdctionRoutingProblem"] = _original_solver_module
-if _original_pso_module is None:
-    sys.modules.pop("src.solvers.ParticleSwarmOptimization", None)
-else:
-    sys.modules["src.solvers.ParticleSwarmOptimization"] = _original_pso_module
 
 
 class DummyLogger:

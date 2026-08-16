@@ -27,34 +27,40 @@ O sistema é organizado como um pipeline em Python:
 ```mermaid
 flowchart TD
     A["config/config.json"] --> B["main.py"]
-    B --> C["Descoberta de arquivos .dat"]
-    C --> D["WorkerProcess"]
-    D --> E["InstanceProcess"]
-    E --> F["ReadPrpFile"]
-    F --> G["Solver DOcplex/CPLEX"]
-    G --> H["ProcessResults"]
-    H --> I["Excel por instância"]
-    H --> J["Parquet com variáveis"]
-    B --> K["PostProcessingProcess"]
-    K --> L["union_results.xlsx ou run_tag-union_results.xlsx"]
-    K --> M["targets.xlsx quando build_target=true"]
-    N["scripts/generate_reports.py"] --> O["src/reports"]
-    O --> P["figs/ e latex/"]
+    B --> C["RuntimeContext"]
+    C --> D["Descoberta de arquivos .dat"]
+    D --> E["WorkerProcess"]
+    E --> F["Tarefas: instância x peso x alpha"]
+    F -->|mpi4py disponível| G["MPIPoolExecutor único"]
+    F -->|fallback| H["Execução sequencial"]
+    G --> I["InstanceProcess"]
+    H --> I
+    I --> J["ReadPrpFile"]
+    J --> K["Solver DOcplex/CPLEX ou PSO"]
+    K --> L["ProcessResults"]
+    L --> M["Excel por instância"]
+    L --> N["Parquet com variáveis"]
+    B --> T["PostProcessingProcess"]
+    T --> O["union_results.xlsx ou run_tag-union_results.xlsx"]
+    T --> P["targets.xlsx quando build_target=true"]
+    Q["scripts/generate_reports.py"] --> R["src/reports"]
+    R --> S["figs/ e latex/"]
 ```
 
 Módulos existentes:
 
 - `config`: carrega `config/config.json` e expõe acesso simples por chave.
-- `main.py`: ponto de entrada principal; monta a lista de instâncias, cria logs, chama execução paralela e pós-processamento.
+- `main.py`: ponto de entrada principal; coordena o runtime, a execução e o pós-processamento.
+- `src/process/RuntimeContext.py`: prepara o contexto de execução, logger, descoberta de instâncias e finalização do pós-processamento.
 - `src/process`: contém a orquestração de workers, execução de uma instância, escrita de resultados, união de planilhas e tabelas.
-- `src/solvers`: contém o modelo matemático principal em DOcplex/CPLEX e uma heurística construtiva com 2-opt para rotas.
-- `src/helpers`: contém leitura de instâncias, conversões de rota, gráficos, metadados, carregamento de targets e união auxiliar de saídas.
+- `src/solvers`: contém o modelo matemático principal em DOcplex/CPLEX, PSO e componentes auxiliares do solver.
+- `src/helpers`: contém leitura de instâncias, metadados, telemetria e carregamento de targets.
 - `src/log`: logging simples em arquivo e stdout.
 - `src/reports`: gera figuras e tabelas LaTeX a partir de resultados consolidados.
 - `scripts`: contém o runner `generate_reports.py`.
 - `tests`: contém testes unitários para execução MPI, fallback sequencial e geração de resultados.
 
-Referências cruzadas: `config/config.py`, `main.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py`, `src/reports/__init__.py`, `scripts/generate_reports.py`, `tests/test_worker_process_mpi.py`, `tests/test_process_results.py`.
+Referências cruzadas: `config/config.py`, `main.py`, `src/process/RuntimeContext.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/solvers/ParticleSwarmOptimization.py`, `src/reports/__init__.py`, `scripts/generate_reports.py`, `tests/test_worker_process_mpi.py`, `tests/test_process_results.py`.
 
 ## Tecnologias utilizadas
 
@@ -83,7 +89,7 @@ Ferramentas e ambientes:
 - MPICH é carregado nesses scripts via `module load mpich/4.1.1-gcc-9.4.0`.
 - `pre-commit` é configurado no arquivo `.pre-commit-config.yaml`.
 
-Referências cruzadas: `pyproject.toml`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/process/WorkerProcess.py`, `src/process/ProcessResults.py`, `src/helpers/GraphDisplay.py`, `src/reports/performance_fob.py`, `src/reports/performance_weights.py`, `src/reports/gap_analysis.py`, `src/reports/sensitivity.py`, `.pre-commit-config.yaml`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`.
+Referências cruzadas: `pyproject.toml`, `src/solvers/MultProductProdctionRoutingProblem.py`, `src/solvers/ParticleSwarmOptimization.py`, `src/process/WorkerProcess.py`, `src/process/ProcessResults.py`, `src/reports/performance_fob.py`, `src/reports/performance_weights.py`, `src/reports/gap_analysis.py`, `src/reports/sensitivity.py`, `.pre-commit-config.yaml`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`.
 
 ## Estrutura do projeto
 
@@ -110,13 +116,13 @@ script_*.sh
 
 Diretórios e arquivos importantes:
 
-- `config/`: configuração central. `Config` faz cache de `config.json` e oferece `get()` e `get_nested()`.
+- `config/`: configuração central. `Config` aplica defaults, valida controles de execução, faz cache de `config.json` e oferece `get()` e `get_nested()`.
 - `scripts/`: comandos auxiliares; `generate_reports.py` executa geração de relatórios por categoria.
-- `src/helpers/`: utilitários de parsing, metadata, gráficos e targets.
+- `src/helpers/`: utilitários de parsing, metadata, telemetria e targets.
 - `src/log/`: logger próprio com escrita em arquivo e impressão em stdout.
 - `src/process/`: pipeline de execução e persistência dos resultados.
 - `src/reports/`: geração de tabelas LaTeX e figuras a partir de um arquivo Excel definido por `constants.FILE`.
-- `src/solvers/`: modelo exato DOcplex/CPLEX e heurísticas de construção/rota.
+- `src/solvers/`: modelo exato DOcplex/CPLEX, PSO e auxiliares de viabilidade/relaxação.
 - `tests/`: testes unitários com `unittest` e mocks/stubs para evitar dependências pesadas em alguns cenários.
 - `constants.py`: define pesos de target, pesos de otimização, valores de `ALPHA` e nome de arquivo Excel usado por relatórios.
 - `main.py`: entrada principal da execução.
@@ -147,7 +153,7 @@ Edite `config/config.json`. Os blocos observados são:
 - `workers`: `num`.
 - `logging`: `level`, com valores `INFO` (padrão), `DEBUG` e `OFF`.
 - `instance`: `dir`, `output`, `files`.
-- `relaxed_solution`: `replace_model`; o código também consulta `relaxed_solution.use`, mas essa chave não aparece no `config.json` empacotado.
+- `relaxed_solution`: `replace_model` e `use`; `use=false` mantém a resolução normal do modelo.
 - `postprocessing`: `build_target`, `output`.
 
 Exemplo observado:
@@ -248,33 +254,31 @@ Abra `http://localhost:8000/`. No GitHub, configure manualmente `Settings → Pa
 
 ### Testes
 
-Os testes usam `unittest`. Uma forma compatível com a estrutura observada é:
+O runner oficial é `pytest`, que também coleta os testes legados baseados em `unittest`:
 
 ```bash
-python -m unittest discover tests
+source "$HOME/.zshrc" && PYTHONPATH=. poetry run pytest
 ```
-
-Não foi possível determinar a partir do código se há comando oficial de teste via Poetry, Makefile ou CI.
 
 Referências cruzadas: `pyproject.toml`, `config/config.json`, `config/config.py`, `main.py`, `run_with_zshrc.sh`, `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`, `scripts/generate_reports.py`, `constants.py`, `tests/test_worker_process_mpi.py`, `tests/test_process_results.py`.
 
 ## Fluxo geral
 
-1. `main.py` carrega configurações via `Config.get_nested()`.
-2. `main.py` cria um `run_tag` com data, hash curto do commit Git e hash de timestamp.
-3. `main.py` remove `output/logs` se existir e inicia `Logger`.
-4. `main.py` expande `instance.files`: se o item contém `.dat`, trata como arquivo específico; caso contrário lista arquivos dentro de `instance.dir + pasta`.
+1. `main.py` cria o contexto com `build_runtime_context()`.
+2. `RuntimeContext` carrega a configuração, cria o `run_tag` e normaliza os controles de execução.
+3. `RuntimeContext` remove `output/logs` se existir e inicia `Logger`.
+4. `RuntimeContext.build_instances()` expande `instance.files`: se o item contém `.dat`, trata como arquivo específico; caso contrário lista arquivos dentro de `instance.dir + pasta`.
 5. Arquivos `PRP` com índice maior ou igual a 31 são ignorados.
-6. Para cada arquivo restante, `main.py` cria diretório de saída por instância e monta a lista `instancies`.
+6. Para cada arquivo restante, `RuntimeContext` cria diretório de saída por instância e monta a lista `instancies`.
 7. `WorkerProcess.run_parallel()` expande cada instância para todas as combinações de pesos e `ALPHA`.
 8. Se `mpi4py` estiver disponível, `WorkerProcess` usa um único `MPIPoolExecutor` para todas as tarefas; caso contrário executa sequencialmente.
-10. Cada tarefa chama `InstanceProcess.process()`.
-11. `InstanceProcess` lê a instância com `ReadPrpFile`, adiciona `weight`, `alpha` e `targets`, constrói o solver e chama `solver()`.
-12. O solver cria variáveis, objetivo, restrições e resolve o modelo.
-13. `InstanceProcess` extrai resultados com `getResults()` do solver.
-14. `ProcessResults.getResults()` grava um Excel de objetivos por período e um Parquet detalhado com variáveis `Z`, `X`, `Y`, `I`, `R`, `Q`, `P`.
-15. Depois da execução, `PostProcessingProcess.union_results()` consolida os `.xlsx` em uma planilha de união.
-16. Se `postprocessing.build_target=true`, `PostProcessingProcess.build_target()` gera `targets.xlsx`.
+9. Cada tarefa chama `InstanceProcess.process()`.
+10. `InstanceProcess` lê a instância com `ReadPrpFile`, adiciona `weight`, `alpha` e `targets`, constrói o solver e chama `solver()`.
+11. O solver cria variáveis, objetivo, restrições e resolve o modelo.
+12. `InstanceProcess` extrai resultados com `getResults()` do solver.
+13. `ProcessResults.getResults()` grava um Excel de objetivos por período e um Parquet detalhado com variáveis `Z`, `X`, `Y`, `I`, `R`, `Q`, `P`.
+14. Depois da execução, `PostProcessingProcess.union_results()` consolida os `.xlsx` em uma planilha de união.
+15. Se `postprocessing.build_target=true`, `RuntimeContext` só chama `PostProcessingProcess.build_target()` após uma consolidação válida.
 
 ```mermaid
 sequenceDiagram
@@ -309,7 +313,7 @@ Referências cruzadas: `main.py`, `src/process/WorkerProcess.py`, `src/process/I
 
 ### `config`
 
-`config/config.py` define `Config`, uma classe estática com cache interno `_data`. O método `load()` lê `config/config.json` apenas uma vez. `get()` acessa uma chave de topo e `get_nested()` percorre chaves aninhadas.
+`config/config.py` define `Config`, uma classe estática com cache interno `_data`. O método `load()` normaliza defaults e valida os controles de execução antes de armazenar `config/config.json`. `get()` acessa uma chave de topo e `get_nested()` percorre chaves aninhadas. Os defaults específicos do PSO e da telemetria permanecem nos seus módulos.
 
 Referências cruzadas: `config/__init__.py`, `config/config.py`, `config/config.json`.
 
@@ -318,13 +322,13 @@ Referências cruzadas: `config/__init__.py`, `config/config.py`, `config/config.
 - `ReadPrpFile.py`: parser de arquivos `.dat`. Extrai número de clientes, produtos, veículos e períodos, além de parâmetros `B`, `b_p`, `c_p`, `s_p`, `M`, `U_pi`, `I_pi0`, `h_pi`, `C`, `f`, `a_ik`, `coordXY` e `d_pit`.
 - `TargetsLoader.py`: normaliza caminhos de instância e carrega `targets.xlsx` por arquivo, exigindo coluna `file`.
 - `InstanceMetadata.py`: extrai metadados do nome de arquivo com regex `PRP(\d+)_C(\d+)_P(\d+)_V(\d+)_T(\d+)_S(\d+)` e adiciona `instancia`, `clientes`, `produtos`, `veiculos`, `periodos`, `seeds` e `classe`.
-- `Converter.py`: converte matriz de adjacência em rota e aplica transposição antes de converter em pontos de parada.
 
-Referências cruzadas: `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.py`, `src/helpers/InstanceMetadata.py`, `src/helpers/Converter.py`, `src/process/InstanceProcess.py`.
+Referências cruzadas: `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.py`, `src/helpers/InstanceMetadata.py`, `src/helpers/SolverTelemetry.py`, `src/process/InstanceProcess.py`.
 
 ### `src/process`
 
 - `WorkerProcess.py`: cria tarefas para cada instância, peso e alpha; carrega targets; usa um único executor MPI ou fallback sequencial.
+- `RuntimeContext.py`: prepara configuração, `run_tag`, logger e instâncias; finaliza a consolidação e protege a geração de targets.
 - `InstanceProcess.py`: encapsula a execução de uma instância: leitura, criação do solver, solve, extração, escrita de resultados e cleanup.
 - `ProcessResults.py`: transforma variáveis do solver em planilhas e registros Parquet. Calcula `f1` a `f5`, hashes e custos auxiliares.
 - `PostProcessingProcess.py`: consolida `.xlsx`, adiciona metadados, mescla targets quando disponíveis e gera targets por ideal/nadir quando solicitado.
@@ -334,11 +338,10 @@ Referências cruzadas: `src/process/WorkerProcess.py`, `src/process/InstanceProc
 ### `src/solvers`
 
 - `MultProductProdctionRoutingProblem.py`: solver principal com DOcplex/CPLEX. Define variáveis `X`, `Y`, `I`, `Z`, `R`, `Q`, variáveis de desvio `positive`, `negative` e `lambda_`; cria objetivo e restrições; resolve e extrai resultados.
-- `MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py`: heurística construtiva que monta produção e rotas; opcionalmente usa sua solução como warm start para o solver principal quando `mitStart` é `True`.
-- `GreedyRandomizedConstructionRoute.py`: construção randomized greedy de rotas com RCL e melhoria via 2-opt.
-- `TwoOptOnRoute.py`: busca local 2-opt sobre uma rota.
+- `ParticleSwarmOptimization.py`: solver PSO com heurística de partículas viáveis, telemetria e opção de usar CPLEX após a busca.
+- `FeasibleParticleHeuristic.py` e `LotSizingRelaxation.py`: componentes de suporte à construção de partículas e aos bounds relaxados.
 
-Referências cruzadas: `src/solvers/MultProductProdctionRoutingProblem.py`, `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py`, `src/solvers/GreedyRandomizedConstructionRoute.py`, `src/solvers/TwoOptOnRoute.py`, `src/process/InstanceProcess.py`.
+Referências cruzadas: `src/solvers/MultProductProdctionRoutingProblem.py`, `src/solvers/ParticleSwarmOptimization.py`, `src/solvers/FeasibleParticleHeuristic.py`, `src/solvers/LotSizingRelaxation.py`, `src/process/InstanceProcess.py`.
 
 ### `src/reports`
 
@@ -405,7 +408,7 @@ Pontos de entrada executáveis observados:
 - `scripts/generate_reports.py`: entrada para geração de relatórios.
 - `run_with_zshrc.sh`: wrapper local para `main.py`.
 - `script_memlong.sh`, `script_memshort.sh`, `script_paralela.sh`, `script_parexp.sh`, `script_testes.sh`: scripts PBS que executam `main.py` via MPI.
-- Testes unitários executáveis diretamente por arquivo ou por descoberta do `unittest`: `tests/test_process_results.py`, `tests/test_worker_process_mpi.py`.
+- Testes unitários executáveis com `pytest`: `tests/test_process_results.py`, `tests/test_worker_process_mpi.py` e demais arquivos `tests/test_*.py`.
 
 Pontos de entrada internos relevantes:
 
@@ -440,13 +443,13 @@ O pipeline depende de:
 - planilha `targets.xlsx` em `config.postprocessing.output` quando targets existem;
 - arquivo `out/<constants.FILE>` para relatórios.
 
-Não foi possível determinar a partir do código se esses caminhos são criados antes da execução em todos os ambientes; `main.py` cria diretórios por instância e `PostProcessingProcess.build_target()` cria o diretório de targets, mas o pacote não inclui dados reais.
+`RuntimeContext.build_instances()` cria diretórios por instância elegível e `PostProcessingProcess.build_target()` cria o diretório de targets. O pacote não inclui dados reais.
 
 Referências cruzadas: `config/config.json`, `main.py`, `src/helpers/TargetsLoader.py`, `src/process/PostProcessingProcess.py`, `src/reports/utils.py`, `constants.py`.
 
 ### Git
 
-`main.py` chama `git rev-parse HEAD` para compor o `run_tag`. Se falhar, usa `000000`.
+`RuntimeContext` chama `git rev-parse HEAD` para compor o `run_tag`. Se falhar, usa `000000`.
 
 Referências cruzadas: `main.py`.
 
@@ -462,12 +465,12 @@ Esta documentação foi gerada exclusivamente a partir dos arquivos presentes em
 
 - Objetivo e modelo: `src/solvers/MultProductProdctionRoutingProblem.py`, `src/helpers/ReadPrpFile.py`, `README.md`.
 - Configuração: `config/config.json`, `config/config.py`.
-- Execução principal: `main.py`.
+- Execução principal: `main.py`, com preparação em `src/process/RuntimeContext.py`.
 - Paralelismo e MPI: `src/process/WorkerProcess.py`, scripts `script_*.sh`.
 - Leitura de dados: `src/helpers/ReadPrpFile.py`.
 - Targets: `src/helpers/TargetsLoader.py`, `src/process/PostProcessingProcess.py`.
 - Resultados: `src/process/ProcessResults.py`, `src/process/PostProcessingProcess.py`.
-- Heurísticas: `src/solvers/MultProductProdctionRoutingProblemGreedyConstructiveHeuristic.py`, `src/solvers/GreedyRandomizedConstructionRoute.py`, `src/solvers/TwoOptOnRoute.py`.
+- PSO e auxiliares: `src/solvers/ParticleSwarmOptimization.py`, `src/solvers/FeasibleParticleHeuristic.py`, `src/solvers/LotSizingRelaxation.py`.
 - Relatórios: `scripts/generate_reports.py`, `src/reports/*.py`, `constants.py`.
 - Dependências: `pyproject.toml`.
 - Testes: `tests/test_process_results.py`, `tests/test_worker_process_mpi.py`.

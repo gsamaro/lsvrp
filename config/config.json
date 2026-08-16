@@ -62,7 +62,8 @@
     "files": ["DATA_PRP_20C"]
   },
   "relaxed_solution": {
-    "replace_model": true
+    "replace_model": true,
+    "use": false
   },
   "postprocessing": {
     "build_target": false,
