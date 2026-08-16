@@ -11,7 +11,7 @@ class PostProcessingProcess:
         self.log = log
         self.output = output
 
-    def union_results(self, run_tag=None, build_target=False):
+    def union_results(self, run_tag=None, build_target=False, include_targets=True):
         # Recursively collect all .xlsx files under output (including subfolders)
         excel_paths = []
         for root, _, files in os.walk(self.output):
@@ -75,7 +75,7 @@ class PostProcessingProcess:
             os.path.join(targets_dir, "targets.xlsx") if targets_dir else None
         )
 
-        if targets_path and os.path.exists(targets_path):
+        if include_targets and targets_path and os.path.exists(targets_path):
             try:
                 targets_df = pd.read_excel(targets_path, engine="openpyxl")
                 required_cols = [

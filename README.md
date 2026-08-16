@@ -187,6 +187,19 @@ Também existe o wrapper:
 
 Esse wrapper carrega `~/.zshrc` e usa `PYTHON_BIN` se definido; caso contrário usa um caminho absoluto de virtualenv Poetry presente no script. Esse caminho é específico da máquina do autor e pode não existir em outro ambiente.
 
+### Consolidação independente de resultados
+
+Para consolidar planilhas Excel já existentes sem executar a otimização, informe a
+pasta de resultados:
+
+```bash
+python scripts/generate_union_results.py --input-dir out
+```
+
+O comando procura planilhas `.xlsx` recursivamente, ignora arquivos de targets e
+consolidados anteriores, e grava `<run_tag>-union_results.xlsx` na própria pasta.
+Ele não gera nem mescla `targets.xlsx`.
+
 ### Execução com MPI/HPC
 
 Os scripts PBS executam:
