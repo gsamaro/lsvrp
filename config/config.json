@@ -43,7 +43,7 @@
       "lot_sizing_bounds": {
         "enabled": true,
         "use_base_solution": false,
-        "time_limit": 1,
+        "time_limit": 10,
         "integer_variables": false
       },
       "use_as_mip_start": true,
