@@ -5,6 +5,8 @@ description = ""
 authors = [
     {name = "Gabriel"}
 ]
+package-mode = false
+
 readme = "README.md"
 requires-python = ">=3.13,<3.14.1 || >3.14.1"
 dependencies = [

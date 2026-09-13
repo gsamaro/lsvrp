@@ -4,11 +4,27 @@
     "timeLimit":3600,
     "method":"PSO",
     "multiobjective":true,
+    "goal_programming": {
+      "positive_only_deviations": false
+    },
+    "symmetry_breaking": {
+      "hc1": false
+    },
+    "coelho_inequalities": false,
+    "rounded_capacity_inequalities": {
+      "enabled": false,
+      "node_frequency": 50,
+      "max_non_root_node": 200,
+      "max_cuts_per_callback": 20,
+      "max_cuts_per_non_root_callback": 3,
+      "min_violation": 0.000001
+    },
     "telemetry": {
       "enabled": false,
       "experiment_id": "pso-vs-solver-20c-2026-08-10",
       "gap_target_relative": 0.01,
-      "save_pso_iterations": true
+      "save_pso_iterations": true,
+      "bound_progress_interval_seconds": 1.0
     },
     "pso": {
       "swarm_size": 1000,
@@ -63,7 +79,8 @@
   },
   "relaxed_solution": {
     "replace_model": true,
-    "use": false
+    "use": false,
+    "target_use_relaxation": true
   },
   "postprocessing": {
     "build_target": false,

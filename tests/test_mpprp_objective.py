@@ -2,7 +2,10 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
+
+from src.solvers.RoundedCapacitySeparation import RoundedCapacityCut
 
 
 def _load_real_mpprp():
@@ -38,13 +41,13 @@ class DummyLogger:
 
 class MPPRPObjectiveTestCase(unittest.TestCase):
     @staticmethod
-    def _data(num_customers=1):
+    def _data(num_customers=1, num_vehicles=1):
         nodes = num_customers + 1
         return {
             "num_products": 1,
             "num_customers": num_customers,
             "num_periods": 1,
-            "num_vehicles": 1,
+            "num_vehicles": num_vehicles,
             "B": 10,
             "b_p": [1],
             "c_p": [2],
@@ -82,6 +85,55 @@ class MPPRPObjectiveTestCase(unittest.TestCase):
             solver.crateObjectiveFunction()
 
         self.assertIsNotNone(solver.model.objective_expr)
+
+    def test_multiobjective_counts_lambda_once_outside_period_component_sum(self):
+        data = self._data()
+        data["targets"] = [{f"f{j}_target": 10.0 for j in range(1, 6)}]
+
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=data,
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+        solver.createDecisionVariables()
+
+        with patch("mpprp_real_objective_test.Config.get_nested") as get_nested:
+            values = {
+                ("postprocessing", "build_target"): False,
+                ("solver", "multiobjective"): True,
+            }
+            get_nested.side_effect = lambda *keys, default=None: values.get(keys, default)
+            solver.crateObjectiveFunction()
+
+        self.assertAlmostEqual(
+            solver.model.objective_expr.get_coef(solver.lambda_),
+            data["alpha"],
+        )
+
+    def test_positive_only_deviations_omit_negative_variables_and_keep_goal_upper_bound(self):
+        data = self._data()
+        data["targets"] = [{f"f{j}_target": 10.0 for j in range(1, 6)}]
+
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=data,
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+            positive_only_deviations=True,
+        )
+        solver.createDecisionVariables()
+        solver.crateObjectiveFunction()
+        solver.createGoalProgrammingRestrictions()
+
+        assert solver.negative is None
+        names = [variable.name for variable in solver.model.iter_variables()]
+        assert not any(name.startswith("n_") for name in names)
+        constraints = list(solver.model.iter_constraints())
+        assert len(constraints) == 5
+        assert all(">=" in str(constraint) for constraint in constraints)
 
     def test_decision_variables_exclude_diagonal_arcs(self):
         module = _load_real_mpprp()
@@ -131,6 +183,281 @@ class MPPRPObjectiveTestCase(unittest.TestCase):
 
         self.assertNotIn('string += str(Z[t][v][i][k])', source)
         self.assertNotIn('self.log.info("============ Z ================")', source)
+
+    def test_symmetry_breaking_is_disabled_by_default(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(num_customers=2, num_vehicles=3),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+        solver.createDecisionVariables()
+
+        with patch("mpprp_real_objective_test.Config.get_nested") as get_nested:
+            get_nested.return_value = False
+            solver.createVehicleSymmetryBreaking()
+
+        assert not list(solver.model.iter_constraints())
+
+    def test_symmetry_breaking_adds_vc_and_hc1_constraints(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(num_customers=2, num_vehicles=3),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+        solver.createDecisionVariables()
+        with patch("mpprp_real_objective_test.Config.get_nested", return_value=True):
+            solver.createVehicleSymmetryBreaking()
+
+        names = [constraint.name for constraint in solver.model.iter_constraints()]
+
+        assert sum(name.startswith("SB_VC_") for name in names) == 2
+        assert sum(name.startswith("SB_HC1_") for name in names) == 4
+
+    def test_symmetry_breaking_boundary_sizes(self):
+        module = _load_real_mpprp()
+        for num_vehicles, num_customers, expected_vc, expected_hc1 in [
+            (1, 2, 0, 0),
+            (3, 1, 2, 2),
+        ]:
+            solver = module.MultProductProdctionRoutingProblem(
+                map=self._data(
+                    num_customers=num_customers, num_vehicles=num_vehicles
+                ),
+                dir="/tmp",
+                log=DummyLogger(),
+                start={"start": False},
+            )
+            solver.createDecisionVariables()
+            with patch("mpprp_real_objective_test.Config.get_nested", return_value=True):
+                solver.createVehicleSymmetryBreaking()
+
+            names = [constraint.name for constraint in solver.model.iter_constraints()]
+
+            assert sum(name.startswith("SB_VC_") for name in names) == expected_vc
+            assert sum(name.startswith("SB_HC1_") for name in names) == expected_hc1
+
+    def test_symmetry_breaking_override_disables_configured_constraints(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(num_customers=2, num_vehicles=3),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+            symmetry_breaking_hc1=False,
+        )
+        solver.createDecisionVariables()
+
+        with patch("mpprp_real_objective_test.Config.get_nested", return_value=True):
+            solver.createVehicleSymmetryBreaking()
+
+        assert not list(solver.model.iter_constraints())
+
+    def test_coelho_inequalities_are_disabled_by_default(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(num_customers=2, num_vehicles=3),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+        solver.createDecisionVariables()
+
+        with patch("mpprp_real_objective_test.Config.get_nested") as get_nested:
+            get_nested.return_value = False
+            solver.createCoelhoValidInequalities()
+
+        assert not list(solver.model.iter_constraints())
+
+    def test_coelho_inequalities_add_logical_constraints(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(num_customers=2, num_vehicles=3),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+            coelho_inequalities=True,
+        )
+        solver.createDecisionVariables()
+        solver.createCoelhoValidInequalities()
+
+        names = [constraint.name for constraint in solver.model.iter_constraints()]
+
+        assert sum(name.startswith("COELHO_15_") for name in names) == 6
+        assert sum(name.startswith("COELHO_16_") for name in names) == 18
+        assert sum(name.startswith("COELHO_17_") for name in names) == 6
+
+    def test_solver_node_count_uses_cplex_progress_when_details_are_zero(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+
+        class Progress:
+            def get_num_nodes_processed(self):
+                return 17
+
+            def get_num_nodes_remaining(self):
+                return 4
+
+        solver.model = SimpleNamespace(
+            solve_details=SimpleNamespace(best_bound=12.5, nb_nodes_processed=0),
+            solution=object(),
+            get_cplex=lambda: SimpleNamespace(
+                solution=SimpleNamespace(progress=Progress())
+            ),
+        )
+
+        solver.processInformationsSolver()
+
+        assert solver.nodeCount == 17
+        assert solver.nodesRemaining == 4
+
+    def test_node_progress_keeps_largest_callback_count(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+
+        solver._update_node_progress(processed=63, remaining=5)
+        solver._update_node_progress(processed=17, remaining=2)
+
+        assert solver.nodeCount == 63
+        assert solver.nodesRemaining == 2
+
+    def test_bound_progress_records_root_evolution(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+        solver.telemetry_config = {
+            "enabled": True,
+            "gap_target_relative": 0.01,
+            "bound_progress_interval_seconds": 1.0,
+        }
+
+        solver._record_bound_progress(
+            1.0,
+            0.043,
+            incumbent_objective=0.764,
+            relative_gap=0.944,
+            nodes_processed=0,
+            nodes_remaining=1,
+        )
+        solver._record_bound_progress(
+            1.2,
+            0.043,
+            incumbent_objective=0.764,
+            relative_gap=0.944,
+            nodes_processed=0,
+            nodes_remaining=1,
+        )
+
+        events = [event for event in solver._telemetry_events if event["event"] == "bound_progress"]
+        assert len(events) == 1
+        assert events[0]["best_bound"] == 0.043
+        assert events[0]["is_root"] is True
+        assert solver.get_telemetry()["root_bound"] == 0.043
+
+    def test_rounded_capacity_schedule_separates_root_and_spaced_early_nodes(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+        solver.rounded_capacity_config = {
+            "enabled": True,
+            "node_frequency": 5,
+            "max_non_root_node": 20,
+        }
+
+        assert solver._rounded_capacity_should_separate(0) is True
+        assert solver._rounded_capacity_should_separate(5) is True
+        assert solver._rounded_capacity_should_separate(6) is False
+        assert solver._rounded_capacity_should_separate(25) is False
+
+    def test_rounded_capacity_row_maps_customer_subset_to_model_nodes(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(num_customers=2),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+        solver.createDecisionVariables()
+        solver.rounded_capacity_config = {"enabled": True}
+        solver._prepare_rounded_capacity_callback_data()
+
+        indices, values = solver._rounded_capacity_build_row(
+            RoundedCapacityCut(tau=0, customers=(0,), rhs=2, violation=1.0)
+        )
+
+        assert len(indices) == 4
+        assert values == [1.0] * 4
+
+    def test_rounded_capacity_disabled_by_default_does_not_register_callback(self):
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+
+        assert solver._install_rounded_capacity_callback() is False
+
+    def test_rounded_capacity_callback_materializes_cut_and_deduplicates(self):
+        if importlib.util.find_spec("cplex") is None:
+            self.skipTest("CPLEX não está instalado neste ambiente")
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=self._data(),
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+        solver.rounded_capacity_config = {"enabled": True, "min_violation": 1e-6}
+        solver.createDecisionVariables()
+        solver._prepare_rounded_capacity_callback_data()
+
+        route_indices = {
+            index
+            for t, v, i, k, index in solver._rounded_capacity_z_indices
+            if t == 0 and i == 0 and k == 1 or t == 0 and i == 1 and k == 0
+        }
+
+        class Callback:
+            def __init__(self):
+                self.added = []
+
+            def get_values(self, indices):
+                return [0.5 if index in route_indices else 0.0 for index in indices]
+
+            def add(self, pair, sense, rhs):
+                self.added.append((pair, sense, rhs))
+
+        callback = Callback()
+        solver._run_rounded_capacity_separator(callback, max_cuts=3)
+        solver._run_rounded_capacity_separator(callback, max_cuts=3)
+
+        assert len(callback.added) == 1
+        assert callback.added[0][1:] == ("G", 2)
+        assert len(callback.added[0][0].ind) == 2
+        assert solver._rounded_capacity_stats["duplicate_cuts"] == 1
 
 
 if __name__ == "__main__":

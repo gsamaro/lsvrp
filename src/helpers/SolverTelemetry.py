@@ -8,7 +8,7 @@ from uuid import uuid4
 import numpy as np
 import pandas as pd
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def get_config(config):
@@ -18,6 +18,9 @@ def get_config(config):
         "experiment_id": configured.get("experiment_id"),
         "gap_target_relative": float(configured.get("gap_target_relative", 0.01)),
         "save_pso_iterations": bool(configured.get("save_pso_iterations", True)),
+        "bound_progress_interval_seconds": float(
+            configured.get("bound_progress_interval_seconds", 1.0)
+        ),
     }
 
 

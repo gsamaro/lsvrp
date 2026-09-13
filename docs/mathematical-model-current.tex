@@ -1,0 +1,477 @@
+% Formulação atual do modelo MPPRP.
+% Correspondência principal: src/solvers/MultProductProdctionRoutingProblem.py
+% Separação dos cortes: src/solvers/RoundedCapacitySeparation.py
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+
+\newcommand{\set}[1]{\mathcal{#1}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Zset}{\mathbb{Z}}
+\newcommand{\ceil}[1]{\left\lceil #1 \right\rceil}
+\newcommand{\pos}[1]{\left[#1\right]_+}
+
+\title{Formulação Matemática Atual\\
+       Problema Integrado de Produção--Roteamento Multiproduto}
+\author{Implementação do repositório LSVRP}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\sloppy
+Este documento registra a formulação efetivamente implementada no modelo
+\texttt{MultProduct\allowbreak{}Prodction\allowbreak{}Routing\allowbreak{}Problem}. O modelo combina dimensionamento
+de lotes, estoques, entregas e roteamento de veículos em múltiplos períodos e
+para múltiplos produtos. São incluídas as extensões de quebra de simetria HC1,
+as desigualdades lógicas de Coelho e as desigualdades cumulativas de capacidade
+arredondada, separadas heuristicamente em um \texttt{UserCutCallback} do CPLEX.
+As duas primeiras extensões são restrições estáticas opcionais; a última é uma
+família válida de cortes adicionada dinamicamente à relaxação corrente.
+\end{abstract}
+
+\tableofcontents
+
+\section{Conjuntos e índices}
+
+Sejam:
+\begin{align*}
+  \set{P} &= \{1,\ldots,P\} &&\text{produtos},\\
+  \set{T} &= \{0,\ldots,T-1\} &&\text{períodos},\\
+  \set{V} &= \{0,\ldots,V-1\} &&\text{veículos},\\
+  \set{C} &= \{1,\ldots,N\} &&\text{clientes},\\
+  \set{K} &= \{0\}\cup\set{C} &&\text{nós, com o depósito/planta }0,\\
+  \set{J} &= \{1,2,3,4,5\} &&\text{componentes de custo}.
+\end{align*}
+
+No código, os índices de produtos, períodos, veículos e nós começam em zero.
+Nesta formulação, a convenção matemática é usada para os clientes, enquanto o
+nó $0$ continua representando a planta. Assim, um cliente $i\in\set{C}$ é o
+nó $i$ nas variáveis de rota e corresponde à posição $i-1$ no vetor de demanda
+da instância.
+
+\section{Parâmetros}
+
+\begin{description}[leftmargin=3.2cm,style=nextline]
+  \item[$d_{pit}$] demanda do produto $p$ no cliente $i$ no período $t$;
+  \item[$I^0_{pi}$] estoque inicial do produto $p$ no local $i$;
+  \item[$b_p$] capacidade consumida para produzir uma unidade do produto $p$;
+  \item[$B$] capacidade total de produção disponível em cada período;
+  \item[$c_p$] custo unitário de produção do produto $p$;
+  \item[$s_p$] custo de setup do produto $p$;
+  \item[$M$] constante grande para a ativação da produção;
+  \item[$U_{pi}$] capacidade máxima de estoque do produto $p$ no local $i$;
+  \item[$C$] capacidade de carga de cada veículo;
+  \item[$f$] custo fixo de transporte por saída da planta;
+  \item[$a_{ik}$] custo variável do arco orientado $(i,k)$;
+  \item[$w_j$] peso do componente de custo $j$;
+  \item[$\alpha$] peso do termo minimax na função objetivo, com
+  $0\le\alpha\le1$;
+  \item[$b_t^j$] target original do componente $j$ no período $t$;
+  \item[$\widetilde b_t^j$] target utilizado pelo modelo. Se o target original
+  for zero, a implementação o substitui pela média temporal daquele componente.
+\end{description}
+
+\section{Variáveis de decisão}
+
+\begin{align*}
+  x_{pt} &\ge 0 &&\text{quantidade produzida de $p$ em $t$},\\
+  y_{pt} &\in\{0,1\} &&\text{setup/ativação de $p$ em $t$},\\
+  I_{pit} &\ge 0 &&\text{estoque de $p$ no local $i$ ao final de $t$},\\
+  z_{vikt} &\in\{0,1\} &&\text{uso do arco orientado $(i,k)$ por $v$ em $t$},\\
+  r_{pvikt} &\ge 0 &&\text{fluxo de $p$ no arco $(i,k)$ por $v$ em $t$},\\
+  q_{pvit} &\ge 0 &&\text{entrega de $p$ pelo veículo $v$ ao cliente $i$ em $t$},\\
+  p_t^j,n_t^j &\ge 0 &&\text{desvios positivo e negativo do componente $j$},\\
+  \lambda &\ge 0 &&\text{maior desvio normalizado}.
+\end{align*}
+
+As variáveis de arco são criadas somente para $i\ne k$. As posições diagonais
+não representam deslocamentos e não pertencem ao MIP.
+
+\section{Componentes da função objetivo}
+
+Os cinco componentes construídos no código são:
+\begin{align}
+  f_t^1 &= \sum_{p\in\set{P}} c_p x_{pt},
+  &&\text{custo de produção}, \label{eq:f1}\\
+  f_t^2 &= \sum_{p\in\set{P}} s_p y_{pt},
+  &&\text{custo de setup}, \label{eq:f2}\\
+  f_t^3 &= \sum_{p\in\set{P}}\sum_{i\in\set{K}} h_{pi}I_{pit},
+  &&\text{custo de estoque}, \label{eq:f3}\\
+  f_t^4 &= \sum_{v\in\set{V}}\sum_{k\in\set{C}} f z_{v0kt},
+  &&\text{custo fixo de transporte}, \label{eq:f4}\\
+  f_t^5 &= \sum_{v\in\set{V}}\sum_{i\in\set{K}}\sum_{k\in\set{K}:k\ne i}
+           a_{ik}z_{vikt},
+  &&\text{custo variável de transporte}. \label{eq:f5}
+\end{align}
+
+\section{Função objetivo multiobjetivo}
+
+Quando \texttt{solver.multiobjective = true} e não está sendo construído o
+target, o modelo resolve:
+\begin{equation}
+  \min\quad
+  \alpha\lambda
+  +(1-\alpha)\sum_{t\in\set{T}}\sum_{j\in\set{J}}
+  \frac{w_j p_t^j}{\widetilde b_t^j}.
+  \label{eq:objective}
+\end{equation}
+
+O vínculo do termo minimax com cada desvio é:
+\begin{equation}
+  w_jp_t^j \le \lambda\widetilde b_t^j
+  \qquad \forall j\in\set{J},\ t\in\set{T}.
+  \label{eq:lambda}
+\end{equation}
+
+Para a formulação padrão, os desvios são relacionados aos targets por:
+\begin{equation}
+  f_t^j+n_t^j-p_t^j=b_t^j
+  \qquad \forall j\in\set{J},\ t\in\set{T}.
+  \label{eq:deviation-balance}
+\end{equation}
+
+Opcionalmente, quando
+\texttt{solver.goal\_programming.positive\_only\_deviations = true},
+o código elimina $n_t^j$ e usa a projeção equivalente:
+\begin{equation}
+  p_t^j\ge f_t^j-b_t^j,
+  \qquad p_t^j\ge0.
+  \label{eq:positive-only}
+\end{equation}
+
+\section{Restrições de produção e estoque}
+
+\subsection{Balanço de estoque na planta}
+
+Para cada produto e período, a produção mais o estoque anterior, menos as
+entregas feitas a clientes, determina o estoque final na planta:
+\begin{align}
+  x_{p0}+I^0_{p0}-\sum_{v\in\set{V}}\sum_{i\in\set{C}}q_{pvi0}
+    &= I_{p0,0}, && p\in\set{P}, \label{eq:plant-balance-initial}\\
+  x_{pt}+I_{p0,t-1}-\sum_{v\in\set{V}}\sum_{i\in\set{C}}q_{pvit}
+    &= I_{p0t}, && p\in\set{P},\ t\in\set{T}\setminus\{0\}.
+  \label{eq:plant-balance}
+\end{align}
+
+Na primeira equação, o índice do estoque final é $I_{p0,0}$; na segunda,
+o índice correto é $I_{p0t}$. A notação $I_{pit}$ usa $i=0$ para a planta.
+
+\subsection{Balanço de estoque nos clientes}
+
+Para cada cliente:
+\begin{align}
+  \sum_{v\in\set{V}}q_{pvi0}+I^0_{pi}-d_{pi0}
+    &= I_{pi0}, && p\in\set{P},\ i\in\set{C}, \label{eq:customer-balance-initial}\\
+  \sum_{v\in\set{V}}q_{pvit}+I_{pi,t-1}-d_{pit}
+    &= I_{pit}, && p\in\set{P},\ i\in\set{C},\ t\in\set{T}\setminus\{0\}.
+  \label{eq:customer-balance}
+\end{align}
+
+\subsection{Capacidade de produção, setup e estoque}
+
+\begin{align}
+  \sum_{p\in\set{P}} b_p x_{pt} &\le B,
+  && t\in\set{T}, \label{eq:production-capacity}\\
+  x_{pt} &\le M y_{pt},
+  && p\in\set{P},\ t\in\set{T}, \label{eq:setup-link}\\
+  I_{pit} &\le U_{pi},
+  && p\in\set{P},\ i\in\set{K},\ t\in\set{T}.
+  \label{eq:inventory-capacity}
+\end{align}
+
+\section{Fluxo de produtos e entregas}
+
+Para cada cliente $k$, o fluxo de produto que entra menos o fluxo que sai é a
+quantidade entregue naquele nó:
+\begin{equation}
+  \sum_{i\in\set{K}:i\ne k}r_{pvikt}
+  -\sum_{l\in\set{K}:l\ne k}r_{pvklt}
+  =q_{pvkt}
+  \quad \forall p\in\set{P},\ v\in\set{V},\ k\in\set{C},\ t\in\set{T}.
+  \label{eq:product-flow-customer}
+\end{equation}
+
+O balanço agregado na planta elimina fluxos de produto em subrotas
+desconectadas:
+\begin{equation}
+  \sum_{v\in\set{V}}\sum_{k\in\set{C}}r_{pv0kt}
+  -\sum_{v\in\set{V}}\sum_{i\in\set{C}}r_{pvi0t}
+  =\sum_{v\in\set{V}}\sum_{l\in\set{C}}q_{pvlt}
+  \quad \forall p\in\set{P},\ t\in\set{T}.
+  \label{eq:product-flow-plant}
+\end{equation}
+
+\section{Roteamento de veículos}
+
+\subsection{Capacidade nos arcos}
+
+\begin{equation}
+  \sum_{p\in\set{P}}r_{pvikt}\le C z_{vikt}
+  \quad \forall v\in\set{V},\ i,k\in\set{K}:i\ne k,\ t\in\set{T}.
+  \label{eq:arc-capacity}
+\end{equation}
+
+\subsection{Uso, conservação e visitação}
+
+Cada veículo pode sair da planta no máximo uma vez em cada período:
+\begin{equation}
+  \sum_{k\in\set{C}}z_{v0kt}\le1
+  \quad \forall v\in\set{V},\ t\in\set{T}.
+  \label{eq:one-departure}
+\end{equation}
+
+A conservação de fluxo de veículos é imposta em todos os nós:
+\begin{equation}
+  \sum_{i\in\set{K}:i\ne k}z_{vikt}
+  -\sum_{l\in\set{K}:l\ne k}z_{vklt}=0
+  \quad \forall v\in\set{V},\ k\in\set{K},\ t\in\set{T}.
+  \label{eq:vehicle-flow}
+\end{equation}
+
+Cada cliente pode ser visitado no máximo uma vez por período:
+\begin{equation}
+  \sum_{v\in\set{V}}\sum_{i\in\set{K}:i\ne k}z_{vikt}\le1
+  \quad \forall k\in\set{C},\ t\in\set{T}.
+  \label{eq:single-visit}
+\end{equation}
+
+\section{Quebra de simetria HC1}
+
+As restrições desta seção são adicionadas somente quando
+\texttt{solver.symmetry\_breaking.hc1 = true}. Elas são válidas quando os
+veículos são intercambiáveis, isto é, quando a troca de seus rótulos não muda
+capacidade, custos, disponibilidade ou qualquer outra característica física.
+
+Defina o indicador agregado de saída e o indicador de visita:
+\begin{align}
+  s_{vt} &= \sum_{k\in\set{C}}z_{v0kt},
+  && v\in\set{V},\ t\in\set{T}, \label{eq:vehicle-active}\\
+  u_{vit} &= \sum_{k\in\set{K}:k\ne i}z_{vikt},
+  && v\in\set{V},\ i\in\set{C},\ t\in\set{T}.
+  \label{eq:customer-visit}
+\end{align}
+
+Embora $s$ e $u$ sejam apenas expressões auxiliares e não variáveis criadas
+no MIP, eles tornam as restrições implementadas explícitas.
+
+\subsection{VC: ordenação da ativação dos veículos}
+
+\begin{equation}
+  s_{vt}\le s_{v-1,t}
+  \quad \forall v\in\set{V}\setminus\{0\},\ t\in\set{T}.
+  \label{eq:VC}
+\end{equation}
+
+\subsection{HC1: ordenação das visitas}
+
+\begin{equation}
+  u_{vit}\le \sum_{j\in\set{C}:j<i}u_{v-1,j,t}
+  \quad \forall v\in\set{V}\setminus\{0\},\ i\in\set{C},\ t\in\set{T}.
+  \label{eq:HC1}
+\end{equation}
+
+Para $i=1$, o lado direito é uma soma vazia e vale zero. Portanto, um veículo
+de índice maior não pode ser o primeiro veículo a atender o primeiro cliente.
+
+\section{Desigualdades lógicas de Coelho}
+
+As desigualdades de Coelho são adicionadas quando
+\texttt{solver.coelho\_inequalities = true}. O artigo original usa uma aresta
+não orientada $x$ e uma variável de visita $y$; a implementação atual não cria
+$y$ e projeta essas relações sobre os arcos orientados $z$ por meio de $s$ e
+$u$ definidos em \eqref{eq:vehicle-active}--\eqref{eq:customer-visit}.
+
+\subsection{Coelho (15): arco planta--cliente}
+
+\begin{equation}
+  z_{v0it}\le 2u_{vit}
+  \quad \forall v\in\set{V},\ i\in\set{C},\ t\in\set{T}.
+  \label{eq:coelho-15}
+\end{equation}
+
+\subsection{Coelho (16): arco implica visita da origem}
+
+Para arcos que saem da planta:
+\begin{equation}
+  z_{v0kt}\le s_{vt}
+  \quad \forall v\in\set{V},\ k\in\set{C},\ t\in\set{T}.
+  \label{eq:coelho-16-plant}
+\end{equation}
+
+Para arcos que saem de um cliente:
+\begin{equation}
+  z_{vikt}\le u_{vit}
+  \quad \forall v\in\set{V},\ i\in\set{C},\ k\in\set{K}:k\ne i,\ t\in\set{T}.
+  \label{eq:coelho-16-customer}
+\end{equation}
+
+\subsection{Coelho (17): visita implica uso do veículo}
+
+\begin{equation}
+  u_{vit}\le s_{vt}
+  \quad \forall v\in\set{V},\ i\in\set{C},\ t\in\set{T}.
+  \label{eq:coelho-17}
+\end{equation}
+
+\section{Desigualdades cumulativas de capacidade arredondada}
+\label{sec:rounded-capacity}
+
+\subsection{Demanda obrigatória}
+
+Para um prefixo temporal $0,\ldots,\tau$, a demanda obrigatória do produto
+$p$ no cliente $i$ é definida por:
+\begin{equation}
+  d^{\mathrm{obrig}}_{pi}(\tau)
+  =\pos{\sum_{t=0}^{\tau}d_{pit}-I^0_{pi}}.
+  \label{eq:obligatory-demand-product}
+\end{equation}
+
+O volume agregado do subconjunto $S\subseteq\set{C}$ é:
+\begin{equation}
+  D(S,\tau)=\sum_{i\in S}\sum_{p\in\set{P}}
+  d^{\mathrm{obrig}}_{pi}(\tau).
+  \label{eq:obligatory-demand-subset}
+\end{equation}
+
+O estoque inicial é descontado separadamente por produto antes da agregação.
+Assim, o estoque de um produto não pode compensar a demanda de outro.
+
+\subsection{Arcos que cruzam um subconjunto}
+
+Para $S\subseteq\set{C}$, defina:
+\begin{equation}
+  \delta(S,t)=
+  \sum_{v\in\set{V}}
+  \sum_{i\in\set{K}}\sum_{k\in\set{K}:k\ne i}
+  \mathbf{1}\!\left[
+    \mathbf{1}[i\in S]\ne\mathbf{1}[k\in S]
+  \right]z_{vikt}.
+  \label{eq:cut-crossing}
+\end{equation}
+
+Como os arcos são orientados, as duas orientações que cruzam o corte são
+somadas. Para uma rota fechada, uma travessia de entrada e uma de saída
+produzem o fator $2$ da desigualdade seguinte.
+
+\subsection{Família válida de cortes}
+
+Para todo subconjunto de clientes $S$ e todo prefixo $\tau$:
+\begin{equation}
+  \sum_{t=0}^{\tau}\delta(S,t)
+  \ge
+  2\ceil{\frac{D(S,\tau)}{C}}.
+  \label{eq:rounded-capacity}
+\end{equation}
+
+Essa desigualdade expressa que, para atender o volume obrigatório de $S$, são
+necessários pelo menos $\ceil{D(S,\tau)/C}$ carregamentos de capacidade $C$;
+cada carregamento precisa cruzar o corte para entrar e sair de $S$.
+
+\subsection{Separação implementada}
+
+As desigualdades em \eqref{eq:rounded-capacity} não são todas inseridas na
+construção inicial do modelo. Quando o recurso está habilitado, o CPLEX chama
+um \texttt{UserCutCallback} em pontos fracionários da relaxação. A rotina:
+
+\begin{enumerate}[leftmargin=1.8em]
+  \item lê os valores fracionários das variáveis $z$;
+  \item agrega os arcos por prefixo temporal;
+  \item cria sementes unitárias e pares de clientes com maior conectividade
+        interna;
+  \item aplica crescimento e uma busca local vetorizada por remoção, adição e
+        troca de clientes;
+  \item calcula a violação de cada candidato e retém os mais violados;
+  \item elimina cortes duplicados por meio da chave $(\tau,S)$;
+  \item adiciona as linhas globais com sentido $\ge$ quando a violação supera
+        \texttt{min\_violation}.
+\end{enumerate}
+
+O separador é heurístico: ele não enumera todos os subconjuntos $S$. A família
+em \eqref{eq:rounded-capacity} é válida; a heurística somente determina quais
+de suas desigualdades serão encontradas em cada chamada.
+
+\subsection{Agendamento e limites}
+
+Os parâmetros atuais são:
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Parâmetro & Valor padrão atual \\
+\midrule
+\texttt{enabled} & \texttt{false} \\
+\texttt{node\_frequency} & $50$ \\
+\texttt{max\_non\_root\_node} & $200$ \\
+\texttt{max\_cuts\_per\_callback} & $20$ \\
+\texttt{max\_cuts\_per\_non\_root\_callback} & $3$ \\
+\texttt{min\_violation} & $10^{-6}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O callback é sempre elegível no nó raiz. Nos nós não-raiz, ele só é elegível
+até o nó configurado e em múltiplos de \texttt{node\_frequency}. O limite de
+20 é por chamada do callback; se o CPLEX chamar a separação novamente, novas
+desigualdades ainda podem ser adicionadas, sujeitas à deduplicação.
+
+Os cortes são instalados somente no MIP exato. Eles não são adicionados ao
+PSO, ao modelo auxiliar de dimensionamento de lotes
+(\texttt{LotSizingRelaxation}) nem ao modelo usado para construir targets.
+Também não é criado um segundo CPLEX dentro do callback.
+
+\section{Domínios e formulação completa}
+
+Além das restrições anteriores, valem:
+\begin{align}
+  x_{pt},I_{pit},r_{pvikt},q_{pvit},p_t^j,n_t^j,\lambda &\ge0,
+  \label{eq:nonnegative}\\
+  y_{pt},z_{vikt} &\in\{0,1\}.
+  \label{eq:binary}
+\end{align}
+
+O modelo atual é, portanto, um MIP formado por
+\eqref{eq:objective}--\eqref{eq:lambda}, pelos balanços de estoque
+\eqref{eq:plant-balance-initial}--\eqref{eq:customer-balance}, pelas
+capacidades \eqref{eq:production-capacity}--\eqref{eq:inventory-capacity},
+pelos fluxos \eqref{eq:product-flow-customer}--\eqref{eq:product-flow-plant},
+pelas restrições de rota \eqref{eq:arc-capacity}--\eqref{eq:single-visit},
+opcionalmente por HC1 em \eqref{eq:VC}--\eqref{eq:HC1} e Coelho em
+\eqref{eq:coelho-15}--\eqref{eq:coelho-17}, além dos cortes dinâmicos da
+família \eqref{eq:rounded-capacity}.
+
+\section{Correspondência com a implementação}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Componente & Implementação \\
+\midrule
+Variáveis e restrições base & \texttt{MultProductProdctionRoutingProblem.py} \\
+Função objetivo & \texttt{crateObjectiveFunction} \\
+Balanços de estoque & \texttt{createEstablishInvetoryBalanceAtPlant},\\
+& \texttt{creteInventoryBalancingInventoryCustomers} \\
+Fluxo de produtos & \texttt{createVehiclePreventTransshipmentIntermediateNodes},\\
+& \texttt{createEliminationSubroutes} \\
+Capacidade e roteamento & métodos \texttt{createVehicle...} \\
+HC1/VC & \texttt{createVehicleSymmetryBreaking} \\
+Coelho & \texttt{createCoelhoValidInequalities} \\
+Separador & \texttt{RoundedCapacitySeparation.py} \\
+Callback & \texttt{\_install\_rounded\_capacity\_callback} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}

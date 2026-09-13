@@ -20,11 +20,24 @@ from docplex.mp.model import Model
 from docplex.mp.relax_linear import LinearRelaxer
 from src.log.Logger import Logger
 from src.helpers.SolverTelemetry import get_config
+from src.solvers.RoundedCapacitySeparation import (
+    build_obligatory_demands,
+    separate_cumulative_cuts,
+)
 
 
 class MultProductProdctionRoutingProblem:
 
-    def __init__(self, map, dir, log: Logger, start):
+    def __init__(
+        self,
+        map,
+        dir,
+        log: Logger,
+        start,
+        symmetry_breaking_hc1=None,
+        coelho_inequalities=None,
+        positive_only_deviations=None,
+    ):
         self.log: Logger = log
         self.log.debug(">> Iniciando MultProductProdctionRoutingProblem.")
         self.model = Model(name="Multi_Product_Prodction_Routing_Problem")
@@ -69,13 +82,41 @@ class MultProductProdctionRoutingProblem:
         self.relaxedModelObjVal = 0
         self.objBound = 0
         self.nodeCount = 0
+        self.nodesRemaining = 0
         self.start = start
+        self.symmetry_breaking_hc1 = symmetry_breaking_hc1
+        self.coelho_inequalities = coelho_inequalities
+        if positive_only_deviations is None:
+            positive_only_deviations = Config.get_nested(
+                "solver", "goal_programming", "positive_only_deviations", default=False
+            )
+        self.positive_only_deviations = bool(positive_only_deviations)
         self.alpha = map["alpha"] if "alpha" in map else None
         self.telemetry_config = get_config(Config)
         self._telemetry_started_at = None
         self._telemetry_events = []
+        self._last_bound_progress_seconds = None
+        self._last_bound_progress_value = None
         self._first_feasible_seconds = None
         self._gap_target_seconds = None
+        self.rounded_capacity_config = Config.get_nested(
+            "solver", "rounded_capacity_inequalities", default={}
+        ) or {}
+        self._rounded_capacity_z_indices = []
+        self._rounded_capacity_cut_rows = {}
+        self._rounded_capacity_obligatory_demands = None
+        self._rounded_capacity_stats = {
+            "callback_calls": 0,
+            "separator_calls": 0,
+            "candidate_evaluations": 0,
+            "cuts_found": 0,
+            "cuts_added": 0,
+            "cuts_rejected": 0,
+            "duplicate_cuts": 0,
+            "callback_errors": 0,
+            "separator_seconds": 0.0,
+            "max_violation": 0.0,
+        }
         self.log.debug(">> Finalizado MultProductProdctionRoutingProblem.")
 
     def createDecisionVariables(self):
@@ -117,9 +158,11 @@ class MultProductProdctionRoutingProblem:
         self.positive = self.model.continuous_var_dict(
             keys=((j, t) for j in range(self.j) for t in range(self.t)), name=f"p"
         )
-        self.negative = self.model.continuous_var_dict(
-            keys=((j, t) for j in range(self.j) for t in range(self.t)), name=f"n"
-        )
+        self.negative = None
+        if not self.positive_only_deviations:
+            self.negative = self.model.continuous_var_dict(
+                keys=((j, t) for j in range(self.j) for t in range(self.t)), name=f"n"
+            )
         self.lambda_ = self.model.continuous_var(name="lambda")
 
     def startVariables(self):
@@ -248,24 +291,20 @@ class MultProductProdctionRoutingProblem:
                 self._adjust_targets()
                 self.log.debug(">> FO multiobjective.")
                 self.model.minimize(
-                    self.model.sum(
-                        self.alpha * self.lambda_
+                    self.alpha * self.lambda_
+                    + self.model.sum(
                         + (1 - self.alpha)
                         * (self.weight[0] * self.positive[0, t])
                         / self.new_targets[t]["f1_target"]
-                        + self.alpha * self.lambda_
                         + (1 - self.alpha)
                         * (self.weight[1] * self.positive[1, t])
                         / self.new_targets[t]["f2_target"]
-                        + self.alpha * self.lambda_
                         + (1 - self.alpha)
                         * (self.weight[2] * self.positive[2, t])
                         / self.new_targets[t]["f3_target"]
-                        + self.alpha * self.lambda_
                         + (1 - self.alpha)
                         * (self.weight[3] * self.positive[3, t])
                         / self.new_targets[t]["f4_target"]
-                        + self.alpha * self.lambda_
                         + (1 - self.alpha)
                         * (self.weight[4] * self.positive[4, t])
                         / self.new_targets[t]["f5_target"]
@@ -443,22 +482,137 @@ class MultProductProdctionRoutingProblem:
                 )
                 self.model.add_constraint(r12 <= 1, ctname=f"EQ_12_k_{k}_t_{t}")
 
+    def createCoelhoValidInequalities(self):
+        """Add logical inequalities (15)-(17) from Coelho and Laporte.
+
+        The article uses undirected edge variables x and visit variables y.
+        This model stores directed arcs in Z, so the same logic is written
+        using projected visit and vehicle-use expressions over Z.
+        """
+        coelho_inequalities = self.coelho_inequalities
+        if coelho_inequalities is None:
+            coelho_inequalities = Config.get_nested(
+                "solver", "coelho_inequalities", default=False
+            )
+        if not coelho_inequalities:
+            return False
+
+        for v in range(self.v):
+            for t in range(self.t):
+                vehicle_active = self.model.sum(
+                    self.model.Z_v_i_k_t[v, 0, k, t] for k in range(1, self.k)
+                )
+
+                # Eq. (15): x_0i <= 2 y_i.
+                for i in range(1, self.i):
+                    customer_visit = self.model.sum(
+                        self.model.Z_v_i_k_t[v, i, k, t]
+                        for k in range(self.k)
+                        if k != i
+                    )
+                    self.model.add_constraint(
+                        self.model.Z_v_i_k_t[v, 0, i, t] <= 2 * customer_visit,
+                        ctname=f"COELHO_15_v_{v}_i_{i}_t_{t}",
+                    )
+
+                # Eq. (16): x_ij <= y_i.
+                for i in range(self.i):
+                    origin_visit = (
+                        vehicle_active
+                        if i == 0
+                        else self.model.sum(
+                            self.model.Z_v_i_k_t[v, i, k, t]
+                            for k in range(self.k)
+                            if k != i
+                        )
+                    )
+                    for k in range(self.k):
+                        if i == k:
+                            continue
+                        self.model.add_constraint(
+                            self.model.Z_v_i_k_t[v, i, k, t] <= origin_visit,
+                            ctname=f"COELHO_16_v_{v}_i_{i}_k_{k}_t_{t}",
+                        )
+
+                # Eq. (17): y_i <= y_0.
+                for i in range(1, self.i):
+                    customer_visit = self.model.sum(
+                        self.model.Z_v_i_k_t[v, i, k, t]
+                        for k in range(self.k)
+                        if k != i
+                    )
+                    self.model.add_constraint(
+                        customer_visit <= vehicle_active,
+                        ctname=f"COELHO_17_v_{v}_i_{i}_t_{t}",
+                    )
+        return True
+
+    def createVehicleSymmetryBreaking(self):
+        """Remove equivalent vehicle-label permutations from the MIP model.
+
+        The vehicle indices are interchangeable in the current formulation. VC
+        canonicalizes vehicle activation, and HC1 additionally requires a
+        higher-index vehicle to serve a customer only when the preceding vehicle
+        serves at least one lower-index customer in the same period.
+        """
+        symmetry_breaking_hc1 = self.symmetry_breaking_hc1
+        if symmetry_breaking_hc1 is None:
+            symmetry_breaking_hc1 = Config.get_nested(
+                "solver", "symmetry_breaking", "hc1", default=False
+            )
+        if not symmetry_breaking_hc1:
+            return False
+
+        for v in range(1, self.v):
+            for t in range(self.t):
+                current_vehicle_active = self.model.sum(
+                    self.model.Z_v_i_k_t[v, 0, k, t] for k in range(1, self.k)
+                )
+                previous_vehicle_active = self.model.sum(
+                    self.model.Z_v_i_k_t[v - 1, 0, k, t]
+                    for k in range(1, self.k)
+                )
+                self.model.add_constraint(
+                    current_vehicle_active <= previous_vehicle_active,
+                    ctname=f"SB_VC_v_{v}_t_{t}",
+                )
+
+            for i in range(1, self.i):
+                for t in range(self.t):
+                    current_vehicle_visit = self.model.sum(
+                        self.model.Z_v_i_k_t[v, i, k, t]
+                        for k in range(self.k)
+                        if k != i
+                    )
+                    previous_vehicle_lower_customer_visit = self.model.sum(
+                        self.model.Z_v_i_k_t[v - 1, j, k, t]
+                        for j in range(1, i)
+                        for k in range(self.k)
+                        if k != j
+                    )
+                    self.model.add_constraint(
+                        current_vehicle_visit <= previous_vehicle_lower_customer_visit,
+                        ctname=f"SB_HC1_v_{v}_i_{i}_t_{t}",
+                    )
+        return True
+
     def createGoalProgrammingRestrictions(self):
         for t in range(self.t):
-            self.model.add_constraints(
-                [
-                    self.f1[t] + self.negative[0, t] - self.positive[0, t]
-                    == self.targets[t]["f1_target"],
-                    self.f2[t] + self.negative[1, t] - self.positive[1, t]
-                    == self.targets[t]["f2_target"],
-                    self.f3[t] + self.negative[2, t] - self.positive[2, t]
-                    == self.targets[t]["f3_target"],
-                    self.f4[t] + self.negative[3, t] - self.positive[3, t]
-                    == self.targets[t]["f4_target"],
-                    self.f5[t] + self.negative[4, t] - self.positive[4, t]
-                    == self.targets[t]["f5_target"],
-                ]
-            )
+            objectives = self.f1, self.f2, self.f3, self.f4, self.f5
+            target_keys = "f1_target", "f2_target", "f3_target", "f4_target", "f5_target"
+            if self.positive_only_deviations:
+                self.model.add_constraints(
+                    self.positive[j, t] >= objectives[j][t] - self.targets[t][target_keys[j]]
+                    for j in range(self.j)
+                )
+            else:
+                self.model.add_constraints(
+                    objectives[j][t]
+                    + self.negative[j, t]
+                    - self.positive[j, t]
+                    == self.targets[t][target_keys[j]]
+                    for j in range(self.j)
+                )
 
     def createEpsilonRestricted(self):
         for t in range(self.t):
@@ -655,23 +809,48 @@ class MultProductProdctionRoutingProblem:
             if not REPLACE_MODEL:
                 relaxed.end()
 
+    def _get_cplex_progress_value(self, method_name):
+        try:
+            progress = self.model.get_cplex().solution.progress
+            value = getattr(progress, method_name)()
+            return int(value) if value is not None else None
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return None
+
+    def _update_node_progress(self, processed=None, remaining=None):
+        if processed is not None:
+            self.nodeCount = max(self.nodeCount, int(processed))
+        if remaining is not None:
+            self.nodesRemaining = int(remaining)
+
     def processInformationsSolver(self):
-        if self.model.solve_details:
+        details = getattr(self.model, "solve_details", None)
+        if details:
             self.solCount = 1 if self.model.solution else 0
             self.objBound = (
-                self.model.solve_details.best_bound
-                if hasattr(self.model.solve_details, "best_bound")
-                else 0
+                details.best_bound if hasattr(details, "best_bound") else 0
             )
-            self.nodeCount = (
-                self.model.solve_details.nb_nodes_processed
-                if hasattr(self.model.solve_details, "nb_nodes_processed")
-                else 0
+
+            detail_nodes = getattr(details, "nb_nodes_processed", None)
+            progress_nodes = self._get_cplex_progress_value(
+                "get_num_nodes_processed"
             )
+            self._update_node_progress(processed=progress_nodes)
+            node_counts = [
+                int(value)
+                for value in (detail_nodes, progress_nodes)
+                if value is not None and int(value) >= 0
+            ]
+            self.nodeCount = max(self.nodeCount, max(node_counts, default=0))
+            progress_remaining = self._get_cplex_progress_value(
+                "get_num_nodes_remaining"
+            )
+            self._update_node_progress(remaining=progress_remaining)
         else:
             self.solCount = 0
             self.objBound = 0
             self.nodeCount = 0
+            self.nodesRemaining = 0
 
     def _record_mip_telemetry(self, elapsed_seconds, has_incumbent, relative_gap):
         if not self.telemetry_config["enabled"]:
@@ -682,6 +861,55 @@ class MultProductProdctionRoutingProblem:
         if relative_gap is not None and relative_gap <= self.telemetry_config["gap_target_relative"] and self._gap_target_seconds is None:
             self._gap_target_seconds = float(elapsed_seconds)
             self._telemetry_events.append({"event": "gap_target", "elapsed_seconds": float(elapsed_seconds), "gap": float(relative_gap)})
+
+    def _record_bound_progress(
+        self,
+        elapsed_seconds,
+        best_bound,
+        incumbent_objective=None,
+        relative_gap=None,
+        nodes_processed=None,
+        nodes_remaining=None,
+    ):
+        if not self.telemetry_config["enabled"] or best_bound is None:
+            return
+        try:
+            best_bound = float(best_bound)
+        except (TypeError, ValueError):
+            return
+
+        interval = self.telemetry_config.get("bound_progress_interval_seconds", 1.0)
+        elapsed_seconds = float(elapsed_seconds)
+        if (
+            self._last_bound_progress_seconds is not None
+            and elapsed_seconds - self._last_bound_progress_seconds < interval
+            and best_bound == self._last_bound_progress_value
+        ):
+            return
+
+        event = {
+            "event": "bound_progress",
+            "elapsed_seconds": elapsed_seconds,
+            "best_bound": best_bound,
+            "incumbent_objective": (
+                float(incumbent_objective)
+                if incumbent_objective is not None
+                else None
+            ),
+            "relative_gap": (
+                float(relative_gap) if relative_gap is not None else None
+            ),
+            "nodes_processed": (
+                int(nodes_processed) if nodes_processed is not None else None
+            ),
+            "nodes_remaining": (
+                int(nodes_remaining) if nodes_remaining is not None else None
+            ),
+            "is_root": nodes_processed == 0 and nodes_remaining == 1,
+        }
+        self._telemetry_events.append(event)
+        self._last_bound_progress_seconds = elapsed_seconds
+        self._last_bound_progress_value = best_bound
 
     def get_telemetry(self):
         details = getattr(self.model, "solve_details", None)
@@ -695,19 +923,181 @@ class MultProductProdctionRoutingProblem:
                 pass
         gap = getattr(details, "mip_relative_gap", None)
         self._record_mip_telemetry(self.time, objective is not None, gap)
+        self._record_bound_progress(
+            self.time,
+            getattr(details, "best_bound", None),
+            incumbent_objective=objective,
+            relative_gap=gap,
+            nodes_processed=self.nodeCount,
+            nodes_remaining=self.nodesRemaining,
+        )
+        rounded_capacity = dict(self._rounded_capacity_stats)
+        separator_calls = rounded_capacity["separator_calls"]
+        rounded_capacity["separator_average_seconds"] = (
+            rounded_capacity["separator_seconds"] / separator_calls
+            if separator_calls
+            else 0.0
+        )
+        root_bounds = [
+            event["best_bound"]
+            for event in self._telemetry_events
+            if event.get("event") == "bound_progress" and event.get("is_root")
+        ]
         return {
             "strategy": "solver",
             "mip_seconds": float(self.time), "status": status, "timed_out": timed_out,
             "objective": objective, "best_bound": getattr(details, "best_bound", None),
+            "root_bound": root_bounds[0] if root_bounds else None,
             "relative_gap": gap, "node_count": self.nodeCount, "solution_count": self.solCount,
+            "nodes_remaining": self.nodesRemaining,
+            "positive_only_deviations": self.positive_only_deviations,
             "first_feasible_seconds": self._first_feasible_seconds,
             "gap_target_seconds": self._gap_target_seconds,
             "mip_events": list(self._telemetry_events), "pso_iterations": [],
+            "rounded_capacity": rounded_capacity,
         }
 
+    def _rounded_capacity_enabled(self):
+        return bool(self.rounded_capacity_config.get("enabled", False))
+
+    def _prepare_rounded_capacity_callback_data(self):
+        if not self._rounded_capacity_enabled():
+            return False
+
+        self._rounded_capacity_obligatory_demands = build_obligatory_demands(
+            self.d_p_i_t, self.I_p_i_0
+        )
+        cplex_model = self.model.get_cplex()
+        index_by_name = {
+            name: index for index, name in enumerate(cplex_model.variables.get_names())
+        }
+        self._rounded_capacity_z_indices = []
+        for t in range(self.t):
+            for v in range(self.v):
+                for i in range(self.i):
+                    for k in range(self.k):
+                        if i == k:
+                            continue
+                        name = f"Z_{v}_{i}_{k}_{t}"
+                        try:
+                            index = index_by_name[name]
+                        except KeyError as error:
+                            raise RuntimeError(
+                                f"Variavel de rota ausente no callback: {name}"
+                            ) from error
+                        self._rounded_capacity_z_indices.append((t, v, i, k, index))
+        return True
+
+    def _rounded_capacity_should_separate(self, node_count):
+        if node_count == 0:
+            return True
+        max_non_root_node = int(
+            self.rounded_capacity_config.get("max_non_root_node", 200)
+        )
+        frequency = int(self.rounded_capacity_config.get("node_frequency", 50))
+        return node_count <= max_non_root_node and node_count % frequency == 0
+
+    def _rounded_capacity_build_row(self, cut):
+        selected = set(customer + 1 for customer in cut.customers)
+        indices = []
+        values = []
+        for t, v, i, k, index in self._rounded_capacity_z_indices:
+            if t > cut.tau:
+                continue
+            if (i in selected) != (k in selected):
+                indices.append(index)
+                values.append(1.0)
+        return indices, values
+
+    def _run_rounded_capacity_separator(self, callback, max_cuts):
+        started_at = time.perf_counter()
+        self._rounded_capacity_stats["separator_calls"] += 1
+        try:
+            indices = [item[4] for item in self._rounded_capacity_z_indices]
+            values = callback.get_values(indices)
+            z_values = np.zeros((self.t, self.v, self.i, self.k), dtype=float)
+            for item, value in zip(self._rounded_capacity_z_indices, values):
+                t, v, i, k, _ = item
+                z_values[t, v, i, k] = float(value)
+
+            separation_stats = {}
+            cuts = separate_cumulative_cuts(
+                z_values,
+                self._rounded_capacity_obligatory_demands,
+                self.C,
+                max_cuts=max_cuts,
+                min_violation=float(
+                    self.rounded_capacity_config.get("min_violation", 1e-6)
+                ),
+                customer_node_offset=1,
+                statistics=separation_stats,
+            )
+            self._rounded_capacity_stats["candidate_evaluations"] += int(
+                separation_stats.get("candidate_evaluations", 0)
+            )
+            self._rounded_capacity_stats["cuts_found"] += len(cuts)
+            for cut in cuts:
+                self._rounded_capacity_stats["max_violation"] = max(
+                    self._rounded_capacity_stats["max_violation"], cut.violation
+                )
+                if cut.key in self._rounded_capacity_cut_rows:
+                    self._rounded_capacity_stats["duplicate_cuts"] += 1
+                    continue
+                row_indices, row_values = self._rounded_capacity_build_row(cut)
+                if not row_indices:
+                    self._rounded_capacity_stats["cuts_rejected"] += 1
+                    continue
+                self._rounded_capacity_cut_rows[cut.key] = (cut.rhs, cut.violation)
+                import cplex
+
+                callback.add(
+                    cplex.SparsePair(ind=row_indices, val=row_values), "G", cut.rhs
+                )
+                self._rounded_capacity_stats["cuts_added"] += 1
+        finally:
+            self._rounded_capacity_stats["separator_seconds"] += (
+                time.perf_counter() - started_at
+            )
+
+    def _install_rounded_capacity_callback(self):
+        if not self._rounded_capacity_enabled():
+            return False
+        try:
+            from cplex.callbacks import UserCutCallback
+
+            self._prepare_rounded_capacity_callback_data()
+            owner = self
+
+            class RoundedCapacityCallback(UserCutCallback):
+                def __call__(self):
+                    owner._rounded_capacity_stats["callback_calls"] += 1
+                    try:
+                        node_count = int(self.get_num_nodes())
+                        if not owner._rounded_capacity_should_separate(node_count):
+                            return
+                        max_cuts = int(
+                            owner.rounded_capacity_config.get(
+                                "max_cuts_per_callback", 20
+                            )
+                            if node_count == 0
+                            else owner.rounded_capacity_config.get(
+                                "max_cuts_per_non_root_callback", 3
+                            )
+                        )
+                        owner._run_rounded_capacity_separator(self, max_cuts)
+                    except Exception as error:
+                        owner._rounded_capacity_stats["callback_errors"] += 1
+                        owner.log.warning(
+                            f"Separacao de capacidade arredondada ignorada: {error}"
+                        )
+
+            self.model.register_callback(RoundedCapacityCallback)
+            return True
+        except Exception as error:
+            self.log.warning(f"Callback de capacidade arredondada indisponivel: {error}")
+            return False
+
     def _install_mip_telemetry_callback(self):
-        if not self.telemetry_config["enabled"]:
-            return
         try:
             from cplex.callbacks import MIPInfoCallback
             owner = self
@@ -715,9 +1105,29 @@ class MultProductProdctionRoutingProblem:
             class TelemetryCallback(MIPInfoCallback):
                 def __call__(self):
                     try:
+                        owner._update_node_progress(
+                            processed=self.get_num_nodes(),
+                            remaining=self.get_num_remaining_nodes(),
+                        )
+                        if not owner.telemetry_config["enabled"]:
+                            return
                         elapsed = time.perf_counter() - started_at
                         incumbent = self.has_incumbent()
                         gap = self.get_MIP_relative_gap() if incumbent else None
+                        best_bound = self.get_best_objective_value()
+                        incumbent_objective = (
+                            self.get_incumbent_objective_value()
+                            if incumbent
+                            else None
+                        )
+                        owner._record_bound_progress(
+                            elapsed,
+                            best_bound,
+                            incumbent_objective=incumbent_objective,
+                            relative_gap=gap,
+                            nodes_processed=self.get_num_nodes(),
+                            nodes_remaining=self.get_num_remaining_nodes(),
+                        )
                         owner._record_mip_telemetry(elapsed, incumbent, gap)
                     except Exception:
                         pass
@@ -759,12 +1169,22 @@ class MultProductProdctionRoutingProblem:
         self.log.debug("Rota somente entre plantas criado")
         self.createVehicleMostVisitCustomerEachPeriod()
         self.log.debug("Veículo visita cliente criado")
+        if self.createCoelhoValidInequalities():
+            self.log.debug("Desigualdades lógicas de Coelho (15)-(17) criadas")
+        if self.createVehicleSymmetryBreaking():
+            self.log.debug("Quebra de simetria VC + HC1 criada")
         # self.outModel()
         if Config.get_nested("postprocessing", "build_target"):
-            self.generteRelax(
-                REPLACE_MODEL=Config.get_nested("relaxed_solution", "replace_model")
+            target_use_relaxation = Config.get_nested(
+                "relaxed_solution", "target_use_relaxation", default=True
             )
-            self.log.debug("Solução relaxada gerada")
+            if target_use_relaxation:
+                self.generteRelax(
+                    REPLACE_MODEL=Config.get_nested("relaxed_solution", "replace_model")
+                )
+                self.log.debug("Solução relaxada gerada para construção do target")
+            else:
+                self.log.debug("Construção do target usando o modelo MIP inteiro")
         else:
             self.log.debug("Solução não relaxada - usando modelo original")
 
@@ -777,6 +1197,8 @@ class MultProductProdctionRoutingProblem:
         start_time = time.time()
         self._telemetry_started_at = time.perf_counter()
         self._install_mip_telemetry_callback()
+        if not Config.get_nested("postprocessing", "build_target", default=False):
+            self._install_rounded_capacity_callback()
         if not Config.get_nested("relaxed_solution", "use"):
             self.solution = self.model.solve(log_output=False)
         end_time = time.time()
