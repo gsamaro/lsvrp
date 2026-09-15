@@ -24,6 +24,12 @@ from src.solvers.RoundedCapacitySeparation import (
     build_obligatory_demands,
     separate_cumulative_cuts,
 )
+from src.solvers._solver_common import (
+    ProblemData,
+    compute_delivery_upper_bounds,
+    compute_inventory_upper_bounds,
+    compute_production_upper_bounds,
+)
 
 
 class MultProductProdctionRoutingProblem:
@@ -88,9 +94,17 @@ class MultProductProdctionRoutingProblem:
         self.coelho_inequalities = coelho_inequalities
         if positive_only_deviations is None:
             positive_only_deviations = Config.get_nested(
-                "solver", "goal_programming", "positive_only_deviations", default=False
+                "solver", "goal_programming", "positive_only_deviations", default=True
             )
         self.positive_only_deviations = bool(positive_only_deviations)
+        problem_data = ProblemData.from_map(map)
+        self.production_upper_bounds = compute_production_upper_bounds(problem_data)
+        self.delivery_upper_bounds = compute_delivery_upper_bounds(problem_data)
+        self.inventory_upper_bounds = compute_inventory_upper_bounds(problem_data)
+        self.M_p = np.minimum(
+            float(self.M),
+            np.asarray(self.d_p_i_t, dtype=float).sum(axis=(1, 2)),
+        )
         self.alpha = map["alpha"] if "alpha" in map else None
         self.telemetry_config = get_config(Config)
         self._telemetry_started_at = None
@@ -374,8 +388,9 @@ class MultProductProdctionRoutingProblem:
     def createRelationshipBetweenProduction(self):
         for p in range(self.p):
             for t in range(self.t):
+                upper_bound = float(self.production_upper_bounds[p, t])
                 self.model.add_constraint(
-                    self.model.X_p_t[p, t] <= self.M * self.model.Y_p_t[p, t],
+                    self.model.X_p_t[p, t] <= upper_bound * self.model.Y_p_t[p, t],
                     ctname=f"EQ_5_p_{p}_t_{t}",
                 )
 
@@ -384,7 +399,8 @@ class MultProductProdctionRoutingProblem:
             for i in range(self.i):
                 for t in range(self.t):
                     self.model.add_constraint(
-                        self.model.I_p_i_t[p, i, t] <= self.U_p_i[p][i],
+                        self.model.I_p_i_t[p, i, t]
+                        <= float(self.inventory_upper_bounds[p, i, t]),
                         ctname=f"EQ_6_p_{p}_i_{i}_t_{t}",
                     )
 
@@ -481,6 +497,32 @@ class MultProductProdctionRoutingProblem:
                     if k != i
                 )
                 self.model.add_constraint(r12 <= 1, ctname=f"EQ_12_k_{k}_t_{t}")
+
+    def createVehicleVisitDeliveryBounds(self):
+        for v in range(self.v):
+            for i in range(1, self.i):
+                for t in range(self.t):
+                    visit = self.model.sum(
+                        self.model.Z_v_i_k_t[v, i, k, t]
+                        for k in range(self.k)
+                        if k != i
+                    )
+                    self.model.add_constraint(
+                        self.model.sum(
+                            self.model.Q_p_v_i_t[p, v, i, t]
+                            for p in range(self.p)
+                        )
+                        <= self.C * visit,
+                        ctname=f"VISIT_CAP_Z_v_{v}_i_{i}_t_{t}",
+                    )
+                    for p in range(self.p):
+                        q_upper = float(self.delivery_upper_bounds[p, i, t])
+                        self.model.add_constraint(
+                            self.model.Q_p_v_i_t[p, v, i, t]
+                            <= q_upper * visit,
+                            ctname=f"VISIT_Q_Z_p_{p}_v_{v}_i_{i}_t_{t}",
+                        )
+        return True
 
     def createCoelhoValidInequalities(self):
         """Add logical inequalities (15)-(17) from Coelho and Laporte.
@@ -1169,6 +1211,8 @@ class MultProductProdctionRoutingProblem:
         self.log.debug("Rota somente entre plantas criado")
         self.createVehicleMostVisitCustomerEachPeriod()
         self.log.debug("Veículo visita cliente criado")
+        if self.createVehicleVisitDeliveryBounds():
+            self.log.debug("Bounds de entrega por visita em função de Z criados")
         if self.createCoelhoValidInequalities():
             self.log.debug("Desigualdades lógicas de Coelho (15)-(17) criadas")
         if self.createVehicleSymmetryBreaking():

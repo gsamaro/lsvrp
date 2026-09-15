@@ -135,6 +135,22 @@ class MPPRPObjectiveTestCase(unittest.TestCase):
         assert len(constraints) == 5
         assert all(">=" in str(constraint) for constraint in constraints)
 
+    def test_default_goal_programming_omits_negative_variables(self):
+        data = self._data()
+        data["targets"] = [{f"f{j}_target": 10.0 for j in range(1, 6)}]
+
+        module = _load_real_mpprp()
+        solver = module.MultProductProdctionRoutingProblem(
+            map=data,
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+        solver.createDecisionVariables()
+
+        assert solver.positive_only_deviations is True
+        assert solver.negative is None
+
     def test_decision_variables_exclude_diagonal_arcs(self):
         module = _load_real_mpprp()
         solver = module.MultProductProdctionRoutingProblem(
@@ -151,6 +167,58 @@ class MPPRPObjectiveTestCase(unittest.TestCase):
         for node in range(3):
             self.assertNotIn((0, node, node, 0), solver.model.Z_v_i_k_t)
             self.assertNotIn((0, 0, node, node, 0), solver.model.R_p_v_i_k_t)
+
+    def test_strengthened_bounds_replace_global_production_big_m(self):
+        module = _load_real_mpprp()
+        data = self._data(num_customers=2, num_vehicles=2)
+        data["M"] = 100
+        data["B"] = 10
+        data["d_pit"] = [[[5], [7]]]
+        solver = module.MultProductProdctionRoutingProblem(
+            map=data,
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+
+        solver.createDecisionVariables()
+        solver.createRelationshipBetweenProduction()
+
+        names = [constraint.name for constraint in solver.model.iter_constraints()]
+        assert "EQ_5_p_0_t_0" in names
+        production_constraint = next(
+            constraint for constraint in solver.model.iter_constraints()
+            if constraint.name == "EQ_5_p_0_t_0"
+        )
+        assert "10" in str(production_constraint)
+
+    def test_z_delivery_bounds_are_always_present_without_w_variables(self):
+        module = _load_real_mpprp()
+        data = self._data(num_customers=2, num_vehicles=2)
+        data["U_pi"] = [[3, 4, 5]]
+        data["d_pit"] = [[[5], [7]]]
+        solver = module.MultProductProdctionRoutingProblem(
+            map=data,
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+
+        solver.createDecisionVariables()
+        names = [variable.name for variable in solver.model.iter_variables()]
+        assert not any(name.startswith("W_") for name in names)
+        assert solver.createVehicleVisitDeliveryBounds() is True
+
+        names = [constraint.name for constraint in solver.model.iter_constraints()]
+        assert sum(name.startswith("VISIT_CAP_Z_") for name in names) == 4
+        assert sum(name.startswith("VISIT_Q_Z_") for name in names) == 4
+
+        q_constraint = next(
+            constraint
+            for constraint in solver.model.iter_constraints()
+            if constraint.name == "VISIT_Q_Z_p_0_v_0_i_1_t_0"
+        )
+        assert "9" in str(q_constraint)
 
     def test_mip_start_ignores_diagonal_arc_values(self):
         module = _load_real_mpprp()

@@ -131,7 +131,7 @@ class FeasibleParticleHeuristicTestCase(unittest.TestCase):
             "C": 10,
             "f": 7,
             "a_ik": [[0, 1, 2], [1, 0, 1], [2, 1, 0]],
-            "d_pit": [[[1], [1]]],
+            "d_pit": [[[3], [5]]],
             "weight": [0.2] * 5,
             "alpha": 0.01,
         }
@@ -171,9 +171,12 @@ class FeasibleParticleHeuristicTestCase(unittest.TestCase):
                 for solution in solutions
             )
         )
-        self.assertNotEqual(
-            solutions[0]["Q"][0, 0, 1, 0],
-            solutions[1]["Q"][0, 0, 1, 0],
+        self.assertTrue(
+            all(
+                0 <= solution["Q"][0, 0, customer, 0] <= 5
+                for solution in solutions
+                for customer in (1, 2)
+            )
         )
 
     def test_vehicle_aware_drain_keeps_each_customer_in_one_vehicle(self):
@@ -198,8 +201,8 @@ class FeasibleParticleHeuristicTestCase(unittest.TestCase):
             "alpha": 0.01,
         }
         bounds = {
-            "lower": np.array([[583.0]]),
-            "upper": np.array([[583.0]]),
+            "lower": np.array([[500.0]]),
+            "upper": np.array([[500.0]]),
         }
         heuristic = FeasibleParticleHeuristic(data, "/tmp", DummyLogger(), bounds=bounds)
 

@@ -77,6 +77,12 @@ da instância.
   \item[$C$] capacidade de carga de cada veículo;
   \item[$f$] custo fixo de transporte por saída da planta;
   \item[$a_{ik}$] custo variável do arco orientado $(i,k)$;
+  \item[$M_p$] limite específico por produto, definido por
+  $M_p=\min\{M,\sum_{\tau\in\set{T}}\sum_{i\in\set{C}}d_{pi\tau}\}$;
+  \item[$D^{\mathrm{restante}}_{p,t}$] demanda do produto $p$ nos períodos
+  $t,\ldots,T-1$;
+  \item[$\overline Q_{pit}$] limite específico de entrega, definido por
+  $\overline Q_{pit}=\min\{C,U_{pi}+d_{pit}\}$;
   \item[$w_j$] peso do componente de custo $j$;
   \item[$\alpha$] peso do termo minimax na função objetivo, com
   $0\le\alpha\le1$;
@@ -84,6 +90,17 @@ da instância.
   \item[$\widetilde b_t^j$] target utilizado pelo modelo. Se o target original
   for zero, a implementação o substitui pela média temporal daquele componente.
 \end{description}
+
+\section{Configuração da formulação completa}
+
+Para a variante fortalecida considerada neste documento, as extensões são
+ativadas conjuntamente: modo multiobjetivo, HC1, desigualdades de Coelho e
+Rounded Capacity Inequalities. Não há variáveis explícitas de visita. A opção
+\texttt{solver.goal\_programming.positive\_only\_deviations} é verdadeira por
+padrão, de modo que os desvios negativos $n_t^j$ não são criados.
+
+O PSO não altera a formulação do MIP; quando ativado, ele fornece uma solução
+inicial para o mesmo modelo exato.
 
 \section{Variáveis de decisão}
 
@@ -153,6 +170,9 @@ o código elimina $n_t^j$ e usa a projeção equivalente:
   \label{eq:positive-only}
 \end{equation}
 
+Essa é a configuração padrão atual. A variante com $n_t^j$ continua disponível
+somente quando a opção é explicitamente definida como \texttt{false}.
+
 \section{Restrições de produção e estoque}
 
 \subsection{Balanço de estoque na planta}
@@ -186,12 +206,32 @@ Para cada cliente:
 \begin{align}
   \sum_{p\in\set{P}} b_p x_{pt} &\le B,
   && t\in\set{T}, \label{eq:production-capacity}\\
-  x_{pt} &\le M y_{pt},
+  x_{pt} &\le U^X_{pt} y_{pt},
   && p\in\set{P},\ t\in\set{T}, \label{eq:setup-link}\\
-  I_{pit} &\le U_{pi},
+  I_{pit} &\le U^I_{pit},
   && p\in\set{P},\ i\in\set{K},\ t\in\set{T}.
   \label{eq:inventory-capacity}
 \end{align}
+
+Os limites fortalecidos são:
+\begin{align}
+  U^X_{pt} &= \min\left\{M_p,\frac{B}{b_p},D^{\mathrm{restante}}_{p,t}\right\},
+  \label{eq:production-upper-bound}\\
+  M_p &= \min\left\{M,\sum_{\tau\in\set{T}}\sum_{i\in\set{C}}d_{pi\tau}\right\},
+  \label{eq:product-big-m}\\
+  D^{\mathrm{restante}}_{p,t} &= \sum_{\tau=t}^{T-1}\sum_{i\in\set{C}}d_{pi\tau}.
+  \label{eq:remaining-demand}
+\end{align}
+
+Para a planta, $U^I_{p0t}$ é limitado pelo estoque inicial mais a produção
+acumulada. Para um cliente $i\in\set{C}$:
+\begin{equation}
+  U^I_{pit}=\min\left\{U_{pi},I^0_{pi}+
+  \sum_{s=0}^{t}\sum_{v\in\set{V}}\overline Q_{pvis}\right\},
+  \qquad
+  \overline Q_{pvis}=\min\{C,U_{pi}+d_{pis}\}.
+  \label{eq:inventory-upper-bound}
+\end{equation}
 
 \section{Fluxo de produtos e entregas}
 
@@ -248,6 +288,30 @@ Cada cliente pode ser visitado no máximo uma vez por período:
   \quad \forall k\in\set{C},\ t\in\set{T}.
   \label{eq:single-visit}
 \end{equation}
+
+\subsection{Bounds de entrega em função de $Z$}
+
+Não é criada uma variável explícita de visita. Para cada veículo, cliente e
+período, a expressão de visita é a soma dos arcos que saem do cliente:
+\begin{equation}
+  \operatorname{visit}_{vit}=\sum_{k\in\set{K}:k\ne i}z_{vikt}.
+  \label{eq:z-visit-indicator}
+\end{equation}
+
+As entregas são limitadas diretamente por essa expressão:
+\begin{align}
+  \sum_{p\in\set{P}}q_{pvit}
+  &\le C\sum_{k\in\set{K}:k\ne i}z_{vikt},
+  &&v\in\set{V},\ i\in\set{C},\ t\in\set{T},
+  \label{eq:z-visit-capacity}\\
+  q_{pvit}
+  &\le \overline Q_{pit}\sum_{k\in\set{K}:k\ne i}z_{vikt},
+  &&p\in\set{P},\ v\in\set{V},\ i\in\set{C},\ t\in\set{T}.
+  \label{eq:z-visit-product-capacity}
+\end{align}
+
+Essas restrições são padrão, e a conservação de fluxo mantém entrada e saída
+iguais no cliente.
 
 \section{Quebra de simetria HC1}
 
@@ -436,7 +500,7 @@ Também não é criado um segundo CPLEX dentro do callback.
 
 Além das restrições anteriores, valem:
 \begin{align}
-  x_{pt},I_{pit},r_{pvikt},q_{pvit},p_t^j,n_t^j,\lambda &\ge0,
+  x_{pt},I_{pit},r_{pvikt},q_{pvit},p_t^j,\lambda &\ge0,
   \label{eq:nonnegative}\\
   y_{pt},z_{vikt} &\in\{0,1\}.
   \label{eq:binary}
@@ -448,7 +512,8 @@ O modelo atual é, portanto, um MIP formado por
 capacidades \eqref{eq:production-capacity}--\eqref{eq:inventory-capacity},
 pelos fluxos \eqref{eq:product-flow-customer}--\eqref{eq:product-flow-plant},
 pelas restrições de rota \eqref{eq:arc-capacity}--\eqref{eq:single-visit},
-opcionalmente por HC1 em \eqref{eq:VC}--\eqref{eq:HC1} e Coelho em
+pelos bounds de entrega \eqref{eq:z-visit-capacity}--
+\eqref{eq:z-visit-product-capacity}, por HC1 em \eqref{eq:VC}--\eqref{eq:HC1} e Coelho em
 \eqref{eq:coelho-15}--\eqref{eq:coelho-17}, além dos cortes dinâmicos da
 família \eqref{eq:rounded-capacity}.
 
@@ -466,6 +531,7 @@ Balanços de estoque & \texttt{createEstablishInvetoryBalanceAtPlant},\\
 Fluxo de produtos & \texttt{createVehiclePreventTransshipmentIntermediateNodes},\\
 & \texttt{createEliminationSubroutes} \\
 Capacidade e roteamento & métodos \texttt{createVehicle...} \\
+Bounds de entrega em função de $Z$ & \texttt{createVehicleVisitDeliveryBounds} \\
 HC1/VC & \texttt{createVehicleSymmetryBreaking} \\
 Coelho & \texttt{createCoelhoValidInequalities} \\
 Separador & \texttt{RoundedCapacitySeparation.py} \\

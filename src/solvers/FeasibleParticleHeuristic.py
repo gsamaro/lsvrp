@@ -11,6 +11,7 @@ from src.log.Logger import Logger
 from src.solvers._solver_common import (
     ProblemData,
     clone_solution,
+    compute_production_upper_bounds,
     empty_solution,
 )
 from src.solvers._pso_numba_kernel import build_population_kernel
@@ -79,6 +80,7 @@ class FeasibleParticleHeuristic:
         self._initial_inventory = np.asarray(self.problem.I_p_i_0, dtype=np.int64)
         self._demand = np.asarray(self.problem.d_p_i_t, dtype=np.int64)
         self._distance = np.asarray(self.problem.a_i_k, dtype=np.int64)
+        self._production_upper_bounds = compute_production_upper_bounds(self.problem)
         if bounds is not None:
             self.lower_bounds = np.asarray(bounds["lower"], dtype=float)
             self.upper_bounds = np.asarray(bounds["upper"], dtype=float)
@@ -87,6 +89,13 @@ class FeasibleParticleHeuristic:
                 raise ValueError(f"bounds devem ter formato {expected_shape}")
             if np.any(self.lower_bounds > self.upper_bounds + 1e-8):
                 raise ValueError("bounds relaxados inválidos: LB maior que UB")
+            self.upper_bounds = np.minimum(
+                self.upper_bounds, self._production_upper_bounds
+            )
+            if np.any(self.lower_bounds > self.upper_bounds + 1e-8):
+                raise ValueError(
+                    "bounds relaxados excedem os bounds fortalecidos de produção"
+                )
             if "q_lower" in bounds or "q_upper" in bounds:
                 self.lower_delivery_bounds = np.asarray(
                     bounds.get("q_lower"), dtype=float
@@ -185,6 +194,7 @@ class FeasibleParticleHeuristic:
             float(self.problem.f),
             np.ascontiguousarray(lower_x, dtype=np.float64),
             np.ascontiguousarray(upper_x, dtype=np.float64),
+            np.ascontiguousarray(self._production_upper_bounds, dtype=np.float64),
             np.ascontiguousarray(lower_q, dtype=np.float64),
             np.ascontiguousarray(upper_q, dtype=np.float64),
             self.lower_bounds is not None,
@@ -341,8 +351,8 @@ class FeasibleParticleHeuristic:
             violations.append("X negativo")
         if np.any((Y != 0) & (Y != 1)):
             violations.append("Y nao binario")
-        if np.any(X > self.problem.M * Y):
-            violations.append("X excede M*Y")
+        if np.any(X > self._production_upper_bounds * Y + 1e-8):
+            violations.append("X excede bound fortalecido de produção")
 
         production_time = np.asarray(self.problem.b_p, dtype=int) @ X
         if np.any(production_time > self.problem.B):
@@ -617,7 +627,15 @@ class FeasibleParticleHeuristic:
                     0,
                     int(self.problem.U_p_i[p][0] - previous_inventory[p, 0]),
                 )
-                extra_high = min(storage_headroom, max_extra_by_time)
+                strengthened_headroom = max(
+                    0,
+                    int(self._production_upper_bounds[p, t] - production[p]),
+                )
+                extra_high = min(
+                    storage_headroom,
+                    max_extra_by_time,
+                    strengthened_headroom,
+                )
             else:
                 decoded = self._bounded_production_from_gene(p, t, raw_x[p, t])
                 bound_extra = max(0, decoded - int(production[p]))

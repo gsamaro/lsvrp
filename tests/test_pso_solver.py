@@ -87,7 +87,10 @@ class PSOSolverTestCase(unittest.TestCase):
         )
         np.testing.assert_allclose(
             solver.heuristic.upper_bounds,
-            solver.relaxed_total_bounds["upper_solution"]["X"],
+            np.minimum(
+                solver.relaxed_total_bounds["upper_solution"]["X"],
+                solver.heuristic._production_upper_bounds,
+            ),
         )
         np.testing.assert_allclose(
             solver.heuristic.lower_delivery_bounds,

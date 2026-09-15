@@ -5,7 +5,7 @@
     "method":"PSO",
     "multiobjective":true,
     "goal_programming": {
-      "positive_only_deviations": false
+      "positive_only_deviations": true
     },
     "symmetry_breaking": {
       "hc1": false

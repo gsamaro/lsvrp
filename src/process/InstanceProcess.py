@@ -122,7 +122,7 @@ class InstanceProcess:
                         "solver", "rounded_capacity_inequalities", "enabled", default=False
                     ),
                     "positive_only_deviations": Config.get_nested(
-                        "solver", "goal_programming", "positive_only_deviations", default=False
+                        "solver", "goal_programming", "positive_only_deviations", default=True
                     ),
                     "pipeline_solver_seconds": solve_elapsed_seconds,
                     "total_seconds": time.time() - strategy_started_at,

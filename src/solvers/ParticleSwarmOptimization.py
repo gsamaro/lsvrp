@@ -822,7 +822,7 @@ class ParticleSwarmOptimization:
             "solver", "coelho_inequalities", default=False
         )
         positive_only_deviations = Config.get_nested(
-            "solver", "goal_programming", "positive_only_deviations", default=False
+            "solver", "goal_programming", "positive_only_deviations", default=True
         )
         self.solverGurobi = MPPRP(
             self.data,

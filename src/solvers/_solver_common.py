@@ -49,6 +49,82 @@ class ProblemData:
         )
 
 
+def compute_production_upper_bounds(problem: ProblemData):
+    """Return the strengthened upper bound for every ``(product, period)``.
+
+    ``M_p`` is the product-specific replacement for the global big-M: the
+    smaller of the instance big-M and the total demand of product ``p`` over
+    the horizon.  ``D_remaining[p, t]`` is the demand of product ``p`` from
+    period ``t`` onward.  The per-period bound is the minimum of these two
+    quantities and the production-capacity bound ``B / b_p``.
+    """
+
+    demand = np.asarray(problem.d_p_i_t, dtype=float)
+    total_demand = demand.sum(axis=(1, 2))
+    product_big_m = np.minimum(float(problem.M), total_demand)
+    bounds = np.zeros((problem.p, problem.t), dtype=float)
+
+    for p in range(problem.p):
+        production_capacity = (
+            float(problem.B) / float(problem.b_p[p])
+            if problem.b_p[p] > 0
+            else product_big_m[p]
+        )
+        for t in range(problem.t):
+            demand_remaining = float(demand[p, :, t:].sum())
+            bounds[p, t] = max(
+                0.0,
+                min(product_big_m[p], production_capacity, demand_remaining),
+            )
+    return bounds
+
+
+def compute_delivery_upper_bounds(problem: ProblemData):
+    """Return ``qbar[p, customer, period]`` for customer deliveries."""
+
+    result = np.zeros((problem.p, problem.i, problem.t), dtype=float)
+    for p in range(problem.p):
+        for i in range(1, problem.i):
+            for t in range(problem.t):
+                result[p, i, t] = min(
+                    float(problem.C),
+                    float(problem.U_p_i[p][i])
+                    + float(problem.d_p_i_t[p][i - 1][t]),
+                )
+    return result
+
+
+def compute_inventory_upper_bounds(problem: ProblemData):
+    """Return tightened upper bounds for ``I[p, i, t]``.
+
+    At a customer, cumulative receipts are bounded by the number of vehicles
+    times ``qbar`` in each previous period.  At the plant, cumulative
+    production bounds the amount that can be added to the initial stock.
+    Existing capacity bounds remain valid and are always included.
+    """
+
+    production_bounds = compute_production_upper_bounds(problem)
+    delivery_bounds = compute_delivery_upper_bounds(problem)
+    result = np.zeros((problem.p, problem.i, problem.t), dtype=float)
+
+    for p in range(problem.p):
+        for i in range(problem.i):
+            for t in range(problem.t):
+                if i == 0:
+                    reachable = float(problem.I_p_i_0[p][i]) + float(
+                        production_bounds[p, : t + 1].sum()
+                    )
+                else:
+                    reachable = float(problem.I_p_i_0[p][i]) + float(
+                        problem.v * delivery_bounds[p, i, : t + 1].sum()
+                    )
+                result[p, i, t] = max(
+                    0.0,
+                    min(float(problem.U_p_i[p][i]), reachable),
+                )
+    return result
+
+
 def empty_solution(problem: ProblemData):
     return {
         "X": np.zeros((problem.p, problem.t), dtype=int),

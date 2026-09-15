@@ -70,7 +70,7 @@ def test_normalize_adds_positive_only_deviations_default():
 
     normalized = Config.normalize(configured)
 
-    assert normalized["solver"]["goal_programming"]["positive_only_deviations"] is False
+    assert normalized["solver"]["goal_programming"]["positive_only_deviations"] is True
 
 
 def test_normalize_accepts_current_config_file():

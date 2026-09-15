@@ -11,7 +11,7 @@ class Config:
             "method": "PSO",
             "multiobjective": True,
             "goal_programming": {
-                "positive_only_deviations": False,
+                "positive_only_deviations": True,
             },
             "symmetry_breaking": {"hc1": False},
             "coelho_inequalities": False,
