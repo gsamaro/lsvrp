@@ -509,10 +509,16 @@ O limite é apertado por um bound de alcançabilidade:
 Para a planta, `U^I_{p0t}` usa o estoque inicial mais a produção acumulada
 limitada por `U^X_{ps}`. Para um cliente `i`, usa:
 
-`U^I_{pit} = min(U_{pi}, I_{pi0} + sum_{s=0..t} sum_v qbar_{pvis})`,
+`U^I_{pit} = max(0, min(U_{pi}, I_{pi0} + sum_{s=0..t} (qbar_{pis} - d_{pis})))`,
 
-onde `qbar_{pvis}=min(C,U_{pi}+d_{pis})`. O limite original `U_{pi}` continua
-embutido no mínimo.
+onde `qbar_{pis}=min(C,U_{pi}+d_{pis})`. Não há fator `V`: cada cliente pode
+ser visitado por no máximo um veículo no período, e a conservação de fluxo da
+rota iguala, para cada veículo, os arcos que entram e saem do cliente. Assim,
+somando os limites `Q_{pvit} <= qbar_{pit} * visit_{vit}` entre veículos,
+obtém-se `sum_v Q_{pvit} <= qbar_{pit}`. Somando o balanço de estoque do
+cliente até `t`, subtrai-se a demanda acumulada. O limite original `U_{pi}`
+continua embutido no mínimo; o resultado numérico é protegido contra limites
+negativos, pois `I` já é não negativa.
 
 ### Interpretação
 

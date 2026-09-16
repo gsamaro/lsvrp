@@ -226,12 +226,21 @@ Os limites fortalecidos são:
 Para a planta, $U^I_{p0t}$ é limitado pelo estoque inicial mais a produção
 acumulada. Para um cliente $i\in\set{C}$:
 \begin{equation}
-  U^I_{pit}=\min\left\{U_{pi},I^0_{pi}+
-  \sum_{s=0}^{t}\sum_{v\in\set{V}}\overline Q_{pvis}\right\},
+  U^I_{pit}=\max\left\{0,\min\left\{U_{pi},I^0_{pi}+
+  \sum_{s=0}^{t}\left(\overline Q_{pis}-d_{pis}\right)\right\}\right\},
   \qquad
-  \overline Q_{pvis}=\min\{C,U_{pi}+d_{pis}\}.
+  \overline Q_{pis}=\min\{C,U_{pi}+d_{pis}\}.
   \label{eq:inventory-upper-bound}
 \end{equation}
+
+Não há fator $V$ no limite dos clientes. A restrição de visita única limita a
+soma das visitas entre veículos a um, e a conservação dos arcos iguala as
+visitas de entrada e saída para cada veículo. Como $q_{pvit}$ é limitado por
+$\overline Q_{pit}$ vezes a expressão de visita, a entrega total de cada
+produto ao cliente em um período não excede $\overline Q_{pit}$. Somando o
+balanço de estoque do cliente do período $0$ até $t$, subtrai-se a demanda
+acumulada. O máximo com zero reflete a não negatividade de $I_{pit}$; o limite
+da planta permanece inalterado.
 
 \section{Fluxo de produtos e entregas}
 

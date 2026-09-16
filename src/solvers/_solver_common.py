@@ -97,14 +97,16 @@ def compute_delivery_upper_bounds(problem: ProblemData):
 def compute_inventory_upper_bounds(problem: ProblemData):
     """Return tightened upper bounds for ``I[p, i, t]``.
 
-    At a customer, cumulative receipts are bounded by the number of vehicles
-    times ``qbar`` in each previous period.  At the plant, cumulative
-    production bounds the amount that can be added to the initial stock.
-    Existing capacity bounds remain valid and are always included.
+    At a customer, at most one vehicle may visit per period, so cumulative
+    receipts are bounded by one ``qbar`` per period.  The inventory balance
+    also subtracts cumulative demand.  At the plant, cumulative production
+    bounds the amount that can be added to the initial stock.  Existing
+    capacity bounds remain valid and are always included.
     """
 
     production_bounds = compute_production_upper_bounds(problem)
     delivery_bounds = compute_delivery_upper_bounds(problem)
+    demand = np.asarray(problem.d_p_i_t, dtype=float)
     result = np.zeros((problem.p, problem.i, problem.t), dtype=float)
 
     for p in range(problem.p):
@@ -115,8 +117,12 @@ def compute_inventory_upper_bounds(problem: ProblemData):
                         production_bounds[p, : t + 1].sum()
                     )
                 else:
+                    net_receipts = (
+                        delivery_bounds[p, i, : t + 1]
+                        - demand[p, i - 1, : t + 1]
+                    )
                     reachable = float(problem.I_p_i_0[p][i]) + float(
-                        problem.v * delivery_bounds[p, i, : t + 1].sum()
+                        net_receipts.sum()
                     )
                 result[p, i, t] = max(
                     0.0,
