@@ -27,6 +27,8 @@ def main():
         log,
         run_tag=context.run_tag,
         commit_hash=context.commit_hash,
+        config_hash=context.config_hash,
+        config_json=context.config_json,
     ).run_parallel(instancies=instances, solver=context.method)
 
     postprocessing = PostProcessingProcess(log=log, output=context.output)

@@ -29,11 +29,41 @@ class PostProcessingProcess:
             return None
 
         frames = []
+        config_frames = []
         for path in excel_paths:
             try:
-                df = pd.read_excel(path, engine="openpyxl")
+                df = pd.read_excel(
+                    path,
+                    engine="openpyxl",
+                    dtype={"commit_hash": str, "config_hash": str},
+                )
                 df["__source_file__"] = os.path.relpath(path, start=self.output)
                 frames.append(df)
+
+                try:
+                    config_df = pd.read_excel(
+                        path,
+                        sheet_name="run_configs",
+                        engine="openpyxl",
+                        dtype={"config_hash": str, "config_json": str},
+                    )
+                except ValueError:
+                    # Legacy result workbooks have no run_configs sheet.
+                    config_df = None
+                except Exception as e:
+                    config_df = None
+                    if self.log:
+                        self.log.warning(
+                            f"Erro ao ler metadados de configuração em {path}: {e}"
+                        )
+
+                if config_df is not None and {
+                    "config_hash",
+                    "config_json",
+                }.issubset(config_df.columns):
+                    config_frames.append(
+                        config_df[["config_hash", "config_json"]].copy()
+                    )
             except Exception as e:
                 # Skip files that cannot be read; could log if needed
                 self.log.error(f"Erro ao ler arquivo {path}: {e}")
@@ -44,6 +74,26 @@ class PostProcessingProcess:
             return None
 
         union_df = pd.concat(frames, ignore_index=True, sort=False)
+        if "config_hash" not in union_df.columns:
+            union_df["config_hash"] = pd.NA
+
+        if config_frames:
+            run_configs_df = pd.concat(config_frames, ignore_index=True, sort=False)
+            run_configs_df = run_configs_df.dropna(
+                subset=["config_hash", "config_json"]
+            )
+            valid_config_rows = (
+                run_configs_df["config_hash"].astype(str).str.strip().ne("")
+                & run_configs_df["config_json"].astype(str).str.strip().ne("")
+            )
+            run_configs_df = run_configs_df.loc[valid_config_rows]
+            run_configs_df = (
+                run_configs_df.drop_duplicates(subset=["config_hash"], keep="first")
+                .sort_values("config_hash")
+                .reset_index(drop=True)
+            )
+        else:
+            run_configs_df = pd.DataFrame(columns=["config_hash", "config_json"])
 
         if not any(
             col in union_df.columns
@@ -121,7 +171,9 @@ class PostProcessingProcess:
         else:
             out_name = "union_results.xlsx"
         out_path = os.path.join(self.output, out_name)
-        union_df.to_excel(out_path, index=False, engine="openpyxl")
+        with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+            union_df.to_excel(writer, index=False)
+            run_configs_df.to_excel(writer, sheet_name="run_configs", index=False)
         return out_path
 
     def build_target(self, union_results_path=None):

@@ -1,9 +1,10 @@
+import json
 import os
 import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
-from hashlib import sha1
+from hashlib import sha1, sha256
 
 from config import Config
 from src.log.Logger import Logger
@@ -22,6 +23,8 @@ class RuntimeContext:
     build_target: bool
     multiobjective: bool
     commit_hash: str = "000000"
+    config_hash: str = ""
+    config_json: str = ""
 
 
 def _get_git_commit_hash6():
@@ -44,7 +47,16 @@ def _build_run_tag(now: datetime, commit_hash=None):
     return f"{date_part}-{commit_part}-{ts_part}"
 
 
+def _build_config_metadata(config=Config):
+    config_json = json.dumps(
+        config.snapshot(), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    config_hash = sha256(config_json.encode("utf-8")).hexdigest()
+    return config_hash, config_json
+
+
 def build_runtime_context(config=Config, now=None):
+    config_hash, config_json = _build_config_metadata(config)
     threads_limit = config.get_nested("solver", "threadsLimit")
     if threads_limit == "None":
         threads_limit = None
@@ -62,6 +74,8 @@ def build_runtime_context(config=Config, now=None):
         build_target=config.get_nested("postprocessing", "build_target"),
         multiobjective=config.get_nested("solver", "multiobjective"),
         commit_hash=commit_hash,
+        config_hash=config_hash,
+        config_json=config_json,
     )
 
 

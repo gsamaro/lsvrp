@@ -22,6 +22,8 @@ class MainImportTestCase(unittest.TestCase):
             build_target=False,
             multiobjective=False,
             commit_hash="012345",
+            config_hash="a" * 64,
+            config_json='{"solver":{"method":"PSO"}}',
         )
         log = MagicMock()
         instances = [{"file": "./data/DATA_PRP_5C/PRP1.dat"}]
@@ -45,6 +47,8 @@ class MainImportTestCase(unittest.TestCase):
             log,
             run_tag="test-run",
             commit_hash="012345",
+            config_hash="a" * 64,
+            config_json='{"solver":{"method":"PSO"}}',
         )
         worker_process.return_value.run_parallel.assert_called_once_with(
             instancies=instances, solver="PSO"

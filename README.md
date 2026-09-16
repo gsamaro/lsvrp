@@ -383,6 +383,8 @@ Saídas:
 - Os Excels individuais e a consolidação incluem `commit_hash`, os 6 primeiros
   caracteres do commit associado a cada linha; arquivos antigos sem essa
   informação ficam com o campo vazio.
+- Cada linha de resultado também inclui `config_hash`; a aba `run_configs` guarda
+  o JSON efetivo normalizado uma vez por hash, inclusive na consolidação.
 - Variáveis detalhadas são gravadas em `parquets/<hash>_fobs.parquet`.
 - A consolidação gera `<run_tag>-union_results.xlsx` ou `union_results.xlsx` no modo `build_target`.
 - `targets.xlsx` é lido/escrito em `postprocessing.output`.

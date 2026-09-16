@@ -1,3 +1,4 @@
+import copy
 import json
 from pathlib import Path
 
@@ -178,6 +179,12 @@ class Config:
     def get(cls, key, default=None):
         cls.load()
         return cls._data.get(key, default)
+
+    @classmethod
+    def snapshot(cls):
+        """Return an isolated copy of the effective, normalized configuration."""
+        cls.load()
+        return copy.deepcopy(cls._data)
 
     @classmethod
     def get_nested(cls, *keys, default=None):

@@ -56,6 +56,8 @@ class WorkerProcessMPITestCase(unittest.TestCase):
             numWorkers="auto",
             log=self.logger,
             commit_hash="012345",
+            config_hash="a" * 64,
+            config_json='{"solver":{"method":"PSO"}}',
         )
 
     @staticmethod
@@ -97,6 +99,8 @@ class WorkerProcessMPITestCase(unittest.TestCase):
                     "alpha",
                     "run_tag",
                     "commit_hash",
+                    "config_hash",
+                    "config_json",
                     "task_number",
                     "label",
                 }
@@ -107,6 +111,13 @@ class WorkerProcessMPITestCase(unittest.TestCase):
             all(
                 args[-1]["commit_hash"]
                 == "012345"
+                for _, args, _ in FakeExecutor.submitted
+            )
+        )
+        self.assertTrue(
+            all(
+                args[-1]["config_hash"] == "a" * 64
+                and args[-1]["config_json"] == '{"solver":{"method":"PSO"}}'
                 for _, args, _ in FakeExecutor.submitted
             )
         )
@@ -134,6 +145,8 @@ class WorkerProcessMPITestCase(unittest.TestCase):
                     "alpha",
                     "run_tag",
                     "commit_hash",
+                    "config_hash",
+                    "config_json",
                     "task_number",
                     "label",
                 }
@@ -144,6 +157,13 @@ class WorkerProcessMPITestCase(unittest.TestCase):
             all(
                 context["commit_hash"]
                 == "012345"
+                for _, context in captured
+            )
+        )
+        self.assertTrue(
+            all(
+                context["config_hash"] == "a" * 64
+                and context["config_json"] == '{"solver":{"method":"PSO"}}'
                 for _, context in captured
             )
         )

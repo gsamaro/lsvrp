@@ -103,6 +103,7 @@ def getResults(
             "time": list(range(n)),
             "file": [data["file"]] * n,
             "commit_hash": [data.get("commit_hash")] * n,
+            "config_hash": [data.get("config_hash")] * n,
             "hash_file": [file_name_hash] * n,
             "weight_hash": [weight_hash] * n,
             "weight": str(weight),
@@ -146,7 +147,20 @@ def getResults(
 
     excel_base_name = f"{file_name_hash[:6]}_fobs"
     excel_path = os.path.join(dir, f"{excel_base_name}.xlsx")
-    df_aux.to_excel(excel_path, index=False)
+    config_records = []
+    if data.get("config_hash") and data.get("config_json"):
+        config_records.append(
+            {
+                "config_hash": data["config_hash"],
+                "config_json": data["config_json"],
+            }
+        )
+    run_configs_df = pd.DataFrame(
+        config_records, columns=["config_hash", "config_json"]
+    )
+    with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+        df_aux.to_excel(writer, index=False)
+        run_configs_df.to_excel(writer, sheet_name="run_configs", index=False)
 
     parquet_dir = os.path.join(dir, "parquets")
     os.makedirs(parquet_dir, exist_ok=True)

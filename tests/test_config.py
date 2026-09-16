@@ -1,6 +1,7 @@
 import copy
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -78,6 +79,19 @@ def test_normalize_accepts_current_config_file():
 
     assert normalized["solver"]["timeLimit"] == 3600
     assert normalized["solver"]["method"] == "PSO"
+
+
+def test_snapshot_returns_effective_config_as_an_isolated_copy():
+    effective_config = Config.normalize(_valid_config())
+
+    with patch.object(Config, "_data", effective_config):
+        snapshot = Config.snapshot()
+        snapshot["solver"]["symmetry_breaking"]["hc1"] = True
+
+        next_snapshot = Config.snapshot()
+
+    assert next_snapshot["relaxed_solution"]["use"] is False
+    assert next_snapshot["solver"]["symmetry_breaking"]["hc1"] is False
 
 
 @pytest.mark.parametrize(

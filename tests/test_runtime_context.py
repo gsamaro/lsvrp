@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from hashlib import sha256
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -30,6 +32,13 @@ class DummyConfig:
     @classmethod
     def get_nested(cls, *keys):
         return cls.values[keys]
+
+    @classmethod
+    def snapshot(cls):
+        return {
+            "solver": {"method": "PSO", "multiobjective": False},
+            "workers": {"num": "auto"},
+        }
 
 
 class DummyLogger:
@@ -63,6 +72,20 @@ class RuntimeContextTestCase(unittest.TestCase):
             context.commit_hash,
             "012345",
         )
+        self.assertEqual(
+            json.loads(context.config_json),
+            DummyConfig.snapshot(),
+        )
+        self.assertEqual(
+            context.config_hash,
+            sha256(context.config_json.encode("utf-8")).hexdigest(),
+        )
+        repeated_context = build_runtime_context(
+            config=DummyConfig,
+            now=datetime(2026, 8, 16, tzinfo=timezone.utc),
+        )
+        self.assertEqual(context.config_hash, repeated_context.config_hash)
+        self.assertEqual(context.config_json, repeated_context.config_json)
 
     def test_build_instances_from_directory_skips_prp31_and_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:
