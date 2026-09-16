@@ -70,6 +70,7 @@ class InstanceProcess:
             data = RD(file_path=self.instance, log=self.log).getDataSet()
             data["weight"] = self.weight
             data["alpha"] = self.alpha
+            data["commit_hash"] = self.task_context.get("commit_hash")
 
             targets = []
             if self.targets_by_file:

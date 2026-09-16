@@ -59,6 +59,7 @@ class PostProcessingProcess:
             union_df = enrich_with_instance_metadata(union_df, file_col="file")
 
         for c in [
+            "commit_hash",
             "alpha",
             "weight_hash",
             "new_f1_target",

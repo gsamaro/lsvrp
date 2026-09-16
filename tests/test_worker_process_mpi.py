@@ -52,7 +52,11 @@ class WorkerProcessMPITestCase(unittest.TestCase):
         FakeExecutor.submitted = []
 
     def _build_worker(self):
-        return WorkerProcess(numWorkers="auto", log=self.logger)
+        return WorkerProcess(
+            numWorkers="auto",
+            log=self.logger,
+            commit_hash="012345",
+        )
 
     @staticmethod
     def _config_value(build_target):
@@ -86,7 +90,23 @@ class WorkerProcessMPITestCase(unittest.TestCase):
         self.assertEqual(len(FakeExecutor.submitted), total_tasks)
         self.assertTrue(
             all(
-                set(args[-1]) == {"file", "weight", "alpha", "run_tag", "task_number", "label"}
+                set(args[-1])
+                == {
+                    "file",
+                    "weight",
+                    "alpha",
+                    "run_tag",
+                    "commit_hash",
+                    "task_number",
+                    "label",
+                }
+                for _, args, _ in FakeExecutor.submitted
+            )
+        )
+        self.assertTrue(
+            all(
+                args[-1]["commit_hash"]
+                == "012345"
                 for _, args, _ in FakeExecutor.submitted
             )
         )
@@ -107,7 +127,23 @@ class WorkerProcessMPITestCase(unittest.TestCase):
         self.assertTrue(all(solver == "PSO" for solver, _ in captured))
         self.assertTrue(
             all(
-                set(context) == {"file", "weight", "alpha", "run_tag", "task_number", "label"}
+                set(context)
+                == {
+                    "file",
+                    "weight",
+                    "alpha",
+                    "run_tag",
+                    "commit_hash",
+                    "task_number",
+                    "label",
+                }
+                for _, context in captured
+            )
+        )
+        self.assertTrue(
+            all(
+                context["commit_hash"]
+                == "012345"
                 for _, context in captured
             )
         )

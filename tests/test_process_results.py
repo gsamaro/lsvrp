@@ -8,12 +8,13 @@ from src.process.ProcessResults import _build_hash_rows, getResults
 
 
 EXCEL_COLUMNS = [
-    "time", "file", "hash_file", "weight_hash", "weight", "alpha", "FO", "gap",
-    "solver_time", "f1", "f2", "f3", "f4", "f5", "p1", "p2", "p3", "p4",
-    "p5", "epsilon", "total_production", "total_inventory", "total_setup",
-    "total_delivered", "csetup", "cprod", "instancia", "clientes", "produtos",
-    "veiculos", "periodos", "seeds", "classe", "new_f1_target", "new_f2_target",
-    "new_f3_target", "new_f4_target", "new_f5_target", "hash_row",
+    "time", "file", "commit_hash", "hash_file", "weight_hash", "weight",
+    "alpha", "FO", "gap", "solver_time", "f1", "f2", "f3", "f4", "f5",
+    "p1", "p2", "p3", "p4", "p5", "epsilon", "total_production",
+    "total_inventory", "total_setup", "total_delivered", "csetup", "cprod",
+    "instancia", "clientes", "produtos", "veiculos", "periodos", "seeds",
+    "classe", "new_f1_target", "new_f2_target", "new_f3_target",
+    "new_f4_target", "new_f5_target", "hash_row",
 ]
 
 
@@ -28,6 +29,7 @@ class DummyLogger:
 def _data(num_periods=1):
     return {
         "file": "./data/DATA_PRP_30C/PRP22_C30_P10_V5_T12_S2.dat",
+        "commit_hash": "012345",
         "weight": np.array([0.2, 0.2, 0.2, 0.2, 0.2]),
         "alpha": 0.01,
         "s_p": np.array([1.0]),
@@ -101,6 +103,7 @@ def test_get_results_preserves_excel_and_parquet_contract(tmp_path):
 
     assert list(excel_df.columns) == EXCEL_COLUMNS
     assert excel_df.loc[0, "hash_file"] == file_hash
+    assert excel_df.loc[0, "commit_hash"] == data["commit_hash"]
     assert excel_df.loc[0, "hash_row"] == _build_hash_rows(file_hash, [0])[0]
     weight_payload = ",".join("{:.10g}".format(float(value)) for value in data["weight"])
     assert excel_df.loc[0, "weight_hash"] == sha1(weight_payload.encode()).hexdigest()[:6]

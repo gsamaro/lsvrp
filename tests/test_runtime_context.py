@@ -42,16 +42,27 @@ class DummyLogger:
 
 class RuntimeContextTestCase(unittest.TestCase):
     def test_build_runtime_context_normalizes_threads_limit(self):
-        with patch("src.process.RuntimeContext._build_run_tag", return_value="test-run"):
-            context = build_runtime_context(
-                config=DummyConfig,
-                now=datetime(2026, 8, 16, tzinfo=timezone.utc),
-            )
+        with patch(
+            "src.process.RuntimeContext._build_run_tag",
+            side_effect=lambda now, commit_hash=None: "test-run",
+        ):
+            with patch(
+                "src.process.RuntimeContext._get_git_commit_hash6",
+                return_value="012345",
+            ):
+                context = build_runtime_context(
+                    config=DummyConfig,
+                    now=datetime(2026, 8, 16, tzinfo=timezone.utc),
+                )
 
         self.assertEqual(context.run_tag, "test-run")
         self.assertIsNone(context.threads_limit)
         self.assertEqual(context.time_limit, 10)
         self.assertEqual(context.method, "PSO")
+        self.assertEqual(
+            context.commit_hash,
+            "012345",
+        )
 
     def test_build_instances_from_directory_skips_prp31_and_output(self):
         with tempfile.TemporaryDirectory() as tmpdir:

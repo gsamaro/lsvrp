@@ -380,6 +380,9 @@ Pesos e alpha:
 Saídas:
 
 - Cada execução por instância/peso/alpha grava um Excel nomeado por hash com sufixo `_fobs.xlsx`.
+- Os Excels individuais e a consolidação incluem `commit_hash`, os 6 primeiros
+  caracteres do commit associado a cada linha; arquivos antigos sem essa
+  informação ficam com o campo vazio.
 - Variáveis detalhadas são gravadas em `parquets/<hash>_fobs.parquet`.
 - A consolidação gera `<run_tag>-union_results.xlsx` ou `union_results.xlsx` no modo `build_target`.
 - `targets.xlsx` é lido/escrito em `postprocessing.output`.

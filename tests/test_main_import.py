@@ -21,6 +21,7 @@ class MainImportTestCase(unittest.TestCase):
             method="PSO",
             build_target=False,
             multiobjective=False,
+            commit_hash="012345",
         )
         log = MagicMock()
         instances = [{"file": "./data/DATA_PRP_5C/PRP1.dat"}]
@@ -39,7 +40,12 @@ class MainImportTestCase(unittest.TestCase):
         build_instances.assert_called_once_with(
             "./data/", "./out/", ["DATA_PRP_5C"], 1, 10
         )
-        worker_process.assert_called_once_with("auto", log, run_tag="test-run")
+        worker_process.assert_called_once_with(
+            "auto",
+            log,
+            run_tag="test-run",
+            commit_hash="012345",
+        )
         worker_process.return_value.run_parallel.assert_called_once_with(
             instancies=instances, solver="PSO"
         )

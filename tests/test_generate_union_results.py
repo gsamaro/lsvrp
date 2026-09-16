@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.process.PostProcessingProcess import PostProcessingProcess
+
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "generate_union_results.py"
 SPEC = importlib.util.spec_from_file_location("generate_union_results", SCRIPT_PATH)
@@ -13,9 +15,14 @@ SPEC.loader.exec_module(generate_union_results)
 def test_generates_union_results_from_input_directory(tmp_path, monkeypatch):
     result_dir = tmp_path / "resultados" / "instancia"
     result_dir.mkdir(parents=True)
-    pd.DataFrame({"file": ["a.dat"], "time": [1], "f1": [10]}).to_excel(
-        result_dir / "resultado.xlsx", index=False
-    )
+    pd.DataFrame(
+        {
+            "file": ["a.dat"],
+            "time": [1],
+            "f1": [10],
+            "commit_hash": ["012345"],
+        }
+    ).to_excel(result_dir / "resultado.xlsx", index=False)
     configured_targets_dir = tmp_path / "targets-configurados"
     configured_targets_dir.mkdir()
     pd.DataFrame(
@@ -49,6 +56,9 @@ def test_generates_union_results_from_input_directory(tmp_path, monkeypatch):
     assert union_path.exists()
     union_df = pd.read_excel(union_path)
     assert union_df["file"].tolist() == ["a.dat"]
+    assert union_df["commit_hash"].tolist() == [
+        "012345"
+    ]
     assert "target.dat" not in union_df["file"].tolist()
     assert pd.isna(union_df.loc[0, "f1_target"])
 
@@ -68,3 +78,20 @@ def test_returns_error_when_input_directory_does_not_exist(tmp_path):
     exit_code = generate_union_results.main(["--input-dir", str(missing_dir)])
 
     assert exit_code == 1
+
+
+def test_union_adds_empty_commit_hash_for_legacy_workbooks(tmp_path, monkeypatch):
+    pd.DataFrame({"file": ["legacy.dat"], "time": [1], "f1": [10]}).to_excel(
+        tmp_path / "legacy.xlsx", index=False
+    )
+    monkeypatch.setattr(
+        "src.process.PostProcessingProcess.Config.get_nested",
+        lambda *keys, default=None: default,
+    )
+
+    processor = PostProcessingProcess(log=None, output=str(tmp_path))
+    union_path = processor.union_results(run_tag="test-run")
+
+    union_df = pd.read_excel(union_path, engine="openpyxl")
+    assert "commit_hash" in union_df.columns
+    assert pd.isna(union_df.loc[0, "commit_hash"])

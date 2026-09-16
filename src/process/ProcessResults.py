@@ -102,6 +102,7 @@ def getResults(
         {
             "time": list(range(n)),
             "file": [data["file"]] * n,
+            "commit_hash": [data.get("commit_hash")] * n,
             "hash_file": [file_name_hash] * n,
             "weight_hash": [weight_hash] * n,
             "weight": str(weight),
