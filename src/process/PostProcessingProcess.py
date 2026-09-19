@@ -11,6 +11,10 @@ class PostProcessingProcess:
         self.log = log
         self.output = output
 
+    def _log_info(self, message):
+        if self.log is not None and hasattr(self.log, "info"):
+            self.log.info(message)
+
     def union_results(self, run_tag=None, build_target=False, include_targets=True):
         # Recursively collect all .xlsx files under output (including subfolders)
         excel_paths = []
@@ -28,6 +32,7 @@ class PostProcessingProcess:
             self.log.error("Nenhum arquivo .xlsx encontrado.")
             return None
 
+        self._log_info(f"Arquivos encontrados: {len(excel_paths)}")
         frames = []
         config_frames = []
         for path in excel_paths:
@@ -69,6 +74,8 @@ class PostProcessingProcess:
                 self.log.error(f"Erro ao ler arquivo {path}: {e}")
                 continue
 
+        self._log_info("Fim da leitura dos arquivos.")
+
         if not frames:
             self.log.error("Nenhum DataFrame lido.")
             return None
@@ -94,6 +101,8 @@ class PostProcessingProcess:
             )
         else:
             run_configs_df = pd.DataFrame(columns=["config_hash", "config_json"])
+
+        self._log_info("Arquivos concatenados.")
 
         if not any(
             col in union_df.columns
@@ -126,7 +135,10 @@ class PostProcessingProcess:
             os.path.join(targets_dir, "targets.xlsx") if targets_dir else None
         )
 
+        self._log_info("Colunas validadas.")
+
         if include_targets and targets_path and os.path.exists(targets_path):
+            self._log_info("Construindo targets.")
             try:
                 targets_df = pd.read_excel(targets_path, engine="openpyxl")
                 required_cols = [
@@ -166,6 +178,8 @@ class PostProcessingProcess:
                 if c not in union_df.columns:
                     union_df[c] = pd.NA
 
+        self._log_info("Preparando para salvar.")
+
         if not build_target:
             out_name = f"{run_tag}-union_results.xlsx"
         else:
@@ -174,6 +188,7 @@ class PostProcessingProcess:
         with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
             union_df.to_excel(writer, index=False)
             run_configs_df.to_excel(writer, sheet_name="run_configs", index=False)
+        self._log_info("Salvo.")
         return out_path
 
     def build_target(self, union_results_path=None):

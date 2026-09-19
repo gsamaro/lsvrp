@@ -136,6 +136,8 @@ def build_instances(instance_dir, output, files, num_threads, time_limit):
 
 
 def finalize_postprocessing(postprocessing, run_tag, build_target):
+    if hasattr(postprocessing.log, "info"):
+        postprocessing.log.info("Iniciando union results")
     union_path = postprocessing.union_results(
         run_tag=run_tag, build_target=build_target
     )
