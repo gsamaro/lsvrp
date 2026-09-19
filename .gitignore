@@ -6,3 +6,12 @@ launch.json
 .DS_Store
 launch.json
 .env
+artigos
+tmp
+**/build/*.aux
+**/build/*.fdb_latexmk
+**/build/*.fls
+**/build/*.log
+**/build/*.out
+**/build/*.synctex.gz
+**/build/*.toc

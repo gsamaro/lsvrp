@@ -737,7 +737,59 @@ class ParticleSwarmOptimization:
     def _materialized_global_best(self):
         if self.global_best_solution is None:
             return None
-        return self.heuristic.materialize_solution(self.global_best_solution)
+        best = self.global_best_solution
+        if Config.get_nested("solver", "symmetry_breaking", "hc1", default=False):
+            best = self._canonicalize_solution_for_hc1(best)
+        return self.heuristic.materialize_solution(best)
+
+    def _canonicalize_solution_for_hc1(self, solution):
+        """Relabel each period's routes so a PSO MIP start satisfies HC1.
+
+        HC1 orders used vehicles by the smallest customer index on their route.
+        Since vehicle labels are interchangeable, this permutation preserves all
+        production, inventory, delivery and routing costs while making the warm
+        start compatible with the symmetry-breaking inequalities.
+        """
+        canonical = clone_solution(solution)
+        canonical["Q"] = np.zeros_like(solution["Q"])
+        canonical["route_plan"] = []
+        canonical["assignments"] = []
+        changed_periods = 0
+
+        for t, routes in enumerate(solution.get("route_plan", [])):
+            order = sorted(
+                range(self.problem.v),
+                key=lambda vehicle: (
+                    min(routes[vehicle]) if routes[vehicle] else math.inf,
+                    vehicle,
+                ),
+            )
+            old_to_new = {old: new for new, old in enumerate(order)}
+            if any(old != new for old, new in old_to_new.items()):
+                changed_periods += 1
+
+            canonical["route_plan"].append(
+                [list(routes[old]) for old in order]
+            )
+            canonical["assignments"].append(
+                {
+                    customer: old_to_new[vehicle]
+                    for customer, vehicle in solution["assignments"][t].items()
+                }
+            )
+            for new, old in enumerate(order):
+                canonical["Q"][:, new, :, t] = solution["Q"][:, old, :, t]
+
+        if changed_periods:
+            self.log.debug(
+                f"PSO MIP start canonicalizado para HC1 em {changed_periods} períodos."
+            )
+        canonical["routes"] = [
+            {"periodo": t, "route": [list(route) for route in routes]}
+            for t, routes in enumerate(canonical["route_plan"])
+        ]
+        canonical["visits"] = self.heuristic._extract_visits(canonical)
+        return canonical
 
     def _maybe_run_exact_solver(self, numThreads=None, timeLimit=None, full_best=None):
         standalone = bool(self.pso_config["return_heuristic_result_without_cplex"])
@@ -763,7 +815,24 @@ class ParticleSwarmOptimization:
                 },
             }
 
-        self.solverGurobi = MPPRP(self.data, self.dir, self.log, start)
+        symmetry_breaking_hc1 = Config.get_nested(
+            "solver", "symmetry_breaking", "hc1", default=False
+        )
+        coelho_inequalities = Config.get_nested(
+            "solver", "coelho_inequalities", default=False
+        )
+        positive_only_deviations = Config.get_nested(
+            "solver", "goal_programming", "positive_only_deviations", default=True
+        )
+        self.solverGurobi = MPPRP(
+            self.data,
+            self.dir,
+            self.log,
+            start,
+            symmetry_breaking_hc1=symmetry_breaking_hc1,
+            coelho_inequalities=coelho_inequalities,
+            positive_only_deviations=positive_only_deviations,
+        )
         self.solverGurobi.solver(timeLimit=timeLimit, numThreads=numThreads)
 
     def solver(self, numThreads=None, timeLimit=None):

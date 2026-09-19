@@ -3,6 +3,7 @@ import types
 import unittest
 import inspect
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -86,7 +87,10 @@ class PSOSolverTestCase(unittest.TestCase):
         )
         np.testing.assert_allclose(
             solver.heuristic.upper_bounds,
-            solver.relaxed_total_bounds["upper_solution"]["X"],
+            np.minimum(
+                solver.relaxed_total_bounds["upper_solution"]["X"],
+                solver.heuristic._production_upper_bounds,
+            ),
         )
         np.testing.assert_allclose(
             solver.heuristic.lower_delivery_bounds,
@@ -140,10 +144,23 @@ class PSOSolverTestCase(unittest.TestCase):
 
     def test_pso_passes_warm_start_to_exact_solver(self):
         starts = []
+        symmetry_breaking = []
+        coelho_flags = []
 
         class FakeExactSolver:
-            def __init__(self, map, dir, log, start):
+            def __init__(
+                self,
+                map,
+                dir,
+                log,
+                start,
+                symmetry_breaking_hc1=None,
+                coelho_inequalities=None,
+                positive_only_deviations=None,
+            ):
                 starts.append(start)
+                symmetry_breaking.append(symmetry_breaking_hc1)
+                coelho_flags.append(coelho_inequalities)
 
             def solver(self, timeLimit=None, numThreads=None):
                 pass
@@ -161,7 +178,9 @@ class PSOSolverTestCase(unittest.TestCase):
                 "seed": 123,
                 "use_as_mip_start": True,
                 "return_heuristic_result_without_cplex": False,
-            }
+            },
+            ("solver", "symmetry_breaking", "hc1"): True,
+            ("solver", "coelho_inequalities"): True,
         }
 
         with patch.object(pso_module, "MPPRP", FakeExactSolver):
@@ -177,6 +196,40 @@ class PSOSolverTestCase(unittest.TestCase):
         self.assertEqual(len(starts), 1)
         self.assertTrue(starts[0]["start"])
         self.assertIn("variables", starts[0])
+        self.assertEqual(symmetry_breaking, [True])
+        self.assertEqual(coelho_flags, [True])
+
+    def test_hc1_canonicalizes_vehicle_labels_in_mip_start(self):
+        solver = ParticleSwarmOptimization.__new__(ParticleSwarmOptimization)
+        solver.problem = SimpleNamespace(v=3, t=1)
+        solver.log = DummyLogger()
+        solver.heuristic = SimpleNamespace(
+            _extract_visits=lambda solution: [[1, 1, 0, 0]]
+        )
+        solution = {
+            "X": np.zeros((1, 1), dtype=int),
+            "Y": np.zeros((1, 1), dtype=int),
+            "I": np.zeros((1, 5, 1), dtype=int),
+            "Q": np.zeros((1, 3, 5, 1), dtype=int),
+            "route_plan": [[[3, 4], [1], []]],
+            "assignments": [{3: 0, 4: 0, 1: 1}],
+            "feasible": True,
+            "cost": 0,
+        }
+        solution["Q"][0, 0, 3, 0] = 1
+        solution["Q"][0, 0, 4, 0] = 1
+        solution["Q"][0, 1, 1, 0] = 1
+
+        with patch(
+            "src.solvers.ParticleSwarmOptimization.Config.get_nested",
+            return_value=True,
+        ):
+            canonical = solver._canonicalize_solution_for_hc1(solution)
+
+        self.assertEqual(canonical["route_plan"], [[[1], [3, 4], []]])
+        self.assertEqual(canonical["assignments"], [{1: 0, 3: 1, 4: 1}])
+        self.assertEqual(canonical["Q"][0, 0, 1, 0], 1)
+        self.assertEqual(canonical["Q"][0, 1, 3, 0], 1)
 
     def test_pso_returns_standalone_results(self):
         values = {

@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LSVRP · Quebra de simetria HC1</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+  <style>
+    .hero { padding: 28px; margin: 28px 0 34px; background: linear-gradient(135deg, #e7effd, #fff); border: 1px solid #c9d9f3; border-radius: 20px; }
+    .hero p { max-width: 760px; font-size: 1.08rem; }
+    section { margin-top: 46px; }
+    section h2 { margin-bottom: 10px; font-size: 1.65rem; }
+    section h3 { margin: 8px 0; font-size: 1.08rem; }
+    .section-intro { max-width: 820px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0; }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .card { padding: 20px; background: var(--surface); border: 1px solid #dbe4f0; border-radius: 16px; box-shadow: 0 10px 30px rgba(25, 47, 83, .05); }
+    .card p { margin-bottom: 0; }
+    .tag { display: inline-block; padding: 4px 9px; border-radius: 999px; font-size: .76rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; background: var(--accent-soft); color: var(--accent); }
+    .tag.orange { background: #fff0dc; color: #a65d00; }
+    .tag.green { background: #e4f7ef; color: #18734d; }
+    .tag.purple { background: #f0e8ff; color: #7040a7; }
+    .formula { margin: 18px 0; padding: 17px 20px; overflow-x: auto; color: #172033; background: #f8fafc; border: 1px solid #dbe4f0; border-left: 5px solid var(--accent); border-radius: 12px; font: 600 1rem/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .callout { padding: 18px 20px; margin: 20px 0; background: #fff8e9; border: 1px solid #efd49b; border-radius: 14px; }
+    .callout strong { color: #8b5700; }
+    .diagram { display: grid; grid-template-columns: 1fr 56px 1fr; gap: 12px; align-items: center; margin: 24px 0; }
+    .diagram-box { min-height: 130px; padding: 18px; background: var(--surface); border: 1px solid #dbe4f0; border-radius: 16px; }
+    .diagram-box.canonical { background: #eef8f3; border-color: #b8e2cf; }
+    .diagram-arrow { color: var(--accent); font-size: 2rem; text-align: center; }
+    .route { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; color: var(--muted); font-size: .92rem; }
+    .node { padding: 7px 10px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 9px; color: var(--ink); font-weight: 700; }
+    .node.vehicle-a { background: #e7effd; border-color: #a9c5f5; }
+    .node.vehicle-b { background: #f0e8ff; border-color: #d5baf5; }
+    .table-wrap { overflow-x: auto; margin: 18px 0; }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: .94rem; }
+    th, td { padding: 12px 14px; border: 1px solid #dbe4f0; text-align: left; vertical-align: top; }
+    th { background: #eef3fa; color: var(--ink); }
+    .metric { font-size: 1.5rem; font-weight: 800; color: var(--accent); }
+    .metric-label { color: var(--muted); font-size: .9rem; }
+    .footer-link { margin-top: 48px; padding-top: 22px; border-top: 1px solid #dbe4f0; }
+    @media (max-width: 720px) {
+      .grid, .grid.two, .diagram { grid-template-columns: 1fr; }
+      .diagram-arrow { transform: rotate(90deg); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Registro de ideia · MIP</div>
+    <h1>Quebra de simetria HC1</h1>
+    <p>Como reduzir soluções duplicadas causadas pela troca de rótulos dos veículos no Multi Product Production Routing Problem.</p>
+
+    <div class="hero">
+      <h2>Em uma frase</h2>
+      <p>Estamos adicionando regras que escolhem uma única representação para soluções equivalentes, para que o CPLEX não precise redescobrir a mesma operação com os veículos numerados em ordens diferentes.</p>
+      <p><strong>Escopo desta versão:</strong> modelo MIP, veículos intercambiáveis, VC + HC1, configuração desligada por padrão e sem alteração da ordenação dos clientes.</p>
+    </div>
+
+    <section id="problema">
+      <h2>1. Qual é o problema?</h2>
+      <p class="section-intro">No modelo, cada arco de uma rota recebe um índice de veículo. Se os veículos têm a mesma capacidade e os mesmos custos, o índice é apenas um rótulo: trocar o veículo 0 pelo veículo 1 não muda a operação realizada nem o custo.</p>
+
+      <div class="grid two">
+        <article class="card">
+          <span class="tag blue">Solução A</span>
+          <h3>Veículo 0 atende 2 → 5</h3>
+          <div class="route"><span class="node vehicle-a">v0</span><span>0 →</span><span class="node">2</span><span>→</span><span class="node">5</span><span>→ 0</span></div>
+        </article>
+        <article class="card">
+          <span class="tag purple">Solução B</span>
+          <h3>Veículo 1 atende 2 → 5</h3>
+          <div class="route"><span class="node vehicle-b">v1</span><span>0 →</span><span class="node">2</span><span>→</span><span class="node">5</span><span>→ 0</span></div>
+        </article>
+      </div>
+      <div class="callout"><strong>As duas soluções são fisicamente iguais.</strong> A única diferença é o nome do veículo. Para o branch-and-bound, entretanto, elas ocupam posições diferentes no espaço de busca e podem gerar muitos nós redundantes.</div>
+    </section>
+
+    <section id="ideia">
+      <h2>2. O que estamos fazendo?</h2>
+      <p class="section-intro">Em vez de criar variáveis novas, usamos os arcos <code>Z[v,i,k,t]</code> que já existem. As regras impõem uma ordem canônica: veículos menores devem aparecer antes dos veículos maiores e devem carregar a “evidência” de que a frota anterior já está sendo usada.</p>
+      <div class="diagram" aria-label="Transformação de soluções equivalentes em uma representação canônica">
+        <div class="diagram-box"><h3>Antes</h3><p>Qualquer veículo pode iniciar uma rota ou visitar qualquer cliente, desde que as demais restrições sejam respeitadas.</p><div class="route"><span class="node vehicle-b">v1 ativo</span><span>sem v0</span></div></div>
+        <div class="diagram-arrow" aria-hidden="true">→</div>
+        <div class="diagram-box canonical"><h3>Depois</h3><p>A mesma operação precisa usar os rótulos em uma ordem única e consistente.</p><div class="route"><span class="node vehicle-a">v0 ativo</span><span>antes de v1</span></div></div>
+      </div>
+      <div class="grid two">
+        <article class="card"><span class="tag orange">VC</span><h3>Uso ordenado da frota</h3><p>Um veículo de índice maior só pode ser ativado se o veículo imediatamente anterior também estiver ativo.</p></article>
+        <article class="card"><span class="tag green">HC1</span><h3>Visitas ordenadas</h3><p>Se um veículo maior atende o cliente <code>i</code>, o veículo anterior deve atender algum cliente de índice menor.</p></article>
+      </div>
+    </section>
+
+    <section id="formulacao">
+      <h2>3. Como a regra aparece no modelo?</h2>
+      <p>O código usa a planta como nó <code>0</code> e os clientes como nós <code>1..N</code>. Para cada período <code>t</code>, construímos expressões agregadas a partir de <code>Z</code>:</p>
+      <div class="formula">s[v,t] = Σ(k = 1..N) Z[v,0,k,t] &nbsp;&nbsp; (veículo v sai da planta)</div>
+      <div class="formula">u[v,i,t] = Σ(k ≠ i) Z[v,i,k,t] &nbsp;&nbsp; (veículo v visita o cliente i)</div>
+
+      <h3>VC — Vehicle Consecutiveness</h3>
+      <div class="formula">s[v,t] ≤ s[v−1,t] &nbsp;&nbsp; para v = 1..V−1 e t = 0..T−1</div>
+      <p>Isso impede usar apenas o veículo 2, por exemplo, deixando os veículos 0 e 1 ociosos.</p>
+
+      <h3>HC1 — Hierarchical Constraint 1</h3>
+      <div class="formula">u[v,i,t] ≤ Σ(j = 1..i−1) u[v−1,j,t] &nbsp;&nbsp; para v = 1..V−1, i = 1..N e t = 0..T−1</div>
+      <p>Para <code>i = 1</code>, a soma do lado direito é zero. Portanto, um veículo maior não pode ser o primeiro a atender o primeiro cliente.</p>
+      <p>As restrições são criadas por <code>createVehicleSymmetryBreaking</code> com nomes <code>SB_VC_*</code> e <code>SB_HC1_*</code>. A conservação de fluxo existente garante que a visita seja representada corretamente pela soma dos arcos de saída do cliente.</p>
+    </section>
+
+    <section id="multiobjetivo">
+      <h2>4. Por que isso é compatível com o multiobjetivo?</h2>
+      <p class="section-intro">A quebra de simetria não escolhe uma rota melhor nem muda a prioridade entre objetivos. Ela apenas remove cópias da mesma solução produzidas pela troca de rótulos dos veículos.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Componente</th><th>Efeito da permutação dos veículos</th><th>Impacto esperado</th></tr></thead>
+          <tbody>
+            <tr><td><code>f1</code> produção</td><td>Nenhum</td><td>Preservado</td></tr>
+            <tr><td><code>f2</code> setup</td><td>Nenhum</td><td>Preservado</td></tr>
+            <tr><td><code>f3</code> estoque</td><td>Nenhum</td><td>Preservado</td></tr>
+            <tr><td><code>f4</code> transporte fixo</td><td>A soma não muda quando os veículos são idênticos</td><td>Preservado</td></tr>
+            <tr><td><code>f5</code> transporte variável</td><td>A rota física é a mesma</td><td>Preservado</td></tr>
+            <tr><td>Pesos, <code>alpha</code> e metas</td><td>Recebem os mesmos componentes</td><td>Preservados</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout"><strong>Condição importante:</strong> os veículos precisam ser intercambiáveis. Se houver custo, capacidade, disponibilidade ou janela específica por veículo, trocar rótulos pode alterar a solução e VC + HC1 não deve ser ativado sem revisão.</div>
+    </section>
+
+    <section id="configuracao">
+      <h2>5. Como ativar?</h2>
+      <p>A opção fica desligada por padrão para preservar o comportamento atual. O PSO continua responsável por gerar a solução inicial, e o MIP que recebe essa solução aplica VC + HC1 quando a opção está ligada.</p>
+      <div class="formula">solver.symmetry_breaking.hc1 = false</div>
+      <p>Para um experimento com HC1:</p>
+      <div class="formula">solver.symmetry_breaking.hc1 = true</div>
+      <p>Quando ativada, a opção adiciona VC e HC1 juntas. A ordenação atual dos clientes permanece inalterada.</p>
+      <p>As desigualdades lógicas (15)–(17) do artigo de Coelho são uma opção independente:</p>
+      <div class="formula">solver.coelho_inequalities = false &nbsp;&nbsp; (padrão)<br>solver.coelho_inequalities = true &nbsp;&nbsp; (Eq. 15–17)</div>
+      <p>Assim, podemos separar o efeito da quebra de simetria do efeito das desigualdades lógicas: sem ambos, somente Coelho, somente HC1 ou a combinação.</p>
+      <div class="callout"><strong>Fluxo PSO + MIP:</strong> o PSO gera a solução inicial e, antes de enviá-la ao MIP, as rotas de cada período são reordenadas pelo menor índice de cliente. Essa canonicalização preserva a operação e os custos, mas torna o MIP start compatível com HC1.</div>
+    </section>
+
+    <section id="benchmark">
+      <h2>6. Benchmark local</h2>
+      <p>Esta é a primeira rodada controlada da instância difícil, com uma configuração fixa e limite de 60 segundos no solver.</p>
+      <div class="grid">
+        <article class="card"><div class="metric">PRP13</div><div class="metric-label">20 clientes · 8 produtos · 5 veículos · 12 períodos</div></article>
+        <article class="card"><div class="metric">90,48%</div><div class="metric-label">gap médio nos 12 cenários mistos difíceis</div></article>
+        <article class="card"><div class="metric">60 s</div><div class="metric-label">limite desta rodada para cada execução MIP</div></article>
+      </div>
+      <div class="formula">data/DATA_PRP_20C/PRP13_C20_P8_V5_T12_S4.dat</div>
+      <p><strong>Configuração fixa:</strong> pesos <code>[0.2, 0.2, 0.2, 0.2, 0.2]</code>, <code>alpha = 0.99</code>, uma thread, uma tarefa e telemetria habilitada. Para o PSO, o limite de 60 segundos é aplicado ao polimento MIP após a heurística, como no fluxo atual do projeto.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Execução</th><th>HC1 efetivo</th><th>Tempo total</th><th>Tempo MIP</th><th>Primeira solução</th><th>Incumbente</th><th>Melhor bound</th><th>Gap</th><th>Iterações / nós</th></tr></thead>
+          <tbody>
+            <tr><td>PSO sem quebra</td><td><code>não</code></td><td>96,38 s</td><td>60,10 s</td><td>0,63 s no PSO<br>41,37 s no MIP</td><td>Sim<br><code>FO=40,857986</code></td><td>2,171881</td><td>94,68%</td><td>1001 iterações<br>0 nós reportados</td></tr>
+            <tr><td>PSO com quebra<br><small>rodada antiga</small></td><td><code>não*</code></td><td>91,40 s</td><td>60,10 s</td><td>0,61 s no PSO<br>33,26 s no MIP</td><td>Sim<br><code>FO=40,857986</code></td><td>2,171881</td><td>94,68%</td><td>1001 iterações<br>0 nós reportados</td></tr>
+            <tr><td>MIP sem quebra</td><td><code>false</code></td><td>62,28 s</td><td>60,07 s</td><td>Não</td><td>Não</td><td>2,171881</td><td>n/a</td><td>0 nós reportados</td></tr>
+            <tr><td>MIP com VC + HC1</td><td><code>true</code></td><td>62,45 s</td><td>60,06 s</td><td>Não</td><td>Não</td><td>2,171240</td><td>n/a</td><td>0 nós reportados</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Leitura inicial:</strong> em 60 segundos, o MIP dedicado não encontrou incumbente em nenhum dos dois casos. O melhor bound reportado foi praticamente igual, com pequena variação de <code>2,171881</code> para <code>2,171240</code>. Naquela execução histórica, o campo de nós ainda não usava o contador nativo do CPLEX e deve ser tratado como não observado.</p>
+      <p>O cenário PSO com quebra mostrado acima é histórico e não representa o fluxo atual: naquela execução HC1 foi isolada também do MIP auxiliar. Ele deve ser usado apenas como registro da configuração anterior.</p>
+      <p>Para a solução PSO, as somas dos 12 períodos também foram idênticas: <code>f1=49.623.400</code>, <code>f2=23.700</code>, <code>f3=608.458</code>, <code>f4=821.394</code>, <code>f5=79.649</code> e <code>epsilon=0,686426</code>. Os MIP dedicados não possuem <code>FO</code> nem componentes <code>f1..f5</code> porque terminaram sem solução inteira.</p>
+      <p>Os arquivos consolidados desta rodada são: <a href="../out/hc1_experiments/pso_without_hc1_60s/2026-09-12-898e7a-9393bc-union_results.xlsx">PSO sem HC1</a>, <a href="../out/hc1_experiments/pso_with_hc1_60s_retest/2026-09-12-898e7a-631a28-union_results.xlsx">PSO com HC1</a>, <a href="../out/hc1_experiments/mip_without_hc1_60s/2026-09-12-898e7a-25f951-union_results.xlsx">MIP sem HC1</a> e <a href="../out/hc1_experiments/mip_with_hc1_60s/2026-09-12-898e7a-600536-union_results.xlsx">MIP com HC1</a>. A telemetria detalhada está na pasta <code>telemetry/</code> de cada experimento.</p>
+      <p><small>* A rodada PSO com quebra de 60 segundos foi executada antes da correção do fluxo PSO → MIP e não deve ser comparada como PSO + HC1.</small></p>
+
+      <h3>Rodada PSO com limite de 180 segundos</h3>
+      <p>O peso permaneceu fixo em <code>[0.2, 0.2, 0.2, 0.2, 0.2]</code>, com <code>alpha=0.99</code>, seed 123, uma thread e uma única instância.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Execução</th><th>HC1</th><th>Coelho 15–17</th><th>Tempo MIP</th><th>Tempo total</th><th>Primeira solução MIP</th><th>FO</th><th>Melhor bound</th><th>Gap</th><th>Iterações PSO</th></tr></thead>
+          <tbody>
+            <tr><td>PSO sem HC1</td><td><code>false</code></td><td><code>false</code></td><td>180,12 s</td><td>212,02 s</td><td>0,59 s PSO<br>34,58 s MIP</td><td>40,857986</td><td>3,549118</td><td>91,31%</td><td>1001</td></tr>
+            <tr><td>PSO sem HC1</td><td><code>false</code></td><td><code>true</code></td><td>180,12 s</td><td>217,44 s</td><td>0,67 s PSO<br>42,74 s MIP</td><td>40,857986</td><td>3,397126</td><td>91,69%</td><td>1001</td></tr>
+            <tr><td>PSO + MIP com VC + HC1<br><small>canonicalizado</small></td><td><code>true</code></td><td><code>false</code></td><td>180,15 s</td><td>215,68 s</td><td>0,62 s PSO<br>40,17 s MIP</td><td>40,864647</td><td>2,171395</td><td>94,69%</td><td>1001</td></tr>
+            <tr><td>PSO + MIP com VC + HC1<br><small>canonicalizado</small></td><td><code>true</code></td><td><code>true</code></td><td>180,16 s</td><td>215,00 s</td><td>0,60 s PSO<br>39,73 s MIP</td><td>40,857695</td><td>2,172147</td><td>94,68%</td><td>1001</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Comparação completa:</strong> sem HC1, Coelho preservou o mesmo FO do controle e melhorou o melhor bound de <code>3,549118</code> para <code>3,397126</code>, mas o gap subiu de <code>91,31%</code> para <code>91,69%</code>. Com HC1, Coelho reduziu o FO de <code>40,864647</code> para <code>40,857695</code> e o gap de <code>94,69%</code> para <code>94,68%</code>. O bound ficou ligeiramente pior, de <code>2,171395</code> para <code>2,172147</code>.</p>
+      <p>Os componentes agregados do cenário multiobjetivo sem HC1 foram <code>f1=49.623.400</code>, <code>f2=23.700</code>, <code>f3=608.458</code>, <code>f4=821.394</code> e <code>f5=79.649</code>, tanto com quanto sem Coelho. Com HC1 sem Coelho, foram <code>f1=49.623.400</code>, <code>f2=23.700</code>, <code>f3=872.238</code>, <code>f4=821.394</code> e <code>f5=79.649</code>; com HC1 e Coelho, <code>f3=676.112</code> e os demais componentes permaneceram iguais.</p>
+      <div class="callout"><strong>Limite da interpretação:</strong> as duas rodadas fizeram as mesmas 1001 iterações do PSO. A diferença observada pertence ao MIP com o MIP start e a formulação de simetria. Para estudar a convergência da heurística por 3 minutos, será necessário adicionar um orçamento temporal ao laço do PSO ou aumentar separadamente <code>solver.pso.max_iterations</code>.</div>
+      <p>Arquivos da comparação multiobjetivo de 180 segundos: <a href="../out/hc1_experiments/pso_without_hc1_180s/2026-09-12-898e7a-b5e489-union_results.xlsx">sem HC1 e sem Coelho</a>, <a href="../out/hc1_experiments/multi_pso_without_hc1_with_coelho_180s_fixed/2026-09-12-898e7a-c69045-union_results.xlsx">sem HC1 e com Coelho</a>, <a href="../out/hc1_experiments/pso_with_hc1_180s_final/2026-09-12-898e7a-45a837-union_results.xlsx">com HC1 e sem Coelho</a> e <a href="../out/hc1_experiments/multi_pso_with_hc1_with_coelho_180s_fixed/2026-09-12-898e7a-e49718-union_results.xlsx">com HC1 e com Coelho</a>.</p>
+
+      <h3>Rodada multiobjetiva com target reconstruído</h3>
+      <p>Para eliminar a dependência do target anterior, reconstruímos os targets exclusivamente para o benchmark. Foram executadas cinco otimizações monoobjetivo, uma para cada peso unitário, com limite de 180 segundos, sem HC1 e sem Coelho. O novo arquivo contém 12 períodos e foi usado pelos quatro cenários abaixo.</p>
+      <div class="formula">target: out/hc1_experiments/target_build_prp13_180s/targets/targets.xlsx</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Execução</th><th>HC1</th><th>Coelho 15–17</th><th>Tempo MIP</th><th>Tempo total</th><th>Primeira solução MIP</th><th>FO</th><th>Melhor bound</th><th>Gap</th><th>Nós</th></tr></thead>
+          <tbody>
+            <tr><td>PSO + MIP</td><td><code>false</code></td><td><code>false</code></td><td>180,11 s</td><td>216,56 s</td><td>40,08 s</td><td>40,858293</td><td>2,394066</td><td>94,14%</td><td>0*</td></tr>
+            <tr><td>PSO + MIP</td><td><code>false</code></td><td><code>true</code></td><td>180,12 s</td><td>218,98 s</td><td>46,33 s</td><td>40,858293</td><td>2,201707</td><td>94,61%</td><td>0*</td></tr>
+            <tr><td>PSO + MIP com VC + HC1<br><small>canonicalizado</small></td><td><code>true</code></td><td><code>false</code></td><td>180,21 s</td><td>214,36 s</td><td>38,16 s</td><td>40,857872</td><td>2,123833</td><td>94,80%</td><td>0*</td></tr>
+            <tr><td>PSO + MIP com VC + HC1<br><small>canonicalizado</small></td><td><code>true</code></td><td><code>true</code></td><td>180,16 s</td><td>215,90 s</td><td>40,81 s</td><td>40,857872</td><td>2,123301</td><td>94,80%</td><td>0*</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Leitura:</strong> com o target reconstruído, HC1 melhorou ligeiramente o FO de <code>40,858293</code> para <code>40,857872</code>. As desigualdades de Coelho não alteraram o FO em nenhum dos dois pares. Sem HC1, elas pioraram o bound e o gap; com HC1, alteraram pouco o bound e mantiveram o gap praticamente igual.</p>
+      <p>Os componentes agregados sem HC1 foram <code>f1=49.623.400</code>, <code>f2=23.700</code>, <code>f3=637.829,52</code>, <code>f4=821.394</code> e <code>f5=79.649</code>. Com HC1, <code>f3=617.528,50</code> e os demais componentes permaneceram iguais. Os cenários com e sem Coelho tiveram os mesmos componentes dentro de cada par.</p>
+      <p><small>* O adaptador reportou zero nós nos quatro cenários; esse valor deve ser interpretado como métrica não observada, não como ausência de exploração da árvore.</small></p>
+      <p>Arquivos da rodada com target reconstruído: <a href="../out/hc1_experiments/target_build_prp13_180s/targets/targets.xlsx">target reconstruído</a>, <a href="../out/hc1_experiments/multi_rebuilt_target_pso_without_hc1_without_coelho_180s/2026-09-12-898e7a-740dbf-union_results.xlsx">sem HC1 e sem Coelho</a>, <a href="../out/hc1_experiments/multi_rebuilt_target_pso_without_hc1_with_coelho_180s/2026-09-12-898e7a-3c1006-union_results.xlsx">sem HC1 e com Coelho</a>, <a href="../out/hc1_experiments/multi_rebuilt_target_pso_with_hc1_without_coelho_180s/2026-09-12-898e7a-9d2b61-union_results.xlsx">com HC1 e sem Coelho</a> e <a href="../out/hc1_experiments/multi_rebuilt_target_pso_with_hc1_with_coelho_180s/2026-09-12-898e7a-8621d1-union_results.xlsx">com HC1 e com Coelho</a>.</p>
+
+      <h3>Diagnóstico do gap em 60 segundos</h3>
+      <p>Depois da correção da telemetria, o contador de nós passou a ser capturado durante a busca pela callback nativa do CPLEX (<code>get_num_nodes()</code> e <code>get_num_remaining_nodes()</code>), com fallback para <code>solve_details</code> e registro de <code>nodes_remaining</code>. Repetimos os quatro multiobjetivos com o target reconstruído e rodamos os dois controles monoobjetivo equivalentes.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Modo</th><th>HC1</th><th>Coelho</th><th>FO</th><th>Melhor bound</th><th>Gap</th><th>Primeira solução MIP</th><th>Nós processados</th><th>Nós restantes</th></tr></thead>
+          <tbody>
+            <tr><td>Multiobjetivo</td><td><code>false</code></td><td><code>false</code></td><td>40,858293</td><td>2,123463</td><td>94,80%</td><td>37,18 s</td><td>0</td><td>1</td></tr>
+            <tr><td>Multiobjetivo</td><td><code>false</code></td><td><code>true</code></td><td>40,858293</td><td>2,123306</td><td>94,80%</td><td>34,75 s</td><td>0</td><td>1</td></tr>
+            <tr><td>Multiobjetivo</td><td><code>true</code></td><td><code>false</code></td><td>40,857872</td><td>2,123833</td><td>94,80%</td><td>37,73 s</td><td>0</td><td>1</td></tr>
+            <tr><td>Multiobjetivo</td><td><code>true</code></td><td><code>true</code></td><td>40,857872</td><td>2,123301</td><td>94,80%</td><td>38,80 s</td><td>0</td><td>1</td></tr>
+            <tr><td>Monoobjetivo</td><td><code>false</code></td><td><code>false</code></td><td>50.518.019</td><td>50.427.877,35</td><td>0,178%</td><td>36,93 s</td><td>0</td><td>1</td></tr>
+            <tr><td>Monoobjetivo</td><td><code>true</code></td><td><code>false</code></td><td>50.944.826</td><td>50.431.842,81</td><td>1,007%</td><td>41,68 s</td><td>0</td><td>1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>O que isso mostra:</strong> o zero de nós agora é uma leitura real. Com <code>nodes_remaining=1</code>, o CPLEX permaneceu no nó raiz durante os 60 segundos; não houve uma árvore de branch-and-bound significativa para a quebra de simetria reduzir. A medição monoobjetiva anterior de 180 segundos registrou 68 nós sem HC1, enquanto a reexecução de 60 segundos registrou zero. Portanto, o contador está sensível ao tempo disponível e a diferença entre os gaps nasce principalmente do bound da relaxação raiz.</p>
+      <p>Os valores de FO dos dois modos não são comparáveis diretamente: o monoobjetivo minimiza a soma de <code>f1..f5</code>, enquanto o multiobjetivo minimiza <code>lambda</code> e desvios normalizados. No monoobjetivo sem HC1, o bound raiz já está próximo do incumbente: aproximadamente <code>50,428 milhões</code> contra <code>50,518 milhões</code>, resultando em gap de <code>0,178%</code>. No multiobjetivo, o bound raiz é aproximadamente <code>2,123</code> contra incumbente <code>40,858</code>, resultando em gap de aproximadamente <code>94,80%</code>.</p>
+      <p>A formulação multiobjetivo explica essa fragilidade: as restrições de goal programming permitem desvios contínuos e o vínculo de <code>lambda</code> com os desvios normalizados é fraco na relaxação linear. Os resultados desta seção foram executados antes da correção final da função objetivo e devem ser tratados como histórico, não como baseline atual. O PSO fornece um incumbente bom, mas não um bound forte.</p>
+      <p>A correção da telemetria e os arquivos desta rodada são: <a href="../out/hc1_experiments/multi_rebuilt_target_pso_without_hc1_without_coelho_60s/2026-09-12-898e7a-13efee-union_results.xlsx">multi sem HC1 e sem Coelho</a>, <a href="../out/hc1_experiments/multi_rebuilt_target_pso_without_hc1_with_coelho_60s/2026-09-12-898e7a-87f9d7-union_results.xlsx">multi sem HC1 e com Coelho</a>, <a href="../out/hc1_experiments/multi_rebuilt_target_pso_with_hc1_without_coelho_60s/2026-09-12-898e7a-f67949-union_results.xlsx">multi com HC1 e sem Coelho</a>, <a href="../out/hc1_experiments/multi_rebuilt_target_pso_with_hc1_with_coelho_60s/2026-09-12-898e7a-6f9aa1-union_results.xlsx">multi com HC1 e com Coelho</a>, <a href="../out/hc1_experiments/mono_rebuilt_target_pso_without_hc1_60s/2026-09-12-898e7a-3cec03-union_results.xlsx">mono sem HC1</a>, <a href="../out/hc1_experiments/mono_rebuilt_target_pso_with_hc1_60s/2026-09-12-898e7a-4ad1ec-union_results.xlsx">mono com HC1</a> e <a href="../out/hc1_experiments/mono_recheck_nodes_pso_without_hc1_60s/2026-09-12-898e7a-2fc2f0-union_results.xlsx">rechecagem mono do contador</a>.</p>
+
+      <h3>Validação da função objetivo corrigida</h3>
+      <p>O modelo matemático define <code>min alpha*lambda + (1-alpha)*sum(t,j, weight[j]*p[j,t]/target[j,t])</code>. A implementação foi ajustada para deixar <code>alpha*lambda</code> uma única vez, fora da soma. A checagem do modelo confirmou coeficiente de <code>lambda</code> igual a <code>alpha</code>; a planilha também reproduz o FO pela fórmula, com erro apenas de arredondamento.</p>
+      <p>Os quatro cenários foram repetidos com PSO como MIP start, peso <code>[0.2, 0.2, 0.2, 0.2, 0.2]</code>, <code>alpha=0,99</code>, target reconstruído, uma thread e limite MIP de 180 segundos. O PSO encontrou o mesmo custo bruto inicial <code>51.544.675</code> nos quatro casos.</p>
+      <p>Calculando a mesma função multiobjetivo diretamente sobre a solução inicial do PSO, obtemos <code>FO=1,189429</code> e <code>lambda=1,094949</code>. O MIP start foi aceito, mas a solução final não permaneceu idêntica: o MIP reduziu o FO para aproximadamente <code>0,764144</code> sem HC1 e <code>0,763722</code> com HC1. Assim, o PSO fornece o ponto inicial e o MIP efetivamente melhora a solução.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Execução</th><th>HC1</th><th>Coelho 15–17</th><th>FO corrigido</th><th>Melhor bound</th><th>Gap</th><th>Tempo MIP</th><th>Nós</th><th>Restantes</th></tr></thead>
+          <tbody>
+            <tr><td>PSO + MIP</td><td><code>false</code></td><td><code>false</code></td><td>0,764144</td><td>0,043271</td><td>94,34%</td><td>180,13 s</td><td>0</td><td>1</td></tr>
+            <tr><td>PSO + MIP</td><td><code>false</code></td><td><code>true</code></td><td>0,764144</td><td>0,043576</td><td>94,30%</td><td>180,15 s</td><td>0</td><td>1</td></tr>
+            <tr><td>PSO + MIP</td><td><code>true</code></td><td><code>false</code></td><td>0,763722</td><td>0,043604</td><td>94,29%</td><td>180,17 s</td><td>0</td><td>1</td></tr>
+            <tr><td>PSO + MIP</td><td><code>true</code></td><td><code>true</code></td><td>0,763722</td><td>0,042927</td><td>94,38%</td><td>180,24 s</td><td>0</td><td>1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Conclusão:</strong> a formulação corrigida é a documentada e o FO salvo é consistente com ela. O MIP continuou no nó raiz (<code>nodes_remaining=1</code>) e não abriu uma árvore relevante em 180 segundos. HC1 reduziu o FO corrigido de <code>0,764144</code> para <code>0,763722</code>; Coelho não alterou o FO dentro de cada par. O MIP não ficou preso à solução inicial: ele a recebeu do PSO e encontrou uma solução melhor.</p>
+      <p>Arquivos da rodada corrigida: <a href="../out/hc1_experiments/multi_corrected_objective_v2_pso_without_hc1_without_coelho_180s/2026-09-12-898e7a-e3b1ce-union_results.xlsx">sem HC1 e sem Coelho</a>, <a href="../out/hc1_experiments/multi_corrected_objective_v2_pso_without_hc1_with_coelho_180s/2026-09-12-898e7a-cfc9dc-union_results.xlsx">sem HC1 e com Coelho</a>, <a href="../out/hc1_experiments/multi_corrected_objective_v2_pso_with_hc1_without_coelho_180s/2026-09-12-898e7a-a20f9a-union_results.xlsx">com HC1 e sem Coelho</a> e <a href="../out/hc1_experiments/multi_corrected_objective_v2_pso_with_hc1_with_coelho_180s/2026-09-12-898e7a-d5ac49-union_results.xlsx">com HC1 e com Coelho</a>.</p>
+
+      <h3>Target construído com o MIP inteiro</h3>
+      <p>Para testar o efeito da origem do target, os cinco objetivos unitários foram resolvidos com <code>build_target=true</code> e <code>relaxed_solution.target_use_relaxation=false</code>. Assim, o modelo usado para gerar os valores de <code>f1</code> a <code>f5</code> permaneceu inteiro. Cada objetivo recebeu limite de 180 segundos, uma thread e a mesma instância do benchmark. O arquivo final contém 12 períodos e 17 colunas.</p>
+      <p>Somente 2 dos 5 MIPs monoobjetivo retornaram uma solução inteira dentro do limite. Os demais contribuíram com bounds, mas sem incumbente. O target foi montado com os valores disponíveis nas cinco execuções, por isso essa limitação deve ser considerada na interpretação.</p>
+      <div class="formula">relaxed_solution.target_use_relaxation = false<br>target: out/hc1_experiments/target_build_prp13_180s_full_mip/targets/targets.xlsx</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Execução multiobjetivo</th><th>HC1</th><th>Coelho 15–17</th><th>Sem <code>n</code>?</th><th>FO</th><th>Best bound</th><th>Gap</th><th>Nós</th></tr></thead>
+          <tbody>
+            <tr><td>PSO + MIP</td><td><code>false</code></td><td><code>false</code></td><td><code>não*</code></td><td>0,062073</td><td>0,000000</td><td>100,00%</td><td>0 / 1</td></tr>
+            <tr><td>PSO + MIP</td><td><code>false</code></td><td><code>true</code></td><td><code>não*</code></td><td>0,062073</td><td>0,000000</td><td>100,00%</td><td>0 / 1</td></tr>
+            <tr><td>PSO + MIP</td><td><code>true</code></td><td><code>false</code></td><td><code>não*</code></td><td>0,061957</td><td>0,000000</td><td>100,00%</td><td>0 / 1</td></tr>
+            <tr><td>PSO + MIP</td><td><code>true</code></td><td><code>true</code></td><td><code>não*</code></td><td>0,061686</td><td>0,000000</td><td>100,00%</td><td>0 / 1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Leitura:</strong> com o target inteiro, HC1 reduziu o FO de <code>0,062073</code> para <code>0,061957</code> sem Coelho e para <code>0,061686</code> com Coelho. As quatro execuções terminaram no nó raiz, com <code>nodes_remaining=1</code> e bound igual a zero. O gap de 100% mostra que o target inteiro tornou a relaxação do objetivo multiobjetivo ainda mais fraca nesta rodada.</p>
+      <p><small>* A solicitação era avaliar a formulação sem <code>n</code>, mas o primeiro runner dos quatro cenários não propagou essa configuração e executou com <code>positive_only_deviations=false</code>. Por decisão experimental, esses resultados foram mantidos como a rodada oficial do target inteiro. Uma correção foi iniciada e interrompida antes de produzir uma comparação completa, portanto esta tabela não deve ser interpretada como o experimento sem <code>n</code>.</small></p>
+      <p>Arquivos da rodada com target inteiro: <a href="../out/hc1_experiments/target_build_prp13_180s_full_mip/targets/targets.xlsx">target MIP inteiro</a>, <a href="../out/hc1_experiments/multi_full_target_pso_without_hc1_without_coelho_180s/2026-09-13-898e7a-9c719d-union_results.xlsx">sem HC1 e sem Coelho</a>, <a href="../out/hc1_experiments/multi_full_target_pso_without_hc1_with_coelho_180s/2026-09-13-898e7a-5e5aa9-union_results.xlsx">sem HC1 e com Coelho</a>, <a href="../out/hc1_experiments/multi_full_target_pso_with_hc1_without_coelho_180s/2026-09-13-898e7a-cf05d8-union_results.xlsx">com HC1 e sem Coelho</a> e <a href="../out/hc1_experiments/multi_full_target_pso_with_hc1_with_coelho_180s/2026-09-13-898e7a-bf9d61-union_results.xlsx">com HC1 e com Coelho</a>.</p>
+
+      <h3>Benchmark: bound da raiz e formulação sem <code>n</code></h3>
+      <p>Rodamos a comparação controlada na instância <code>PRP13_C20_P8_V5_T12_S4</code>, com PSO gerando o MIP start, pesos <code>[0.2, 0.2, 0.2, 0.2, 0.2]</code>, <code>alpha=0,99</code>, target reconstruído, uma thread e limite de 180 segundos para o MIP. HC1 e Coelho ficaram desligados nos dois cenários; a única diferença foi manter ou eliminar as variáveis <code>n[j,t]</code>.</p>
+      <div class="formula">solver.goal_programming.positive_only_deviations = false  →  formulação legada com p e n<br>solver.goal_programming.positive_only_deviations = true   →  p[j,t] &gt;= f[j,t] - target[j,t]</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Formulação</th><th>FO</th><th>Best bound final</th><th>Gap final</th><th>Tempo PSO</th><th>Tempo MIP</th><th>Nós processados</th><th>Nós restantes</th></tr></thead>
+          <tbody>
+            <tr><td>Com <code>n</code></td><td>0,764144</td><td>0,053623</td><td>92,98%</td><td>31,06 s</td><td>180,13 s</td><td>0</td><td>1</td></tr>
+            <tr><td>Sem <code>n</code></td><td>0,759421</td><td>0,046086</td><td>93,93%</td><td>31,82 s</td><td>180,11 s</td><td>0</td><td>1</td></tr>
+            <tr><td>Sem <code>n</code> + HC1 + Coelho</td><td>0,762360</td><td>0,043185</td><td>94,34%</td><td>35,20 s</td><td>180,12 s</td><td>0</td><td>1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Trajetória da raiz:</strong> com <code>n</code>, o primeiro bound observado foi <code>0,043271</code> aos 36,76 s e o último foi <code>0,053623</code> aos 211,19 s. Sem <code>n</code>, começou em <code>0,043085</code> aos 37,57 s e terminou em <code>0,046086</code> aos 211,94 s. Com HC1 e Coelho sem <code>n</code>, começou em <code>0,043185</code> aos 43,15 s e permaneceu nesse valor até o final. Em todos os eventos, <code>nodes_processed=0</code> e <code>nodes_remaining=1</code>; portanto, o CPLEX permaneceu no nó raiz e não houve árvore de branch-and-bound para o HC1 explorar.</p>
+      <p><strong>Leitura:</strong> no cenário sem <code>n</code>, HC1 + Coelho piorou o FO de <code>0,759421</code> para <code>0,762360</code> e o gap de <code>93,93%</code> para <code>94,34%</code>. Ainda assim, ficou melhor que a formulação com <code>n</code>, cujo FO foi <code>0,764144</code>. O bound com HC1 + Coelho foi o mais fraco dos três (<code>0,043185</code>), reforçando que essas restrições não atacam o gargalo atual: a relaxação da raiz do modelo multiobjetivo.</p>
+      <p>A primeira solução inteira do MIP foi registrada em <code>36,76 s</code> com <code>n</code>, <code>37,57 s</code> sem <code>n</code> e <code>43,15 s</code> com HC1 + Coelho sem <code>n</code>; em todos os casos ela corresponde ao MIP start produzido pelo PSO. O PSO encontrou o mesmo custo bruto inicial <code>51.544.675</code>, portanto a diferença final veio do polimento MIP e da formulação, não de uma solução PSO inicial diferente.</p>
+      <p>Arquivos da rodada: <a href="../out/hc1_experiments/multi_no_n_benchmark_pso_with_n_180s/2026-09-12-898e7a-2412ec-union_results.xlsx">formulação com <code>n</code></a>, <a href="../out/hc1_experiments/multi_no_n_benchmark_pso_without_n_180s/2026-09-12-898e7a-187684-union_results.xlsx">formulação sem <code>n</code></a>, <a href="../out/hc1_experiments/multi_no_n_benchmark_pso_with_hc1_with_coelho_180s/2026-09-12-898e7a-8f70d3-union_results.xlsx">sem <code>n</code> com HC1 + Coelho</a> e <a href="../out/hc1_experiments/target_build_prp13_180s/targets/targets.xlsx">target usado</a>. A telemetria detalhada está em <code>telemetry/</code> dentro de cada experimento.</p>
+
+      <h3>Rodada monoobjetiva</h3>
+      <p>Repetimos a comparação com <code>solver.multiobjective=false</code>, mantendo a mesma instância, peso, <code>alpha=0.99</code>, seed 123, uma thread e limite de 180 segundos para o MIP. O PSO continuou sendo usado para construir o MIP start.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Execução</th><th>HC1</th><th>Coelho 15–17</th><th>Tempo total</th><th>Tempo MIP</th><th>Primeira solução MIP</th><th>FO</th><th>Melhor bound</th><th>Gap</th><th>Nós</th></tr></thead>
+          <tbody>
+            <tr><td>PSO + MIP sem HC1</td><td><code>false</code></td><td><code>false</code></td><td>218,43 s</td><td>180,68 s</td><td>42,30 s</td><td>50.518.019</td><td>50.427.881,24</td><td>0,178%</td><td>68</td></tr>
+            <tr><td>PSO + MIP sem HC1</td><td><code>false</code></td><td><code>true</code></td><td>217,18 s</td><td>180,28 s</td><td>43,36 s</td><td>50.517.894</td><td>50.427.884,48</td><td>0,178%</td><td>170</td></tr>
+            <tr><td>PSO + MIP com VC + HC1</td><td><code>true</code></td><td><code>false</code></td><td>217,39 s</td><td>180,34 s</td><td>42,68 s</td><td>50.944.826</td><td>50.433.755,03</td><td>1,003%</td><td>54</td></tr>
+            <tr><td>PSO + MIP com VC + HC1</td><td><code>true</code></td><td><code>true</code></td><td>214,84 s</td><td>180,48 s</td><td>41,87 s</td><td>50.944.826</td><td>50.433.627,36</td><td>1,003%</td><td>12</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Leitura:</strong> os quatro cenários foram executados com <code>multiobjective=false</code>; portanto, <code>epsilon</code> ficou vazio. HC1 reduziu os nós de 68 para 54 sem Coelho e de 170 para 12 com Coelho, mas não melhorou o FO ou o gap dentro do limite. A combinação HC1 + Coelho manteve exatamente o mesmo FO do HC1 isolado (<code>50.944.826</code>) e teve gap praticamente igual.</p>
+      <p>Sem HC1, Coelho melhorou marginalmente o FO de <code>50.518.019</code> para <code>50.517.894</code> e o gap de <code>0,1784269%</code> para <code>0,1781735%</code>, mas aumentou os nós reportados de 68 para 170. Com HC1, Coelho reduziu os nós de 54 para 12, mas o bound ficou ligeiramente pior (<code>50.433.755,03</code> para <code>50.433.627,36</code>). Isso indica uma alteração no comportamento da árvore, não um ganho robusto de qualidade neste único corte de tempo.</p>
+      <p>As Eq. 15–17 adicionam 27.600 restrições nesta instância: 1.200 da Eq. 15, 25.200 da Eq. 16 e 1.200 da Eq. 17. Como o modelo atual usa <code>Z</code> em vez das variáveis <code>x</code> e <code>y</code> do artigo, as desigualdades foram projetadas sobre expressões de visita; as Eq. 15 e 16 são em grande parte implicadas pelas restrições de rota existentes, enquanto a Eq. 17 é o vínculo lógico mais relevante.</p>
+      <p>Componentes agregados sem HC1 e sem Coelho: <code>f1=49.623.400</code>, <code>f2=48.400</code>, <code>f3=95.063</code>, <code>f4=681.156</code>, <code>f5=69.999</code>. Com HC1 e sem Coelho: <code>f1=49.623.400</code>, <code>f2=23.700</code>, <code>f3=396.683</code>, <code>f4=821.394</code>, <code>f5=79.649</code>. Os componentes dos cenários com Coelho permaneceram iguais aos respectivos controles, exceto <code>f5=69.874</code> no caso sem HC1.</p>
+      <p>Arquivos consolidados: <a href="../out/hc1_experiments/mono_pso_without_hc1_180s/2026-09-12-898e7a-39815c-union_results.xlsx">sem HC1 e sem Coelho</a>, <a href="../out/hc1_experiments/mono_pso_without_hc1_with_coelho_180s/2026-09-12-898e7a-12162a-union_results.xlsx">sem HC1 e com Coelho</a>, <a href="../out/hc1_experiments/mono_pso_with_hc1_180s/2026-09-12-898e7a-3d6f1c-union_results.xlsx">com HC1 e sem Coelho</a> e <a href="../out/hc1_experiments/mono_pso_with_hc1_with_coelho_180s/2026-09-12-898e7a-dfa1e7-union_results.xlsx">com HC1 e com Coelho</a>.</p>
+    </section>
+
+    <section id="limites">
+      <h2>7. Limites e próximos passos</h2>
+      <div class="grid two">
+        <article class="card"><span class="tag">Agora</span><h3>HC1 no MIP</h3><p>Validar se a redução de simetria melhora a busca no benchmark sem alterar a solução ou os objetivos.</p></article>
+        <article class="card"><span class="tag purple">Depois</span><h3>Outras estratégias</h3><p>Comparar VR, HC2/HC3, ordenação de clientes e uma estratégia de canonicalização específica para o PSO.</p></article>
+      </div>
+      <p>Uma melhoria de desempenho não será presumida: o resultado precisa ser medido com o mesmo limite de tempo, mesma instância, mesmos pesos, mesmo <code>alpha</code> e mesmo método.</p>
+    </section>
+
+    <p class="footer-link"><a href="index.html">← Voltar para os documentos do projeto</a> · <a href="mathematical-model.md">Ver o modelo matemático</a> · <a href="testing.md">Ver instruções de testes</a></p>
+  </main>
+</body>
+</html>

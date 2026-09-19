@@ -81,6 +81,7 @@ def build_population_kernel(
     fixed_vehicle_cost,
     lower_x,
     upper_x,
+    strengthened_production_upper,
     lower_q,
     upper_q,
     has_x_bounds,
@@ -147,6 +148,12 @@ def build_population_kernel(
                     bound = int(math.ceil(lower_x[product, period]))
                     if bound > production[product]:
                         production[product] = bound
+                if production[product] > strengthened_production_upper[product, period]:
+                    feasible = False
+                    break
+
+            if not feasible:
+                break
 
             used_time = 0
             for product in range(product_count):
@@ -182,6 +189,15 @@ def build_population_kernel(
                 if production_time[product] <= 0:
                     continue
                 max_extra = remaining_time // production_time[product]
+                strengthened_extra = int(
+                    strengthened_production_upper[product, period]
+                    - production[product]
+                )
+                if strengthened_extra < max_extra:
+                    max_extra = strengthened_extra
+                if max_extra < 0:
+                    feasible = False
+                    break
                 gene = positions[particle, product * period_count + period]
                 if has_x_bounds:
                     decoded = _round_int(

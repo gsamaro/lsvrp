@@ -1,9 +1,10 @@
+import json
 import os
 import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
-from hashlib import sha1
+from hashlib import sha1, sha256
 
 from config import Config
 from src.log.Logger import Logger
@@ -21,6 +22,9 @@ class RuntimeContext:
     method: str
     build_target: bool
     multiobjective: bool
+    commit_hash: str = "000000"
+    config_hash: str = ""
+    config_json: str = ""
 
 
 def _get_git_commit_hash6():
@@ -36,20 +40,30 @@ def _get_git_commit_hash6():
         return "000000"
 
 
-def _build_run_tag(now: datetime):
+def _build_run_tag(now: datetime, commit_hash=None):
     date_part = now.strftime("%Y-%m-%d")
-    commit_part = _get_git_commit_hash6()
+    commit_part = (commit_hash or _get_git_commit_hash6())[:6]
     ts_part = sha1(now.astimezone().isoformat().encode("utf-8")).hexdigest()[:6]
     return f"{date_part}-{commit_part}-{ts_part}"
 
 
+def _build_config_metadata(config=Config):
+    config_json = json.dumps(
+        config.snapshot(), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+    config_hash = sha256(config_json.encode("utf-8")).hexdigest()
+    return config_hash, config_json
+
+
 def build_runtime_context(config=Config, now=None):
+    config_hash, config_json = _build_config_metadata(config)
     threads_limit = config.get_nested("solver", "threadsLimit")
     if threads_limit == "None":
         threads_limit = None
+    commit_hash = _get_git_commit_hash6()
 
     return RuntimeContext(
-        run_tag=_build_run_tag(now or datetime.now()),
+        run_tag=_build_run_tag(now or datetime.now(), commit_hash=commit_hash),
         threads_limit=threads_limit,
         time_limit=int(config.get_nested("solver", "timeLimit")),
         workers=config.get_nested("workers", "num"),
@@ -59,6 +73,9 @@ def build_runtime_context(config=Config, now=None):
         method=config.get_nested("solver", "method"),
         build_target=config.get_nested("postprocessing", "build_target"),
         multiobjective=config.get_nested("solver", "multiobjective"),
+        commit_hash=commit_hash,
+        config_hash=config_hash,
+        config_json=config_json,
     )
 
 

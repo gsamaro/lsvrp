@@ -19,11 +19,22 @@ from constants import WEIGHTS_OPTIMIZE, WEIGHTS_TARGET, ALPHA
 
 class WorkerProcess:
 
-    def __init__(self, numWorkers=1, log: Logger = None, run_tag=None):
+    def __init__(
+        self,
+        numWorkers=1,
+        log: Logger = None,
+        run_tag=None,
+        commit_hash=None,
+        config_hash=None,
+        config_json=None,
+    ):
         self.numWorkers = numWorkers
         self.log: Logger = log
         self.targets_by_file = None
         self.run_tag = run_tag
+        self.commit_hash = commit_hash
+        self.config_hash = config_hash
+        self.config_json = config_json
 
     def _ensure_targets_loaded(self):
         if self.targets_by_file is not None:
@@ -90,6 +101,9 @@ class WorkerProcess:
             "weight": self._format_weight(weight),
             "alpha": alpha,
             "run_tag": self.run_tag,
+            "commit_hash": self.commit_hash,
+            "config_hash": self.config_hash,
+            "config_json": self.config_json,
         }
         if task_number is not None:
             context["task_number"] = task_number

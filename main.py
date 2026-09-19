@@ -22,9 +22,14 @@ def main():
         context.threads_limit,
         context.time_limit,
     )
-    WorkerProcess(context.workers, log, run_tag=context.run_tag).run_parallel(
-        instancies=instances, solver=context.method
-    )
+    WorkerProcess(
+        context.workers,
+        log,
+        run_tag=context.run_tag,
+        commit_hash=context.commit_hash,
+        config_hash=context.config_hash,
+        config_json=context.config_json,
+    ).run_parallel(instancies=instances, solver=context.method)
 
     postprocessing = PostProcessingProcess(log=log, output=context.output)
     finalize_postprocessing(postprocessing, context.run_tag, context.build_target)

@@ -7,6 +7,9 @@
 - [6. Variáveis de Decisão](#6-variáveis-de-decisão)
 - [7. Função Objetivo](#7-função-objetivo)
 - [8. Restrições](#8-restrições)
+- [Quebra de simetria entre veículos: VC + HC1](#quebra-de-simetria-entre-veículos-vc--hc1)
+- [Desigualdades cumulativas de capacidade arredondada](#desigualdades-cumulativas-de-capacidade-arredondada)
+- [Desigualdades lógicas de Coelho (15)-(17)](#desigualdades-lógicas-de-coelho-15-17)
 - [9. Fluxo do Modelo](#9-fluxo-do-modelo)
 - [11. Correspondência Matemática ↔ Código](#11-correspondência-matemática--código)
 - [15. Divergências Encontradas](#15-divergências-encontradas)
@@ -81,6 +84,7 @@ A formulação em LaTeX define:
 - entregas `q_{pvit}`;
 - custos auxiliares por período `f_t^1, ..., f_t^5`;
 - desvios positivos `p_t^j`, negativos `n_t^j` e penalização `\lambda`.
+- uma variante equivalente pode eliminar `n_t^j` e manter apenas desigualdades para `p_t^j`.
 
 ## Estrutura conceitual
 
@@ -154,6 +158,8 @@ No código, essa distinção é implementada da seguinte forma:
 | `c_p` | custo unitário de produção | custo variável de produção | instância `.dat` | lido na seção `c_p =` | `src/helpers/ReadPrpFile.py`, usado em `crateObjectiveFunction` |
 | `s_p` | custo de setup | custo fixo de ativar produção do item | instância `.dat` | lido na seção `s_p =` | `src/helpers/ReadPrpFile.py`, usado em `crateObjectiveFunction` |
 | `M` | número grande | vinculação produção-setup | instância `.dat` | lido na seção `M =` | `src/helpers/ReadPrpFile.py`, usado em `createRelationshipBetweenProduction` |
+| `M_p` | limite específico por produto | `min(M,` demanda total do produto `p` no horizonte`)` | calculado | usado no bound de produção por produto e período | `src/solvers/_solver_common.py` |
+| `D^{\mathrm{restante}}_{p,t}` | demanda restante | demanda do produto `p` nos períodos `t,\ldots,T-1` | calculado | usado no bound de produção por período | `src/solvers/_solver_common.py` |
 | `U_{pi}` | capacidade de estoque | limite superior de estoque por item e local | instância `.dat` | lido na seção `U_pi =` | `src/helpers/ReadPrpFile.py`, usado em `createDelimitMaximumCapacityItemsAtPlant` |
 | `I_{pi0}` | estoque inicial | estoque inicial na planta e clientes | instância `.dat` | lido na seção `I_pi0 =` | `src/helpers/ReadPrpFile.py`, usado nos balanços de estoque |
 | `h_{pi}` | custo unitário de estoque | custo de manter item em estoque por local | instância `.dat` | lido na seção `h_pi =` | `src/helpers/ReadPrpFile.py`, usado em `crateObjectiveFunction` |
@@ -161,6 +167,7 @@ No código, essa distinção é implementada da seguinte forma:
 | `f` | custo fixo de transporte | custo de ativar saída de veículo da planta | instância `.dat` | lido na seção `f =` | `src/helpers/ReadPrpFile.py`, usado em `crateObjectiveFunction` |
 | `a_{ik}` | custo de transporte no arco | custo variável de deslocamento entre nós | instância `.dat` | lido na seção `a_ik =` | `src/helpers/ReadPrpFile.py`, usado em `crateObjectiveFunction` |
 | `d_{pit}` | demanda | consumo do produto `p` no cliente `i` e período `t` | instância `.dat` | lido na seção `d_pit =` | `src/helpers/ReadPrpFile.py`, usado em `creteInventoryBalancingInventoryCustomers` |
+| `\overline Q_{pit}` | limite de entrega | `min(C, U_{pi}+d_{pit})` para clientes | calculado | liga `Q` ao indicador de visita expresso por `Z` | `src/solvers/_solver_common.py` |
 | `\alpha` | peso da função objetivo | equilíbrio entre `\lambda` e desvios normalizados | experimento computacional | fornecido por `constants.py` (`ALPHA = [0.01, 0.99]`) e repassado por `WorkerProcess` | `constants.py`, `src/process/WorkerProcess.py`, `src/process/InstanceProcess.py`, `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `v_t^j` | peso do objetivo `j` no período `t` | ponderação dos desvios por componente | formulação LaTeX | no código aparece como vetor `weight[j]`, sem dependência temporal explícita | `constants.py`, `src/process/WorkerProcess.py`, `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `b_t^j` | target original | meta periódica para cada componente de custo | arquivo externo `targets.xlsx` | carregado por instância em `load_targets_by_file` | `src/helpers/TargetsLoader.py`, `src/process/InstanceProcess.py` |
@@ -193,13 +200,15 @@ Isso não está presente na formulação LaTeX como processo computacional, apen
 | `f_t^3` | auxiliar | expressão linear | custo auxiliar periódico | construído em `crateObjectiveFunction` |
 | `f_t^4` | auxiliar | expressão linear | custo auxiliar periódico | construído em `crateObjectiveFunction` |
 | `f_t^5` | auxiliar | expressão linear | custo auxiliar periódico | construído em `crateObjectiveFunction` |
-| `n_t^j` | contínua implícita | contínua (`continuous_var_dict`) | desvio negativo do objetivo `j` no período `t` | `createDecisionVariables` |
+| `n_t^j` | contínua opcional | criada somente quando `positive_only_deviations=false` | desvio negativo do objetivo `j` no período `t` | `createDecisionVariables` |
 | `p_t^j` | contínua implícita | contínua (`continuous_var_dict`) | desvio positivo do objetivo `j` no período `t` | `createDecisionVariables` |
 | `\lambda` | contínua | contínua (`continuous_var`) | variável de penalização máxima | `createDecisionVariables` |
 
 ## Observação importante
 
-No código, as variáveis `x`, `I`, `r` e `q` são contínuas e não negativas. No LaTeX fornecido, elas também aparecem apenas com restrições de não negatividade, sem explicitação de integralidade.
+No código, as variáveis `x`, `I`, `r` e `q` são contínuas e não negativas. Por
+padrão, `positive_only_deviations=true`, portanto `n_t^j` não é criada; ela só
+aparece na variante legada quando a opção é explicitamente desativada.
 
 # 7. Função Objetivo
 
@@ -390,6 +399,38 @@ Relaciona o valor do componente de custo com o target e seus desvios positivos e
 
 `createGoalProgrammingRestrictions` em `src/solvers/MultProductProdctionRoutingProblem.py`.
 
+### Variante sem `n_t^j`
+
+Quando `solver.goal_programming.positive_only_deviations = true`, o código
+usa a formulação projetada equivalente:
+
+`p_t^j \ge f_t^j - b_t^j, \quad p_t^j \ge 0`
+
+Como `p_t^j` aparece com coeficiente positivo na função objetivo e `n_t^j`
+não é penalizado, essa variante produz o mesmo menor valor possível de
+`p_t^j` sem criar as variáveis de desvio negativo. O modo padrão permanece
+`false` para preservar a formulação legada até a comparação experimental.
+
+## Construção dos targets com o modelo inteiro
+
+Durante `postprocessing.build_target = true`, o código pode construir os
+targets usando o modelo MIP inteiro com
+`relaxed_solution.target_use_relaxation = false`. Quando essa opção é
+`true`, preserva-se o comportamento legado: o modelo é substituído por sua
+relaxação linear antes da resolução usada para gerar os valores de `f1` a
+`f5`. A opção nova permanece `true` por padrão para não alterar execuções
+existentes; o benchmark com target inteiro a desativa explicitamente.
+
+## Telemetria do bound na raiz
+
+Quando a telemetria está habilitada, a callback MIP registra a evolução do
+melhor bound durante a resolução. Cada evento contém tempo, `best_bound`,
+incumbente, gap, nós processados, nós restantes e um indicador
+`is_root`. Com `node_count = 0` e `nodes_remaining = 1`, os eventos mostram
+que o CPLEX ainda está no nó raiz. O intervalo padrão de amostragem é de um
+segundo e pode ser ajustado por
+`solver.telemetry.bound_progress_interval_seconds`.
+
 ## Restrição 8: Balanço de estoque na planta
 
 ### Equação
@@ -436,11 +477,22 @@ Limita o esforço total de produção em cada período.
 
 ### Equação
 
-LaTeX \eqref{eq:setup_producao}: `x_{pt} \le M y_{pt}`
+O modelo usa o bound específico de produto e período:
+
+`x_{pt} <= U^X_{pt} y_{pt}`
+
+com
+
+`U^X_{pt} = min(M_p, B/b_p, D^{restante}_{p,t})`,
+
+`M_p = min(M, sum_{tau=0..T-1} sum_i d_{pi tau})` e
+`D^{restante}_{p,t} = sum_{tau=t..T-1} sum_i d_{pi tau}`.
 
 ### Interpretação
 
-Só permite produção positiva quando a variável binária de ativação está ligada.
+Só permite produção positiva quando a variável binária de ativação está ligada
+e evita que o relaxamento use o Big-M global quando a capacidade física ou a
+demanda restante fornecem um limite menor.
 
 ### Arquivo onde é implementada
 
@@ -450,7 +502,23 @@ Só permite produção positiva quando a variável binária de ativação está 
 
 ### Equação
 
-LaTeX \eqref{eq:capacidade_estoque}: `I_{pit} \le U_{pi}`
+O limite é apertado por um bound de alcançabilidade:
+
+`I_{pit} <= U^I_{pit}`
+
+Para a planta, `U^I_{p0t}` usa o estoque inicial mais a produção acumulada
+limitada por `U^X_{ps}`. Para um cliente `i`, usa:
+
+`U^I_{pit} = max(0, min(U_{pi}, I_{pi0} + sum_{s=0..t} (qbar_{pis} - d_{pis})))`,
+
+onde `qbar_{pis}=min(C,U_{pi}+d_{pis})`. Não há fator `V`: cada cliente pode
+ser visitado por no máximo um veículo no período, e a conservação de fluxo da
+rota iguala, para cada veículo, os arcos que entram e saem do cliente. Assim,
+somando os limites `Q_{pvit} <= qbar_{pit} * visit_{vit}` entre veículos,
+obtém-se `sum_v Q_{pvit} <= qbar_{pit}`. Somando o balanço de estoque do
+cliente até `t`, subtrai-se a demanda acumulada. O limite original `U_{pi}`
+continua embutido no mínimo; o resultado numérico é protegido contra limites
+negativos, pois `I` já é não negativa.
 
 ### Interpretação
 
@@ -543,6 +611,56 @@ Vincula fluxo de carga no arco à ativação binária do arco e à capacidade do
 
 `createVehicleLoadCapacityDelimited` em `src/solvers/MultProductProdctionRoutingProblem.py`.
 
+## Desigualdades cumulativas de capacidade arredondada
+
+### Motivação
+
+A restrição de capacidade por arco limita a carga de cada veículo, mas não
+impõe diretamente um limite sobre o número de travessias necessárias para
+atender um subconjunto de clientes. Para reforçar a relaxação linear, o modelo
+pode separar dinamicamente desigualdades de capacidade arredondada cumulativas.
+
+### Equação
+
+Para um subconjunto de clientes `S` e um prefixo de períodos `0..tau`:
+
+`Σ_{t=0..tau} δ(S,t) >= 2 ceil(Σ_{i∈S} d_i^obrig(tau) / C)`
+
+`δ(S,t)` é a soma dos arcos orientados de `Z` que cruzam entre `S` e seu
+complemento no período `t`. Como o código usa o depósito como nó `0`, os
+clientes do separador são mapeados para os nós `1..N`. A demanda obrigatória é
+calculada por produto como `max(Σ_{u=0..tau} d_{piu} - I_{pi0}, 0)` e depois
+agregada entre produtos; estoque de um produto não compensa a demanda de outro.
+
+### Separação e validade
+
+Uma heurística em NumPy constrói sementes unitárias e pares de clientes com
+maior conectividade interna, aplica crescimento e busca local e retém os
+subconjuntos mais violados. O `UserCutCallback` do MIP exato avalia o ponto
+fracionário atual, adiciona no máximo 20 cortes na raiz e 3 nos nós iniciais
+espaçados. Os cortes são globais (`>=`) e só são aceitos quando a violação
+supera `solver.rounded_capacity_inequalities.min_violation`.
+
+O recurso é opcional e permanece desativado por padrão. Ele não é instalado na
+construção de targets nem altera o PSO ou `LotSizingRelaxation`. A separação não
+resolve um segundo CPLEX dentro do callback; portanto, seu custo é apenas o da
+heurística sobre os valores atuais de `Z`.
+
+### Configuração e telemetria
+
+Os controles estão em `solver.rounded_capacity_inequalities`: `enabled`,
+`node_frequency`, `max_non_root_node`, `max_cuts_per_callback`,
+`max_cuts_per_non_root_callback` e `min_violation`. A telemetria registra
+chamadas do callback e do separador, candidatos avaliados, tempo de separação,
+cortes encontrados/adicionados/rejeitados, duplicatas, maior violação, bound
+da raiz, nós, gap e tempo total do MIP.
+
+### Arquivo onde é implementada
+
+O separador está em `src/solvers/RoundedCapacitySeparation.py`; a integração
+com o callback e a telemetria está em
+`src/solvers/MultProductProdctionRoutingProblem.py`.
+
 ## Restrição 16: Uma rota por veículo por período
 
 ### Equação
@@ -585,6 +703,117 @@ Cada cliente pode ser visitado no máximo uma vez por período.
 
 `createVehicleMostVisitCustomerEachPeriod` em `src/solvers/MultProductProdctionRoutingProblem.py`.
 
+## Bounds de entrega em função de `Z`
+
+Não é criada uma variável explícita de visita. Para cada veículo, cliente e
+período, o indicador de visita é a expressão de saída:
+
+`visit_{vit} = sum_{k != i} z_{vikt}`.
+
+As entregas são limitadas diretamente por essa expressão:
+
+`sum_p q_{pvit} <= C sum_{k != i} z_{vikt}`
+
+`q_{pvit} <= qbar_{pit} sum_{k != i} z_{vikt}`
+
+com:
+
+`qbar_{pit} = min(C, U_{pi} + d_{pit})`.
+
+Como a conservação de fluxo mantém entrada e saída iguais no cliente e a
+visitação única continua sendo imposta sobre `Z`, essas restrições são padrão
+do modelo e não dependem de uma configuração opcional. No código, recebem os
+prefixos `VISIT_CAP_Z_*` e `VISIT_Q_Z_*`, criados por
+`createVehicleVisitDeliveryBounds`.
+
+## Quebra de simetria entre veículos: VC + HC1
+
+### Motivação
+
+Quando os veículos têm a mesma capacidade e os mesmos custos, trocar os rótulos de dois veículos produz uma solução operacionalmente equivalente. Por exemplo, uma rota atribuída ao veículo `0` e outra atribuída ao veículo `1` tem o mesmo custo se os rótulos forem trocados. Para o MIP, porém, essas duas soluções aparecem como pontos diferentes no espaço de busca.
+
+Essa simetria de permutação pode fazer o branch-and-bound explorar várias cópias da mesma solução. A implementação opcional em `MultProductProdctionRoutingProblem` escolhe uma representação canônica sem alterar as decisões físicas de produção, estoque, entrega ou roteamento.
+
+### Variáveis usadas
+
+Não é criada uma variável adicional de visita. A variável binária existente `z_{vikt}` representa o uso do arco `(i,k)` pelo veículo `v` no período `t`.
+
+Com os índices do código (`0` para a planta e `1..N` para clientes), definimos:
+
+`s_{vt} = Σ_{k=1..N} z_{v0kt}` como indicador agregado de que o veículo `v` sai da planta no período `t`;
+
+`u_{vit} = Σ_{k=0..N, k≠i} z_{vikt}` como indicador de que o veículo `v` visita o cliente `i` no período `t`.
+
+A conservação de fluxo já existente faz com que a soma de saída represente a visita do cliente quando a rota é factível.
+
+### VC: ordenação do uso dos veículos
+
+Para cada veículo `v = 1..V-1` e período `t`:
+
+`s_{vt} ≤ s_{v-1,t}`
+
+Assim, um veículo de índice maior só pode ser usado se o veículo imediatamente anterior também for usado. Isso elimina soluções que diferem apenas por deixar um veículo anterior ocioso e usar um veículo posterior.
+
+### HC1: ordenação das visitas
+
+Para cada veículo `v = 1..V-1`, cliente `i = 1..N` e período `t`:
+
+`u_{vit} ≤ Σ_{j=1..i-1} u_{v-1,j,t}`
+
+Logo, se o veículo `v` atende o cliente `i`, o veículo `v-1` deve atender pelo menos um cliente de índice menor. Para o primeiro cliente, o lado direito é zero; portanto, um veículo de índice superior não pode ser o primeiro veículo a atender o cliente `1`.
+
+No código, as restrições são criadas por `createVehicleSymmetryBreaking` e recebem os nomes `SB_VC_*` e `SB_HC1_*`. A opção é controlada por `solver.symmetry_breaking.hc1` e tem valor padrão `false`.
+
+### Preservação do objetivo multiobjetivo
+
+VC e HC1 apenas removem cópias equivalentes causadas pela troca de rótulos dos veículos. Quando os veículos são intercambiáveis, a permutação preserva os custos de produção, setup, estoque, transporte fixo e transporte variável (`f1` a `f5`). Portanto, também preserva a combinação ponderada, `alpha`, metas e desvios usados no modo multiobjetivo.
+
+Essa conclusão não vale automaticamente se veículos tiverem capacidades, custos, disponibilidade, janelas ou outras características específicas por índice. Nesse caso, a permutação pode modificar a solução física e as restrições não devem ser ativadas sem uma análise adicional.
+
+## Desigualdades lógicas de Coelho (15)-(17)
+
+### Origem e correspondência
+
+O artigo de Coelho e Laporte usa uma variável de arco não orientado `x` e uma variável binária de visita `y`. O modelo atual usa os arcos orientados `z` e não possui uma variável `y` explícita. Por isso, as três desigualdades são projetadas sobre expressões agregadas de `Z`.
+
+Para veículo `v`, período `t` e cliente `i`:
+
+`s_{vt} = Σ_{k=1..N} z_{v0kt}` representa a saída do veículo da planta;
+
+`u_{vit} = Σ_{k=0..N, k≠i} z_{vikt}` representa a visita do cliente `i` pelo veículo `v`.
+
+### Eq. (15): arco planta-cliente
+
+No artigo:
+
+`x_{0i}^{kt} ≤ 2 y_i^{kt}`
+
+Na representação orientada atual:
+
+`z_{v0it} ≤ 2u_{vit}`
+
+### Eq. (16): arco implica visita do nó de origem
+
+No artigo:
+
+`x_{ij}^{kt} ≤ y_i^{kt}`
+
+No código, para a planta usamos `z_{v0kt} ≤ s_{vt}` e, para um cliente como origem, usamos `z_{vikt} ≤ u_{vit}`.
+
+### Eq. (17): visita implica uso do veículo
+
+No artigo:
+
+`y_i^{kt} ≤ y_0^{kt}`
+
+Na representação atual:
+
+`u_{vit} ≤ s_{vt}`
+
+Essa é a parte não redundante mais importante no modelo atual: ela impede que um veículo visite clientes sem também possuir uma saída da planta. As Eq. (15) e (16) são mantidas explicitamente como vínculos lógicos, embora sejam em grande parte implicadas pela definição de visita como soma dos arcos de saída.
+
+As restrições são criadas por `createCoelhoValidInequalities` e recebem os nomes `COELHO_15_*`, `COELHO_16_*` e `COELHO_17_*`. A opção é controlada por `solver.coelho_inequalities` e tem valor padrão `false`. Ela é independente de `solver.symmetry_breaking.hc1`; portanto, é possível comparar Coelho sem HC1, HC1 sem Coelho e a combinação dos dois.
+
 ## Restrição 19: Não negatividade
 
 ### Equação
@@ -603,7 +832,8 @@ Domínios das variáveis em `createDecisionVariables` de `src/solvers/MultProduc
 
 ### Equação
 
-LaTeX \eqref{eq:binarias}: `y_{pt}, z_{vikt} \in \{0,1\}`
+LaTeX \eqref{eq:binarias}: `y_{pt}, z_{vikt} \in \{0,1\}`. Não há variável
+binária adicional de visita.
 
 ### Interpretação
 
@@ -686,9 +916,17 @@ flowchart TD
 | \eqref{eq:conservacao_fluxo_produto} | `MultProductProdctionRoutingProblem` | `createVehiclePreventTransshipmentIntermediateNodes` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | \eqref{eq:balanco_fluxo_planta} | `MultProductProdctionRoutingProblem` | `createEliminationSubroutes` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | \eqref{eq:capacidade_veiculo} | `MultProductProdctionRoutingProblem` | `createVehicleLoadCapacityDelimited` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| desigualdades cumulativas de capacidade arredondada | `RoundedCapacitySeparation` / `MultProductProdctionRoutingProblem` | `separate_cumulative_cuts` / `_install_rounded_capacity_callback` | `src/solvers/RoundedCapacitySeparation.py`, `src/solvers/MultProductProdctionRoutingProblem.py` |
 | \eqref{eq:limite_uso_veiculo} | `MultProductProdctionRoutingProblem` | `createImposeMostOneRouteEachVehicle` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | \eqref{eq:conservacao_fluxo_veiculo} | `MultProductProdctionRoutingProblem` | `createEnsureRoutesOnlyPlant` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | \eqref{eq:visitacao_unica} | `MultProductProdctionRoutingProblem` | `createVehicleMostVisitCustomerEachPeriod` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| bounds de entrega em função de `Z` | `MultProductProdctionRoutingProblem` | `createVehicleVisitDeliveryBounds` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| VC e HC1 | `MultProductProdctionRoutingProblem` | `createVehicleSymmetryBreaking` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| Coelho (15)–(17) | `MultProductProdctionRoutingProblem` | `createCoelhoValidInequalities` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| configuração HC1 | `Config` | `normalize` | `config/config.py`, `config/config.json` |
+| configuração Coelho (15)–(17) | `Config` | `normalize` | `config/config.py`, `config/config.json` |
+| formulação sem `n_t^j` | `MultProductProdctionRoutingProblem` | `createDecisionVariables` / `createGoalProgrammingRestrictions` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| telemetria do bound na raiz | `MultProductProdctionRoutingProblem` | `_install_mip_telemetry_callback` / `_record_bound_progress` | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/helpers/SolverTelemetry.py` |
 | extração de solução | `MultProductProdctionRoutingProblem` | `getResults` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | recomputação de `f1` a `f5` pós-solução | módulo de processo | `getResults` | `src/process/ProcessResults.py` |
 
@@ -697,7 +935,7 @@ flowchart TD
 | Item | Formulação | Código | Observação |
 | --- | --- | --- | --- |
 | Nomeação de `f_t^1` e `f_t^2` | `f_t^1` = setup, `f_t^2` = produção | `self.f1` = produção, `self.f2` = setup | Divergência nominal relevante; o código preserva os dois componentes, mas com índices trocados. |
-| Função objetivo multiobjetivo | `\alpha \lambda + (1-\alpha)\sum_{t,j} v_t^j p_t^j / \overline{b}_t^j` | em `crateObjectiveFunction`, `alpha * lambda_` é repetido cinco vezes por período, uma para cada componente | O código implementa um peso efetivo maior para `\lambda` do que o sugerido pelo LaTeX. |
+| Função objetivo multiobjetivo | `\alpha \lambda + (1-\alpha)\sum_{t,j} v_t^j p_t^j / \overline{b}_t^j` | `crateObjectiveFunction` soma `alpha * lambda_` uma única vez e agrega os cinco desvios normalizados por período | Implementação alinhada à formulação. Uma versão anterior repetia `lambda` dentro da soma e foi corrigida. |
 | Peso `v_t^j` | peso indexado por `j` e `t` | `weight[j]`, sem índice temporal explícito | O código usa pesos constantes por componente, não pesos por período. |
 | Domínio de `x, I, r, q` | apenas não negatividade explícita | `continuous_var` | Código e formulação fornecida coincidem: as variáveis são contínuas e não negativas. |
 | Targets ajustados | texto diz "média dos valores não nulos"; fórmula usa média no horizonte `\sum_t b_t^j / T` | `_adjust_targets` usa `np.mean(values_k)` sobre todos os valores disponíveis | O código coincide com a média simples dos valores presentes, mas não há filtro explícito de não nulos. |
@@ -705,6 +943,7 @@ flowchart TD
 | Objetivo singleobjective | não aparece no LaTeX fornecido | existe caminho alternativo `self.model.minimize(self.f1 + self.f2 + self.f3 + self.f4 + self.f5)` | O repositório contém um modo adicional não documentado na formulação oficial. |
 | Geração de targets | LaTeX trata `b_t^j` como dado | código pode construir `targets.xlsx` via ideal/nadir com fator `0.3` | O processo de obtenção de metas é um artefato computacional adicional do repositório. |
 | Filtragem de instâncias | LaTeX não menciona exclusão de classes | `main.py` descarta arquivos `PRP31+` e o `README.md` informa que a Classe IV é ignorada | Divergência de escopo experimental, não da formulação interna do MIP. |
+| Formulação sem `n_t^j` | LaTeX usa `n_t^j` e `p_t^j` | opção `solver.goal_programming.positive_only_deviations` elimina `n_t^j` | Variante usada por padrão; a formulação legada pode ser reativada explicitamente. |
 
 # Checklist de Cobertura
 
@@ -718,9 +957,9 @@ flowchart TD
 | `\overline{b}_t^j` | mapeado | `_adjust_targets` em `src/solvers/MultProductProdctionRoutingProblem.py` |
 | variáveis `x, y, I, z, r, q` | mapeado | `createDecisionVariables` |
 | auxiliares `f_t^1 ... f_t^5` | mapeado com divergência nominal | `crateObjectiveFunction`, seção de divergências |
-| desvios `n_t^j, p_t^j` | mapeado | `createDecisionVariables`, `createGoalProgrammingRestrictions` |
+| desvios `n_t^j, p_t^j` | mapeado; `n_t^j` é opcional | `createDecisionVariables`, `createGoalProgrammingRestrictions` |
 | `\lambda` | mapeado | `createDecisionVariables`, `createEpsilonRestricted` |
-| função objetivo | mapeado com divergência | `crateObjectiveFunction`, seção de divergências |
+| função objetivo | mapeado | `crateObjectiveFunction`, seção de divergências |
 | restrições \eqref{eq:custo_setup} a \eqref{eq:binarias} | mapeado | seção 8 |
 | mecanismo de ajuste para target zero | mapeado com ressalva textual | `_adjust_targets`, seção de divergências |
 

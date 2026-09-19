@@ -122,7 +122,7 @@ def test_heuristic_decodes_production_inside_relaxed_bounds():
     heuristic = FeasibleParticleHeuristic(data, "/tmp", DummyLogger(), bounds=bounds)
 
     assert heuristic._bounded_production_from_gene(0, 0, -100.0) == 2
-    assert heuristic._bounded_production_from_gene(0, 0, 100.0) == 6
+    assert heuristic._bounded_production_from_gene(0, 0, 100.0) == 5
 
     high_gene = np.full((1, heuristic.particle_dim), 100.0)
     solution = heuristic.build_population(high_gene)[0]

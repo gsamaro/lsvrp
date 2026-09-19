@@ -70,6 +70,9 @@ class InstanceProcess:
             data = RD(file_path=self.instance, log=self.log).getDataSet()
             data["weight"] = self.weight
             data["alpha"] = self.alpha
+            data["commit_hash"] = self.task_context.get("commit_hash")
+            data["config_hash"] = self.task_context.get("config_hash")
+            data["config_json"] = self.task_context.get("config_json")
 
             targets = []
             if self.targets_by_file:
@@ -112,6 +115,18 @@ class InstanceProcess:
                     "instance_file": data.get("file"), "weight": str(data.get("weight")), "alpha": data.get("alpha"),
                     "threads": self.numThreads, "time_limit_seconds": self.timeLimit,
                     "solver_variant": strategy,
+                    "symmetry_breaking_hc1": Config.get_nested(
+                        "solver", "symmetry_breaking", "hc1", default=False
+                    ),
+                    "coelho_inequalities": Config.get_nested(
+                        "solver", "coelho_inequalities", default=False
+                    ),
+                    "rounded_capacity_inequalities": Config.get_nested(
+                        "solver", "rounded_capacity_inequalities", "enabled", default=False
+                    ),
+                    "positive_only_deviations": Config.get_nested(
+                        "solver", "goal_programming", "positive_only_deviations", default=True
+                    ),
                     "pipeline_solver_seconds": solve_elapsed_seconds,
                     "total_seconds": time.time() - strategy_started_at,
                     **telemetry,
