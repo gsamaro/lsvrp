@@ -432,6 +432,7 @@ gbest ← melhor_solução(população)
     <section id="mip-start">
       <h2>Impacto do MIP start no modelo completo</h2>
       <p class="section-intro">Nova comparação na mesma instância, com uma thread, limite de 60 segundos para o MIP exato e PSO de 1000 partículas por 1000 iterações. A relaxação inicial foi medida separadamente; o tempo ponta a ponta inclui construção do modelo, LP medido, MIP e, no segundo cenário, a geração do MIP start.</p>
+      <div class="note" style="margin-top:16px;"><strong>Convenção dos valores monetários:</strong> os custos apresentados nesta seção são o <strong>custo total operacional</strong> da solução, calculado como <code>f1 + f2 + f3 + f4 + f5</code>: produção, setup, estoque, transporte fixo e transporte variável. Eles não são o valor da FO multiobjetivo normalizada. Quando o modo multiobjetivo está ativo, a FO do modelo combina <code>α·λ</code> com desvios positivos normalizados pelos alvos; por isso pode ter ordem de grandeza próxima de 0, enquanto o custo operacional permanece na escala monetária original.</div>
       <div class="metrics">
         <div class="metric"><strong>26,93 s</strong><span>PSO quente 1000 × 1000</span></div>
         <div class="metric"><strong>4,52%</strong><span>gap final com MIP start</span></div>
@@ -465,9 +466,10 @@ gbest ← melhor_solução(população)
     <section id="outras-instancias">
       <h2>Comparação em outras instâncias configuradas</h2>
       <p class="section-intro">Experimento com uma thread no CPLEX, limite de 60 segundos para a busca MIP e PSO Numba de 1000 partículas por 1000 iterações. A licença completa do CPLEX foi confirmada antes das execuções; os tempos de parede incluem a preparação do modelo.</p>
+      <div class="note" style="margin-top:16px;"><strong>Leitura das colunas de custo:</strong> os valores nas colunas de incumbente e de melhor custo do PSO são <strong>custos totais operacionais</strong> em unidades monetárias, isto é, a soma de <code>f1</code> a <code>f5</code>. Não devem ser comparados diretamente com a FO multiobjetivo normalizada registrada pela execução atual.</div>
       <div class="panel" style="margin-top:16px; box-shadow:none; overflow-x:auto;">
         <table>
-          <thead><tr><th>Instância</th><th>Sem start<br>incumbente</th><th>Com start<br>incumbente</th><th>Sem start<br>gap</th><th>Com start<br>gap</th><th>Sem start<br>nós</th><th>Com start<br>nós</th><th>PSO<br>tempo quente</th><th>PSO<br>melhor custo</th><th>Leitura</th></tr></thead>
+          <thead><tr><th>Instância</th><th>Sem start<br>custo total</th><th>Com start<br>custo total</th><th>Sem start<br>gap</th><th>Com start<br>gap</th><th>Sem start<br>nós</th><th>Com start<br>nós</th><th>PSO<br>tempo quente</th><th>PSO<br>custo total</th><th>Leitura</th></tr></thead>
           <tbody>
             <tr><td><code>PRP21_C10_P5_V2_T6_S5</code></td><td>900.685,00</td><td>822.337,00</td><td>13,96%</td><td>5,72%</td><td>954</td><td>1.204</td><td>4,93 s</td><td>1.003.487,00</td><td>Melhorou a incumbente em 78.348,00 e reduziu o gap em 8,25 p.p.</td></tr>
             <tr><td><code>PRP12_C20_P8_V5_T12_S3</code></td><td>Não encontrada</td><td>53.968.455,00</td><td>—</td><td>0,36%</td><td>0</td><td>61</td><td>26,88 s</td><td>54.859.202,00</td><td>Transformou uma execução sem solução inteira em solução com gap baixo.</td></tr>

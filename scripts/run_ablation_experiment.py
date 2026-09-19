@@ -11,7 +11,10 @@ import sys
 import time
 
 
-INSTANCE = "data/DATA_PRP_20C/PRP13_C20_P8_V5_T12_S4.dat"
+INSTANCE = os.environ.get(
+    "LSVRP_ABLATION_INSTANCE",
+    "data/DATA_PRP_20C/PRP13_C20_P8_V5_T12_S4.dat",
+)
 WEIGHT = [0.2] * 5
 ALPHA = 0.99
 TIME_LIMIT_SECONDS = int(os.environ.get("LSVRP_ABLATION_WALL_SECONDS", "180"))
