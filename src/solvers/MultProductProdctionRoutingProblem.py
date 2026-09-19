@@ -97,10 +97,22 @@ class MultProductProdctionRoutingProblem:
                 "solver", "goal_programming", "positive_only_deviations", default=True
             )
         self.positive_only_deviations = bool(positive_only_deviations)
+        self.strengthened_bounds = bool(map.get("strengthened_bounds", True))
         problem_data = ProblemData.from_map(map)
-        self.production_upper_bounds = compute_production_upper_bounds(problem_data)
+        if self.strengthened_bounds:
+            self.production_upper_bounds = compute_production_upper_bounds(problem_data)
+        else:
+            self.production_upper_bounds = np.full(
+                (self.p, self.t), float(self.M), dtype=float
+            )
         self.delivery_upper_bounds = compute_delivery_upper_bounds(problem_data)
-        self.inventory_upper_bounds = compute_inventory_upper_bounds(problem_data)
+        if self.strengthened_bounds:
+            self.inventory_upper_bounds = compute_inventory_upper_bounds(problem_data)
+        else:
+            self.inventory_upper_bounds = np.broadcast_to(
+                np.asarray(self.U_p_i, dtype=float)[:, :, None],
+                (self.p, self.i, self.t),
+            ).copy()
         self.M_p = np.minimum(
             float(self.M),
             np.asarray(self.d_p_i_t, dtype=float).sum(axis=(1, 2)),
@@ -131,6 +143,7 @@ class MultProductProdctionRoutingProblem:
             "separator_seconds": 0.0,
             "max_violation": 0.0,
         }
+        self._rounded_capacity_callback_registered = False
         self.log.debug(">> Finalizado MultProductProdctionRoutingProblem.")
 
     def createDecisionVariables(self):
@@ -974,6 +987,7 @@ class MultProductProdctionRoutingProblem:
             nodes_remaining=self.nodesRemaining,
         )
         rounded_capacity = dict(self._rounded_capacity_stats)
+        rounded_capacity["callback_registered"] = self._rounded_capacity_callback_registered
         separator_calls = rounded_capacity["separator_calls"]
         rounded_capacity["separator_average_seconds"] = (
             rounded_capacity["separator_seconds"] / separator_calls
@@ -993,6 +1007,7 @@ class MultProductProdctionRoutingProblem:
             "relative_gap": gap, "node_count": self.nodeCount, "solution_count": self.solCount,
             "nodes_remaining": self.nodesRemaining,
             "positive_only_deviations": self.positive_only_deviations,
+            "strengthened_bounds": self.strengthened_bounds,
             "first_feasible_seconds": self._first_feasible_seconds,
             "gap_target_seconds": self._gap_target_seconds,
             "mip_events": list(self._telemetry_events), "pso_iterations": [],
@@ -1134,6 +1149,7 @@ class MultProductProdctionRoutingProblem:
                         )
 
             self.model.register_callback(RoundedCapacityCallback)
+            self._rounded_capacity_callback_registered = True
             return True
         except Exception as error:
             self.log.warning(f"Callback de capacidade arredondada indisponivel: {error}")
@@ -1235,8 +1251,8 @@ class MultProductProdctionRoutingProblem:
         # Set parameters
         if timeLimit is not None:
             self.model.set_time_limit(timeLimit)
-        # if numThreads is not None:
-        # self.model.context.cplex_parameters.threads = numThreads
+        if numThreads is not None:
+            self.model.context.cplex_parameters.threads = numThreads
 
         start_time = time.time()
         self._telemetry_started_at = time.perf_counter()

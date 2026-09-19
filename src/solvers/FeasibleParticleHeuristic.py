@@ -80,7 +80,14 @@ class FeasibleParticleHeuristic:
         self._initial_inventory = np.asarray(self.problem.I_p_i_0, dtype=np.int64)
         self._demand = np.asarray(self.problem.d_p_i_t, dtype=np.int64)
         self._distance = np.asarray(self.problem.a_i_k, dtype=np.int64)
-        self._production_upper_bounds = compute_production_upper_bounds(self.problem)
+        if bool(map.get("strengthened_bounds", True)):
+            self._production_upper_bounds = compute_production_upper_bounds(self.problem)
+        else:
+            self._production_upper_bounds = np.full(
+                (self.problem.p, self.problem.t),
+                float(self.problem.M),
+                dtype=float,
+            )
         if bounds is not None:
             self.lower_bounds = np.asarray(bounds["lower"], dtype=float)
             self.upper_bounds = np.asarray(bounds["upper"], dtype=float)

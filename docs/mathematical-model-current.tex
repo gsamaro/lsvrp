@@ -43,6 +43,24 @@ As duas primeiras extensões são restrições estáticas opcionais; a última �
 família válida de cortes adicionada dinamicamente à relaxação corrente.
 \end{abstract}
 
+\section*{Referências principais}
+
+As desigualdades válidas e a ordenação de dados utilizadas como referências
+metodológicas neste documento são:
+
+\begin{enumerate}
+  \item K. Pavlikov, N. C. Petersen, J. L. Sørensen, ``Exact separation of
+  the rounded capacity inequalities for the capacitated vehicle routing
+  problem'', \emph{Networks}, 83 (2024), 197--209.
+  DOI: \href{https://doi.org/10.1002/net.22183}{10.1002/net.22183}.
+
+  \item L. C. Coelho and G. Laporte, ``Improved solutions for
+  inventory-routing problems through valid inequalities and input ordering'',
+  \emph{International Journal of Production Economics}, 155 (2014),
+  391--397.
+  DOI: \href{https://doi.org/10.1016/j.ijpe.2013.11.019}{10.1016/j.ijpe.2013.11.019}.
+\end{enumerate}
+
 \tableofcontents
 
 \section{Conjuntos e índices}
@@ -72,6 +90,7 @@ da instância.
   \item[$B$] capacidade total de produção disponível em cada período;
   \item[$c_p$] custo unitário de produção do produto $p$;
   \item[$s_p$] custo de setup do produto $p$;
+  \item[$h_{pi}$] custo unitário de estoque do produto $p$ no local $i$;
   \item[$M$] constante grande para a ativação da produção;
   \item[$U_{pi}$] capacidade máxima de estoque do produto $p$ no local $i$;
   \item[$C$] capacidade de carga de cada veículo;
@@ -93,9 +112,11 @@ da instância.
 
 \section{Configuração da formulação completa}
 
-Para a variante fortalecida considerada neste documento, as extensões são
-ativadas conjuntamente: modo multiobjetivo, HC1, desigualdades de Coelho e
-Rounded Capacity Inequalities. Não há variáveis explícitas de visita. A opção
+Esta formulação documenta o modo multiobjetivo e as extensões opcionais HC1,
+desigualdades de Coelho e Rounded Capacity Inequalities. As extensões só são
+adicionadas quando suas respectivas opções de configuração estão habilitadas;
+na configuração padrão, HC1, Coelho e Rounded Capacity Inequalities permanecem
+desativadas. Não há variáveis explícitas de visita. A opção
 \texttt{solver.goal\_programming.positive\_only\_deviations} é verdadeira por
 padrão, de modo que os desvios negativos $n_t^j$ não são criados.
 
@@ -548,5 +569,59 @@ Callback & \texttt{\_install\_rounded\_capacity\_callback} \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+\section{Experimento de ablação}
+
+Foi executado um experimento fatorial $2^3$ na instância
+\texttt{PRP13\_C20\_P8\_V5\_T12\_S4.dat}, mantendo o PSO habilitado em todos
+os cenários. O peso utilizado foi
+$[0.2,0.2,0.2,0.2,0.2]$ e $\alpha=0.99$. Os fatores foram:
+
+\begin{itemize}
+  \item bounds: bounds fortalecidos de produção e estoque ligados/desligados;
+  \item Coelho: desigualdades (15)--(17) ligadas/desligadas;
+  \item cortes: separação das desigualdades cumulativas de capacidade arredondada
+  ligada/desligada.
+\end{itemize}
+
+O PSO usou 100 iterações e a solução encontrada foi enviada como MIP start. O
+tempo máximo de parede por cenário foi de 180 segundos, com 150 segundos
+reservados ao MIP. Para manter a execução comparável às execuções anteriores,
+o número de threads internas do CPLEX não foi forçado pelo runner; os cenários
+foram executados em paralelo apenas quando isso não causou perda da telemetria.
+
+\begin{center}
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccrrrrrr}
+\toprule
+Cenário & Bounds & Coelho & Cortes & FO & Gap & Bound & Nós (proc./rest.) & Callback & Cortes adicionados \\
+\midrule
+S1 & não & não & não & 0,760540 & 94,4241\% & 0,042407 & 0/1 & não & 0 \\
+S2 & sim & não & não & 0,763856 & 84,1198\% & 0,121302 & 0/1 & não & 0 \\
+S3 & não & sim & não & 0,760157 & 94,4185\% & 0,042428 & 0/1 & não & 0 \\
+S4 & sim & sim & não & 0,763617 & 84,0613\% & 0,121711 & 0/1 & não & 0 \\
+S5 & não & não & sim & 0,760540 & 94,4240\% & 0,042408 & 0/1 & sim & 16 \\
+S6 & sim & não & sim & 0,763856 & 84,2464\% & 0,120335 & 0/1 & sim & 16 \\
+S7 & não & sim & sim & 0,760157 & 94,4185\% & 0,042429 & 0/1 & sim & 17 \\
+S8 & sim & sim & sim & 0,763617 & 84,7858\% & 0,116178 & 0/1 & sim & 11 \\
+\bottomrule
+\end{tabular}
+}%
+\end{center}
+
+Todos os cenários terminaram por limite de tempo. O CPLEX permaneceu no nó
+raiz, com zero nós processados e um nó restante. O gap reportado é o gap MIP
+relativo do CPLEX, calculado a partir da FO incumbente e do melhor bound; por
+isso os cenários com bounds fortalecidos ficam em torno de 84--85\%, enquanto
+os cenários sem esse fortalecimento ficam em torno de 94\%. A coluna
+``Callback'' indica se o callback foi chamado ao menos uma vez. Nos cenários
+com cortes, foram encontrados e adicionados 16, 16, 17 e 11 cortes,
+respectivamente; nos cenários sem cortes, o callback não foi instalado.
+
+O modelo de dimensionamento usado pelo PSO encontrou, em todos os cenários,
+bound inferior agregado $89608$ e bound superior agregado $119993$, ambos com
+gap zero. Os resumos completos estão em
+\texttt{out/ablation\_prp13\_2026-09-19\_final/summary.csv}.
 
 \end{document}

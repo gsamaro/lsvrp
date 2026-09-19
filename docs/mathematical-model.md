@@ -30,7 +30,7 @@ Essa leitura vem do LaTeX e é consistente com o contexto descrito em `README.md
 
 ## Objetivo matemático
 
-Pelo LaTeX, a função objetivo \eqref{eq:fo} minimiza uma combinação ponderada entre:
+Pelo LaTeX, a função objetivo \eqref{eq:objective} minimiza uma combinação ponderada entre:
 
 - um termo de penalização máxima, representado por `\lambda`;
 - um termo agregado de desvios positivos normalizados por targets ajustados.
@@ -214,7 +214,7 @@ aparece na variante legada quando a opção é explicitamente desativada.
 
 ## Objetivo matemático
 
-Pelo LaTeX, a função objetivo \eqref{eq:fo} é:
+Pelo LaTeX, a função objetivo \eqref{eq:objective} é:
 
 `\min \alpha \lambda + (1-\alpha)\sum_t \sum_j \frac{v_t^j p_t^j}{\overline{b}_t^j}`
 
@@ -231,11 +231,11 @@ Pelo LaTeX:
 
 | Símbolo | Interpretação | Equação |
 | --- | --- | --- |
-| `f_t^1` | custo total de setup | \eqref{eq:custo_setup} |
-| `f_t^2` | custo total de produção | \eqref{eq:custo_producao} |
-| `f_t^3` | custo total de estoque | \eqref{eq:custo_estoque} |
-| `f_t^4` | custo fixo de transporte | \eqref{eq:custo_fixo_transporte} |
-| `f_t^5` | custo variável de transporte | \eqref{eq:custo_variavel_transporte} |
+| `f_t^1` | custo total de produção | \eqref{eq:f1} |
+| `f_t^2` | custo total de setup | \eqref{eq:f2} |
+| `f_t^3` | custo total de estoque | \eqref{eq:f3} |
+| `f_t^4` | custo fixo de transporte | \eqref{eq:f4} |
+| `f_t^5` | custo variável de transporte | \eqref{eq:f5} |
 
 ## Implementação observada
 
@@ -266,7 +266,8 @@ Logo, no código:
 - `f4 = custo fixo de transporte`;
 - `f5 = custo variável de transporte`.
 
-Essa associação difere da nomeação da formulação LaTeX para `f^1_t` e `f^2_t`.
+Essa associação coincide com a formulação LaTeX atual: `f^1_t` é produção e
+`f^2_t` é setup.
 
 ## Termos implementados
 
@@ -303,7 +304,7 @@ Como `config/config.json` define `"multiobjective": true`, o caminho mais aderen
 
 ### Equação
 
-LaTeX \eqref{eq:custo_setup}: `f_t^1 = \sum_p s_p y_{pt}`
+LaTeX \eqref{eq:f2}: `f_t^2 = \sum_p s_p y_{pt}`
 
 ### Interpretação
 
@@ -317,7 +318,7 @@ Como expressão em `crateObjectiveFunction` de `src/solvers/MultProductProdction
 
 ### Equação
 
-LaTeX \eqref{eq:custo_producao}: `f_t^2 = \sum_p c_p x_{pt}`
+LaTeX \eqref{eq:f1}: `f_t^1 = \sum_p c_p x_{pt}`
 
 ### Interpretação
 
@@ -331,7 +332,7 @@ Como expressão em `crateObjectiveFunction` de `src/solvers/MultProductProdction
 
 ### Equação
 
-LaTeX \eqref{eq:custo_estoque}: `f_t^3 = \sum_p \sum_i h_{pi} I_{pit}`
+LaTeX \eqref{eq:f3}: `f_t^3 = \sum_p \sum_i h_{pi} I_{pit}`
 
 ### Interpretação
 
@@ -345,7 +346,7 @@ Como expressão em `crateObjectiveFunction` de `src/solvers/MultProductProdction
 
 ### Equação
 
-LaTeX \eqref{eq:custo_fixo_transporte}: `f_t^4 = \sum_v \sum_k f z_{v0kt}`
+LaTeX \eqref{eq:f4}: `f_t^4 = \sum_v \sum_k f z_{v0kt}`
 
 ### Interpretação
 
@@ -359,7 +360,7 @@ Como expressão em `crateObjectiveFunction` de `src/solvers/MultProductProdction
 
 ### Equação
 
-LaTeX \eqref{eq:custo_variavel_transporte}: `f_t^5 = \sum_v \sum_k \sum_{i \ne k} a_{ik} z_{vikt}`
+LaTeX \eqref{eq:f5}: `f_t^5 = \sum_v \sum_k \sum_{i \ne k} a_{ik} z_{vikt}`
 
 ### Interpretação
 
@@ -373,7 +374,7 @@ Como expressão em `crateObjectiveFunction` de `src/solvers/MultProductProdction
 
 ### Equação
 
-LaTeX \eqref{eq:limite_lambda}: `\frac{v_t^j p_t^j}{\overline{b}_t^j} \le \lambda \quad \forall j,t`
+LaTeX \eqref{eq:lambda}: `\frac{w_j p_t^j}{\widetilde{b}_t^j} \le \lambda \quad \forall j,t`
 
 ### Interpretação
 
@@ -389,7 +390,7 @@ Observação: no código a forma é `weight[j] * positive[j,t] <= lambda * new_t
 
 ### Equação
 
-LaTeX \eqref{eq:balanco_desvio}: `f_t^j + n_t^j - p_t^j = b_t^j \quad \forall j,t`
+LaTeX \eqref{eq:deviation-balance}: `f_t^j + n_t^j - p_t^j = b_t^j \quad \forall j,t`
 
 ### Interpretação
 
@@ -408,8 +409,9 @@ usa a formulação projetada equivalente:
 
 Como `p_t^j` aparece com coeficiente positivo na função objetivo e `n_t^j`
 não é penalizado, essa variante produz o mesmo menor valor possível de
-`p_t^j` sem criar as variáveis de desvio negativo. O modo padrão permanece
-`false` para preservar a formulação legada até a comparação experimental.
+`p_t^j` sem criar as variáveis de desvio negativo. O modo padrão é
+`true`, conforme `config/config.json`; a formulação legada pode ser reativada
+explicitamente com `false`.
 
 ## Construção dos targets com o modelo inteiro
 
@@ -435,7 +437,7 @@ segundo e pode ser ajustado por
 
 ### Equação
 
-LaTeX \eqref{eq:balanco_estoque_planta}: `x_{pt} + I_{p0,t-1} - \sum_v \sum_i q_{pvit} = I_{p0t}`
+LaTeX \eqref{eq:plant-balance}: `x_{pt} + I_{p0,t-1} - \sum_v \sum_i q_{pvit} = I_{p0t}`
 
 ### Interpretação
 
@@ -449,7 +451,7 @@ Produção mais estoque anterior menos entregas no período resulta no estoque f
 
 ### Equação
 
-LaTeX \eqref{eq:balanco_estoque_cliente}: `\sum_v q_{pvit} + I_{pi,t-1} - d_{pit} = I_{pit}`
+LaTeX \eqref{eq:customer-balance}: `\sum_v q_{pvit} + I_{pi,t-1} - d_{pit} = I_{pit}`
 
 ### Interpretação
 
@@ -463,7 +465,7 @@ Entregas mais estoque anterior menos demanda definem o estoque final do cliente.
 
 ### Equação
 
-LaTeX \eqref{eq:capacidade_producao}: `\sum_p b_p x_{pt} \le B`
+LaTeX \eqref{eq:production-capacity}: `\sum_p b_p x_{pt} \le B`
 
 ### Interpretação
 
@@ -573,7 +575,7 @@ validar os tensores densos para todas as partículas.
 
 ### Equação
 
-LaTeX \eqref{eq:conservacao_fluxo_produto}: `\sum_{i \ne k} r_{pvikt} - \sum_{l \ne k} r_{pvklt} = q_{pvkt}`
+LaTeX \eqref{eq:product-flow-customer}: `\sum_{i \ne k} r_{pvikt} - \sum_{l \ne k} r_{pvklt} = q_{pvkt}`
 
 ### Interpretação
 
@@ -587,7 +589,7 @@ O fluxo do produto que entra no nó `k` menos o que sai é igual à quantidade e
 
 ### Equação
 
-LaTeX \eqref{eq:balanco_fluxo_planta}: `\sum_v \sum_k r_{pv0kt} - \sum_v \sum_i r_{pvi0t} = \sum_v \sum_l q_{pvlt}`
+LaTeX \eqref{eq:product-flow-plant}: `\sum_v \sum_k r_{pv0kt} - \sum_v \sum_i r_{pvi0t} = \sum_v \sum_l q_{pvlt}`
 
 ### Interpretação
 
@@ -601,7 +603,7 @@ Fecha o balanço global de fluxo do produto em relação à planta e contribui p
 
 ### Equação
 
-LaTeX \eqref{eq:capacidade_veiculo}: `\sum_p r_{pvikt} \le C z_{vikt}`
+LaTeX \eqref{eq:arc-capacity}: `\sum_p r_{pvikt} \le C z_{vikt}`
 
 ### Interpretação
 
@@ -665,7 +667,7 @@ com o callback e a telemetria está em
 
 ### Equação
 
-LaTeX \eqref{eq:limite_uso_veiculo}: `\sum_k z_{v0kt} \le 1`
+LaTeX \eqref{eq:one-departure}: `\sum_k z_{v0kt} \le 1`
 
 ### Interpretação
 
@@ -679,7 +681,7 @@ Cada veículo pode sair da planta no máximo uma vez em cada período.
 
 ### Equação
 
-LaTeX \eqref{eq:conservacao_fluxo_veiculo}: `\sum_{i \ne k} z_{vikt} - \sum_{l \ne k} z_{vklt} = 0`
+LaTeX \eqref{eq:vehicle-flow}: `\sum_{i \ne k} z_{vikt} - \sum_{l \ne k} z_{vklt} = 0`
 
 ### Interpretação
 
@@ -693,7 +695,7 @@ Garante continuidade da rota do veículo em cada nó.
 
 ### Equação
 
-LaTeX \eqref{eq:visitacao_unica}: `\sum_v \sum_{i \ne k} z_{vikt} \le 1`
+LaTeX \eqref{eq:single-visit}: `\sum_v \sum_{i \ne k} z_{vikt} \le 1`
 
 ### Interpretação
 
@@ -818,7 +820,7 @@ As restrições são criadas por `createCoelhoValidInequalities` e recebem os no
 
 ### Equação
 
-LaTeX \eqref{eq:nao_negatividade}: `x_{pt}, I_{pit}, r_{pvikt}, q_{pvit} \ge 0`
+LaTeX \eqref{eq:nonnegative}: `x_{pt}, I_{pit}, r_{pvikt}, q_{pvit} \ge 0`
 
 ### Interpretação
 
@@ -832,7 +834,7 @@ Domínios das variáveis em `createDecisionVariables` de `src/solvers/MultProduc
 
 ### Equação
 
-LaTeX \eqref{eq:binarias}: `y_{pt}, z_{vikt} \in \{0,1\}`. Não há variável
+LaTeX \eqref{eq:binary}: `y_{pt}, z_{vikt} \in \{0,1\}`. Não há variável
 binária adicional de visita.
 
 ### Interpretação
@@ -906,20 +908,20 @@ flowchart TD
 | `\overline{b}_t^j` | `MultProductProdctionRoutingProblem` | `_adjust_targets` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | `x_{pt}, y_{pt}, I_{pit}, z_{vikt}, r_{pvikt}, q_{pvit}, p_t^j, n_t^j, \lambda` | `MultProductProdctionRoutingProblem` | `createDecisionVariables` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | objetivo multiobjetivo | `MultProductProdctionRoutingProblem` | `crateObjectiveFunction` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:balanco_desvio} | `MultProductProdctionRoutingProblem` | `createGoalProgrammingRestrictions` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:limite_lambda} | `MultProductProdctionRoutingProblem` | `createEpsilonRestricted` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:balanco_estoque_planta} | `MultProductProdctionRoutingProblem` | `createEstablishInvetoryBalanceAtPlant` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:balanco_estoque_cliente} | `MultProductProdctionRoutingProblem` | `creteInventoryBalancingInventoryCustomers` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:capacidade_producao} | `MultProductProdctionRoutingProblem` | `createPlantsMaximum` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:setup_producao} | `MultProductProdctionRoutingProblem` | `createRelationshipBetweenProduction` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:capacidade_estoque} | `MultProductProdctionRoutingProblem` | `createDelimitMaximumCapacityItemsAtPlant` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:conservacao_fluxo_produto} | `MultProductProdctionRoutingProblem` | `createVehiclePreventTransshipmentIntermediateNodes` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:balanco_fluxo_planta} | `MultProductProdctionRoutingProblem` | `createEliminationSubroutes` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:capacidade_veiculo} | `MultProductProdctionRoutingProblem` | `createVehicleLoadCapacityDelimited` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:deviation-balance} | `MultProductProdctionRoutingProblem` | `createGoalProgrammingRestrictions` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:lambda} | `MultProductProdctionRoutingProblem` | `createEpsilonRestricted` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:plant-balance} | `MultProductProdctionRoutingProblem` | `createEstablishInvetoryBalanceAtPlant` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:customer-balance} | `MultProductProdctionRoutingProblem` | `creteInventoryBalancingInventoryCustomers` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:production-capacity} | `MultProductProdctionRoutingProblem` | `createPlantsMaximum` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:setup-link} | `MultProductProdctionRoutingProblem` | `createRelationshipBetweenProduction` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:inventory-capacity} | `MultProductProdctionRoutingProblem` | `createDelimitMaximumCapacityItemsAtPlant` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:product-flow-customer} | `MultProductProdctionRoutingProblem` | `createVehiclePreventTransshipmentIntermediateNodes` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:product-flow-plant} | `MultProductProdctionRoutingProblem` | `createEliminationSubroutes` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:arc-capacity} | `MultProductProdctionRoutingProblem` | `createVehicleLoadCapacityDelimited` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | desigualdades cumulativas de capacidade arredondada | `RoundedCapacitySeparation` / `MultProductProdctionRoutingProblem` | `separate_cumulative_cuts` / `_install_rounded_capacity_callback` | `src/solvers/RoundedCapacitySeparation.py`, `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:limite_uso_veiculo} | `MultProductProdctionRoutingProblem` | `createImposeMostOneRouteEachVehicle` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:conservacao_fluxo_veiculo} | `MultProductProdctionRoutingProblem` | `createEnsureRoutesOnlyPlant` | `src/solvers/MultProductProdctionRoutingProblem.py` |
-| \eqref{eq:visitacao_unica} | `MultProductProdctionRoutingProblem` | `createVehicleMostVisitCustomerEachPeriod` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:one-departure} | `MultProductProdctionRoutingProblem` | `createImposeMostOneRouteEachVehicle` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:vehicle-flow} | `MultProductProdctionRoutingProblem` | `createEnsureRoutesOnlyPlant` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| \eqref{eq:single-visit} | `MultProductProdctionRoutingProblem` | `createVehicleMostVisitCustomerEachPeriod` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | bounds de entrega em função de `Z` | `MultProductProdctionRoutingProblem` | `createVehicleVisitDeliveryBounds` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | VC e HC1 | `MultProductProdctionRoutingProblem` | `createVehicleSymmetryBreaking` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | Coelho (15)–(17) | `MultProductProdctionRoutingProblem` | `createCoelhoValidInequalities` | `src/solvers/MultProductProdctionRoutingProblem.py` |
@@ -934,7 +936,7 @@ flowchart TD
 
 | Item | Formulação | Código | Observação |
 | --- | --- | --- | --- |
-| Nomeação de `f_t^1` e `f_t^2` | `f_t^1` = setup, `f_t^2` = produção | `self.f1` = produção, `self.f2` = setup | Divergência nominal relevante; o código preserva os dois componentes, mas com índices trocados. |
+| Nomeação de `f_t^1` e `f_t^2` | `f_t^1` = produção, `f_t^2` = setup | `self.f1` = produção, `self.f2` = setup | Alinhado entre o `.md`, o `.tex` atual e o código. |
 | Função objetivo multiobjetivo | `\alpha \lambda + (1-\alpha)\sum_{t,j} v_t^j p_t^j / \overline{b}_t^j` | `crateObjectiveFunction` soma `alpha * lambda_` uma única vez e agrega os cinco desvios normalizados por período | Implementação alinhada à formulação. Uma versão anterior repetia `lambda` dentro da soma e foi corrigida. |
 | Peso `v_t^j` | peso indexado por `j` e `t` | `weight[j]`, sem índice temporal explícito | O código usa pesos constantes por componente, não pesos por período. |
 | Domínio de `x, I, r, q` | apenas não negatividade explícita | `continuous_var` | Código e formulação fornecida coincidem: as variáveis são contínuas e não negativas. |
@@ -960,7 +962,7 @@ flowchart TD
 | desvios `n_t^j, p_t^j` | mapeado; `n_t^j` é opcional | `createDecisionVariables`, `createGoalProgrammingRestrictions` |
 | `\lambda` | mapeado | `createDecisionVariables`, `createEpsilonRestricted` |
 | função objetivo | mapeado | `crateObjectiveFunction`, seção de divergências |
-| restrições \eqref{eq:custo_setup} a \eqref{eq:binarias} | mapeado | seção 8 |
+| restrições \eqref{eq:f1} a \eqref{eq:binary} | mapeado | seção 8 |
 | mecanismo de ajuste para target zero | mapeado com ressalva textual | `_adjust_targets`, seção de divergências |
 
 Conclusão da verificação: todos os elementos presentes na formulação matemática fornecida possuem correspondência explícita na implementação ou foram registrados como divergência/ressalva na Seção 15.
