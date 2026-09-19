@@ -192,6 +192,52 @@ class MPPRPObjectiveTestCase(unittest.TestCase):
         )
         assert "10" in str(production_constraint)
 
+    def test_disabled_strengthened_bounds_use_global_production_big_m(self):
+        module = _load_real_mpprp()
+        data = self._data(num_customers=2, num_vehicles=2)
+        data["strengthened_bounds"] = False
+        data["M"] = 100
+        data["B"] = 10
+        data["d_pit"] = [[[5], [7]]]
+        solver = module.MultProductProdctionRoutingProblem(
+            map=data,
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+
+        solver.createDecisionVariables()
+        solver.createRelationshipBetweenProduction()
+
+        production_constraint = next(
+            constraint for constraint in solver.model.iter_constraints()
+            if constraint.name == "EQ_5_p_0_t_0"
+        )
+        assert "100" in str(production_constraint)
+
+    def test_disabled_strengthened_bounds_use_original_inventory_capacity(self):
+        module = _load_real_mpprp()
+        data = self._data(num_customers=1, num_vehicles=3)
+        data["strengthened_bounds"] = False
+        data["U_pi"] = [[100, 20]]
+        data["I_pi0"] = [[7, 2]]
+        data["d_pit"] = [[[1]]]
+        solver = module.MultProductProdctionRoutingProblem(
+            map=data,
+            dir="/tmp",
+            log=DummyLogger(),
+            start={"start": False},
+        )
+
+        solver.createDecisionVariables()
+        solver.createDelimitMaximumCapacityItemsAtPlant()
+
+        constraints = {
+            constraint.name: str(constraint)
+            for constraint in solver.model.iter_constraints()
+        }
+        assert "I_0_1_0 <= 20.0" in constraints["EQ_6_p_0_i_1_t_0"]
+
     def test_inventory_constraints_use_tightened_customer_bounds(self):
         module = _load_real_mpprp()
         data = self._data(num_customers=1, num_vehicles=3)

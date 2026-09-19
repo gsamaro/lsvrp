@@ -392,6 +392,56 @@ class PSOSolverTestCase(unittest.TestCase):
         self.assertIs(instance, fake_instance)
         factory.assert_called_once()
 
+    def test_instance_process_injects_configured_strengthened_bounds_without_overriding_explicit_data(self):
+        captured_maps = []
+
+        class FakeSolver:
+            def __init__(self, map, **kwargs):
+                captured_maps.append(dict(map))
+
+            def solver(self, timeLimit=None, numThreads=None):
+                pass
+
+            def getResults(self):
+                return ([], [], [], [], [], [], [], 0, 0, 0, None, 0, 0, 0, 0, None)
+
+            def terminate(self):
+                pass
+
+        config_values = {
+            ("solver", "telemetry"): {"enabled": False},
+            ("solver", "strengthened_bounds"): False,
+        }
+        parsed_data = self._minimal_data()
+
+        with patch("src.process.InstanceProcess.RD") as reader, patch(
+            "src.process.InstanceProcess.PSOSolver", FakeSolver
+        ), patch("src.process.InstanceProcess.getResults"), patch(
+            "src.process.InstanceProcess.Config.get_nested"
+        ) as get_nested:
+            reader.return_value.getDataSet.return_value = parsed_data
+            get_nested.side_effect = lambda *keys, default=None: config_values.get(
+                keys, default
+            )
+
+            InstanceProcess(
+                instance="./data/test.dat",
+                output="/tmp",
+                log=DummyLogger(),
+                solver="PSO",
+            ).process()
+
+            parsed_data["strengthened_bounds"] = True
+            InstanceProcess(
+                instance="./data/test.dat",
+                output="/tmp",
+                log=DummyLogger(),
+                solver="PSO",
+            ).process()
+
+        self.assertFalse(captured_maps[0]["strengthened_bounds"])
+        self.assertTrue(captured_maps[1]["strengthened_bounds"])
+
     def test_legacy_solver_files_are_removed(self):
         project_root = Path(__file__).resolve().parents[1]
         removed = [

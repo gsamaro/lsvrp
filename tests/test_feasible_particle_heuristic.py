@@ -58,6 +58,21 @@ class FeasibleParticleHeuristicTestCase(unittest.TestCase):
         self.assertEqual(solutions[0]["X"][0, 0], 2)
         self.assertEqual(solutions[0]["Q"][0, 0, 1, 0], 2)
 
+    def test_disabled_strengthened_bounds_use_global_production_bound(self):
+        data = self._minimal_data()
+        data["strengthened_bounds"] = False
+
+        heuristic = FeasibleParticleHeuristic(
+            map=data,
+            dir="/tmp",
+            log=DummyLogger(),
+        )
+
+        np.testing.assert_array_equal(
+            heuristic._production_upper_bounds,
+            np.full((data["num_products"], data["num_periods"]), data["M"]),
+        )
+
     def test_last_period_forces_remaining_demand_delivery(self):
         heuristic = FeasibleParticleHeuristic(
             map=self._minimal_data(),

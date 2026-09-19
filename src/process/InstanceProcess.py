@@ -73,6 +73,10 @@ class InstanceProcess:
             data["commit_hash"] = self.task_context.get("commit_hash")
             data["config_hash"] = self.task_context.get("config_hash")
             data["config_json"] = self.task_context.get("config_json")
+            if "strengthened_bounds" not in data:
+                data["strengthened_bounds"] = Config.get_nested(
+                    "solver", "strengthened_bounds", default=True
+                )
 
             targets = []
             if self.targets_by_file:
@@ -124,6 +128,7 @@ class InstanceProcess:
                     "rounded_capacity_inequalities": Config.get_nested(
                         "solver", "rounded_capacity_inequalities", "enabled", default=False
                     ),
+                    "strengthened_bounds": bool(data.get("strengthened_bounds", True)),
                     "positive_only_deviations": Config.get_nested(
                         "solver", "goal_programming", "positive_only_deviations", default=True
                     ),

@@ -4,6 +4,7 @@
     "timeLimit":3600,
     "method":"PSO",
     "multiobjective":true,
+    "strengthened_bounds": false,
     "goal_programming": {
       "positive_only_deviations": true
     },

@@ -530,6 +530,32 @@ Impõe limite superior de armazenamento por item e local.
 
 `createDelimitMaximumCapacityItemsAtPlant` em `src/solvers/MultProductProdctionRoutingProblem.py`.
 
+### Controle experimental dos bounds apertados
+
+O uso dos bounds específicos de produção e estoque é controlado por
+`solver.strengthened_bounds`, definido em `config/config.json` e ativado por
+padrão (`true`). Quando ativado, a formulação usa `U^X_{pt}` e `U^I_{pit}`
+calculados a partir da capacidade, da demanda restante e da alcançabilidade do
+estoque. Quando desativado (`false`), a formulação usa o Big-M global `M` no
+vínculo de produção e o limite original `U_{pi}` no estoque.
+
+O mesmo controle é repassado à construção das partículas da heurística, que
+deixa de aplicar o bound específico de produção quando o flag está desligado.
+Esse parâmetro não desativa o PL auxiliar de dimensionamento de lotes do PSO:
+os bounds relaxados desse PL continuam configurados separadamente por
+`solver.pso.lot_sizing_bounds`.
+
+Assim, uma execução completa sem a formulação apertada pode ser feita com:
+
+```json
+"solver": {
+  "strengthened_bounds": false
+}
+```
+
+O valor explícito `strengthened_bounds` já presente em um mapa de dados, como
+nos cenários de ablação, tem precedência sobre o valor central da configuração.
+
 ## Modelo de dimensionamento sem roteamento para bounds do PSO
 
 O PSO utiliza um PL auxiliar de dimensionamento de lotes, implementado em

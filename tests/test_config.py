@@ -74,6 +74,24 @@ def test_normalize_adds_positive_only_deviations_default():
     assert normalized["solver"]["goal_programming"]["positive_only_deviations"] is True
 
 
+def test_normalize_adds_strengthened_bounds_default():
+    configured = _valid_config()
+    configured["solver"].pop("strengthened_bounds")
+
+    normalized = Config.normalize(configured)
+
+    assert normalized["solver"]["strengthened_bounds"] is True
+
+
+def test_normalize_accepts_disabled_strengthened_bounds():
+    configured = _valid_config()
+    configured["solver"]["strengthened_bounds"] = False
+
+    normalized = Config.normalize(configured)
+
+    assert normalized["solver"]["strengthened_bounds"] is False
+
+
 def test_normalize_accepts_current_config_file():
     normalized = Config.normalize(_valid_config())
 
@@ -103,6 +121,7 @@ def test_snapshot_returns_effective_config_as_an_isolated_copy():
         (("workers", "num"), -1, "workers.num"),
         (("logging", "level"), "verbose", "logging.level"),
         (("solver", "multiobjective"), "true", "multiobjective"),
+        (("solver", "strengthened_bounds"), "false", "strengthened_bounds"),
         (("solver", "symmetry_breaking", "hc1"), "false", "symmetry_breaking.hc1"),
         (("solver", "coelho_inequalities"), "false", "coelho_inequalities"),
         (

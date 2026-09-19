@@ -11,6 +11,7 @@ class Config:
             "timeLimit": 3600,
             "method": "PSO",
             "multiobjective": True,
+            "strengthened_bounds": True,
             "goal_programming": {
                 "positive_only_deviations": True,
             },
@@ -94,6 +95,9 @@ class Config:
             raise ValueError("config.solver.threadsLimit deve ser um inteiro positivo ou None")
 
         cls._validate_bool(solver["multiobjective"], "config.solver.multiobjective")
+        cls._validate_bool(
+            solver["strengthened_bounds"], "config.solver.strengthened_bounds"
+        )
         goal_programming = solver["goal_programming"]
         cls._validate_bool(
             goal_programming["positive_only_deviations"],
