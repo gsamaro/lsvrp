@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LSVRP · Modelo matemático</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+  <style>
+    .hero { padding: 28px; margin: 28px 0 34px; background: linear-gradient(135deg, #e7effd, #fff); border: 1px solid #c9d9f3; border-radius: 20px; }
+    .hero p { max-width: 820px; font-size: 1.08rem; }
+    section { margin-top: 48px; }
+    section h2 { margin-bottom: 10px; font-size: 1.65rem; }
+    section h3 { margin: 22px 0 8px; font-size: 1.08rem; }
+    .section-intro { max-width: 830px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0; }
+    .grid.two { grid-template-columns: repeat(2, 1fr); }
+    .card { padding: 20px; background: var(--surface); border: 1px solid #dbe4f0; border-radius: 16px; box-shadow: 0 10px 30px rgba(25, 47, 83, .05); }
+    .card p { margin-bottom: 0; }
+    .tag { display: inline-block; padding: 4px 9px; border-radius: 999px; font-size: .76rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; background: var(--accent-soft); color: var(--accent); }
+    .tag.green { background: #e4f7ef; color: #18734d; }
+    .tag.orange { background: #fff0dc; color: #a65d00; }
+    .tag.purple { background: #f0e8ff; color: #7040a7; }
+    .formula { margin: 16px 0; padding: 16px 20px; overflow-x: auto; color: #172033; background: #f8fafc; border: 1px solid #dbe4f0; border-left: 5px solid var(--accent); border-radius: 12px; font: 600 .98rem/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .callout { padding: 18px 20px; margin: 20px 0; background: #fff8e9; border: 1px solid #efd49b; border-radius: 14px; }
+    .callout strong { color: #8b5700; }
+    .good { padding: 18px 20px; margin: 20px 0; background: #eef8f3; border: 1px solid #b8e2cf; border-radius: 14px; }
+    .good strong { color: #18734d; }
+    .diagram { margin-top: 18px; padding: 12px; border-radius: 15px; background: #fbfcff; border: 1px solid #dbe4f0; }
+    .diagram svg { display: block; width: 100%; height: auto; }
+    .diagram text { font-family: Inter, ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+    .diagram .small { font-size: 13px; fill: var(--muted); }
+    .diagram .box { stroke-width: 1.5; }
+    .table-wrap { overflow-x: auto; margin: 18px 0; }
+    table { width: 100%; min-width: 680px; border-collapse: collapse; background: var(--surface); font-size: .92rem; }
+    th, td { padding: 11px 12px; border: 1px solid #dbe4f0; text-align: left; vertical-align: top; }
+    th { background: #eef3fa; color: var(--ink); }
+    code { padding: 2px 5px; border-radius: 5px; background: #eef2f7; color: #26344c; font-size: .92em; }
+    .status { font-weight: 800; color: #18734d; }
+    .status.warn { color: #a65d00; }
+    .footer-link { margin-top: 48px; padding-top: 22px; border-top: 1px solid #dbe4f0; }
+    @media (max-width: 720px) { .grid, .grid.two { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Multi Product Production Routing Problem · formulação + implementação</div>
+    <h1>Modelo matemático</h1>
+    <p>Leitura visual da formulação documentada em <code>mathematical-model.md</code>, com a correspondência entre LaTeX, código do solver e escolhas experimentais do repositório.</p>
+
+    <div class="hero">
+      <h2>Conclusão da avaliação</h2>
+      <p><strong>O núcleo do modelo está alinhado.</strong> Produção, estoque, entrega, fluxo de produtos, roteamento, capacidades, metas e desvios possuem correspondência explícita na implementação do MIP.</p>
+      <div class="grid two">
+        <article class="card"><span class="tag green">Cobertura</span><h3>Formulação base</h3><p>Todos os elementos da formulação fornecida aparecem no solver ou estão registrados como variantes de configuração.</p></article>
+        <article class="card"><span class="tag orange">Ressalvas</span><h3>Diferenças documentadas</h3><p>Pesos não variam por período, <code>I</code> é tratado como local no código e há caminhos adicionais para targets, single-objective e relaxações.</p></article>
+      </div>
+    </div>
+
+    <section id="sumario">
+      <h2>Sumário</h2>
+      <div class="card">
+        <ol>
+          <li><a href="#escopo">Escopo e leitura do modelo</a></li>
+          <li><a href="#estrutura">Conjuntos, parâmetros e variáveis</a></li>
+          <li><a href="#objetivo">Função objetivo e goal programming</a></li>
+          <li><a href="#restricoes">Restrições do modelo base</a></li>
+          <li><a href="#reforcos">Reforços e variantes opcionais</a></li>
+          <li><a href="#fluxo">Fluxo computacional</a></li>
+          <li><a href="#correspondencia">Correspondência matemática ↔ código</a></li>
+          <li><a href="#divergencias">Divergências e checklist de cobertura</a></li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="escopo">
+      <h2>1. Escopo e leitura do modelo</h2>
+      <p class="section-intro">A formulação descreve um problema integrado de produção, estoque e roteamento multiproduto e multiperíodo. O HTML resume o conteúdo do Markdown e preserva a distinção entre o que é matemático e o que é comportamento operacional do repositório.</p>
+      <div class="diagram" aria-label="Fluxo conceitual do modelo">
+        <svg viewBox="0 0 930 230" role="img">
+          <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6d7b90"/></marker></defs>
+          <rect class="box" x="20" y="70" width="150" height="82" rx="16" fill="#e7effd" stroke="#9ab9ff"/><text x="95" y="103" text-anchor="middle" font-weight="750">Produção</text><text x="95" y="128" text-anchor="middle" class="small">X e Y na planta</text>
+          <path d="M170 111H225" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow)"/>
+          <rect class="box" x="225" y="70" width="150" height="82" rx="16" fill="#f0e8ff" stroke="#c6a9ee"/><text x="300" y="103" text-anchor="middle" font-weight="750">Estoque</text><text x="300" y="128" text-anchor="middle" class="small">I na planta e clientes</text>
+          <path d="M375 111H430" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow)"/>
+          <rect class="box" x="430" y="70" width="150" height="82" rx="16" fill="#fff2df" stroke="#efc17f"/><text x="505" y="103" text-anchor="middle" font-weight="750">Roteamento</text><text x="505" y="128" text-anchor="middle" class="small">Z, R e Q</text>
+          <path d="M580 111H635" stroke="#6d7b90" stroke-width="2" marker-end="url(#arrow)"/>
+          <rect class="box" x="635" y="70" width="150" height="82" rx="16" fill="#e4f7ef" stroke="#9bd9c0"/><text x="710" y="103" text-anchor="middle" font-weight="750">Metas</text><text x="710" y="128" text-anchor="middle" class="small">f¹…f⁵, p, n, λ</text>
+          <path d="M710 152V195H300V152" fill="none" stroke="#8b98aa" stroke-dasharray="6 5" stroke-width="2" marker-end="url(#arrow)"/><text x="505" y="218" text-anchor="middle" class="small">balanços, capacidades e atendimento da demanda</text>
+        </svg>
+      </div>
+      <div class="callout"><strong>Escopo experimental:</strong> o repositório filtra instâncias e combina cada instância com vetores de pesos e valores de <code>alpha</code>. Isso define o experimento computacional, mas não altera a estrutura interna do MIP.</div>
+    </section>
+
+    <section id="estrutura">
+      <h2>2. Conjuntos, parâmetros e variáveis</h2>
+      <p class="section-intro">No LaTeX, os conjuntos aparecem simbolicamente; no código, são cardinalidades carregadas pelo parser e usadas em laços. A planta é o nó <code>0</code> e os clientes ocupam os nós <code>1..N</code>.</p>
+      <h3>Conjuntos principais</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Símbolo</th><th>Significado</th><th>Domínio</th><th>Implementação</th></tr></thead>
+        <tbody>
+          <tr><td><code>P</code></td><td>Produtos</td><td><code>p = 1..P</code></td><td><code>num_products</code> em <code>ReadPrpFile</code></td></tr>
+          <tr><td><code>T</code></td><td>Períodos</td><td><code>t = 1..T</code></td><td><code>num_periods</code></td></tr>
+          <tr><td><code>V</code></td><td>Veículos</td><td><code>v = 1..V</code></td><td><code>num_vehicles</code></td></tr>
+          <tr><td><code>N</code></td><td>Clientes</td><td><code>i = 1..N</code></td><td><code>num_customers</code></td></tr>
+          <tr><td><code>K</code></td><td>Nós, incluindo a planta</td><td><code>k = 0..N</code></td><td><code>self.k = N + 1</code></td></tr>
+          <tr><td><code>I</code></td><td>Locais usados pelo estoque</td><td>planta + clientes</td><td><code>self.i = N + 1</code></td></tr>
+          <tr><td><code>J</code></td><td>Componentes de custo</td><td><code>j = 1..5</code></td><td><code>self.j = 5</code></td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout"><strong>Ressalva de notação:</strong> <code>I</code> aparece como clientes em alguns trechos da formulação e como locais em outros. O código resolve essa ambiguidade tratando <code>i</code> como locais, incluindo a planta; os clientes continuam sendo selecionados por laços iniciados em <code>1</code>.</div>
+
+      <h3>Parâmetros que governam o MIP</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Grupo</th><th>Parâmetros</th><th>Função</th><th>Origem</th></tr></thead>
+        <tbody>
+          <tr><td>Produção</td><td><code>B, b_p, c_p, s_p, M</code></td><td>Capacidade, tempo, custo variável, setup e Big-M</td><td>Instância <code>.dat</code></td></tr>
+          <tr><td>Estoque</td><td><code>U_pi, I_pi0, h_pi</code></td><td>Limites, estoque inicial e custo de armazenagem</td><td>Instância <code>.dat</code></td></tr>
+          <tr><td>Transporte</td><td><code>C, f, a_ik</code></td><td>Capacidade do veículo, custo fixo e custo por arco</td><td>Instância <code>.dat</code></td></tr>
+          <tr><td>Demanda</td><td><code>d_pit</code></td><td>Consumo do produto por cliente e período</td><td>Instância <code>.dat</code></td></tr>
+          <tr><td>Metas</td><td><code>b_t^j, b̄_t^j</code></td><td>Targets originais e ajustados</td><td><code>targets.xlsx</code> e <code>_adjust_targets</code></td></tr>
+          <tr><td>Experimento</td><td><code>alpha</code> e <code>v_t^j</code></td><td>Compromisso entre minimax e soma de desvios</td><td><code>constants.py</code> e <code>WorkerProcess</code></td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Variáveis de decisão</h3>
+      <div class="grid three">
+        <article class="card"><span class="tag blue">Produção</span><h3><code>x_pt</code> e <code>y_pt</code></h3><p>Quantidade produzida e ativação binária de setup.</p></article>
+        <article class="card"><span class="tag purple">Estoque</span><h3><code>I_pit</code></h3><p>Estoque do produto no local ao fim do período.</p></article>
+        <article class="card"><span class="tag orange">Rota</span><h3><code>z_vikt</code>, <code>r_pvikt</code>, <code>q_pvit</code></h3><p>Arcos, fluxo de produto e entregas.</p></article>
+      </div>
+      <div class="formula">x, I, r, q ≥ 0 &nbsp;&nbsp; · &nbsp;&nbsp; y, z ∈ {0,1} &nbsp;&nbsp; · &nbsp;&nbsp; p, n, λ ≥ 0</div>
+      <p>No modo padrão, <code>positive_only_deviations=true</code>; por isso <code>n_t^j</code> não é criado. A variante legada com desvios positivos e negativos pode ser ativada explicitamente.</p>
+    </section>
+
+    <section id="objetivo">
+      <h2>3. Função objetivo e goal programming</h2>
+      <p class="section-intro">A configuração atual usa o caminho multiobjetivo. O modelo combina uma penalização máxima dos desvios com a soma ponderada dos desvios positivos normalizados pelos targets ajustados.</p>
+      <div class="formula">min &nbsp; α λ + (1 − α) Σₜ Σⱼ [ vₜʲ pₜʲ / b̄ₜʲ ]</div>
+      <div class="grid">
+        <article class="card"><span class="tag blue">f¹</span><h3>Produção</h3><p><code>Σₚ cₚ xₚₜ</code></p></article>
+        <article class="card"><span class="tag purple">f²</span><h3>Setup</h3><p><code>Σₚ sₚ yₚₜ</code></p></article>
+        <article class="card"><span class="tag green">f³</span><h3>Estoque</h3><p><code>Σₚ Σᵢ hₚᵢ Iₚᵢₜ</code></p></article>
+      </div>
+      <div class="grid two">
+        <article class="card"><span class="tag orange">f⁴</span><h3>Transporte fixo</h3><p><code>Σᵥ Σₖ f zᵥ₀ₖₜ</code></p></article>
+        <article class="card"><span class="tag">f⁵</span><h3>Transporte variável</h3><p><code>Σᵥ Σₖ Σᵢ≠ₖ aᵢₖ zᵥᵢₖₜ</code></p></article>
+      </div>
+      <h3>Desvios e limite de λ</h3>
+      <div class="formula">fₜʲ + nₜʲ − pₜʲ = bₜʲ &nbsp;&nbsp; · &nbsp;&nbsp; vⱼ pₜʲ ≤ λ b̄ₜʲ</div>
+      <p>Na variante positiva padrão, o código usa <code>pₜʲ ≥ fₜʲ − bₜʲ</code>, com <code>pₜʲ ≥ 0</code>. Como o desvio positivo é penalizado no objetivo, essa projeção remove <code>nₜʲ</code> sem mudar o menor valor possível de <code>pₜʲ</code>.</p>
+      <div class="good"><strong>Alinhamento confirmado:</strong> <code>crateObjectiveFunction</code> soma <code>alpha * lambda</code> uma única vez e agrega os cinco componentes por período. Isso coincide com a formulação atual documentada.</div>
+      <div class="callout"><strong>Target zero:</strong> <code>_adjust_targets</code> substitui valores nulos por targets ajustados para evitar divisão por zero nas expressões normalizadas.</div>
+    </section>
+
+    <section id="restricoes">
+      <h2>4. Restrições do modelo base</h2>
+      <p class="section-intro">As restrições podem ser lidas em quatro blocos: custos/metas, produção e estoque, fluxo de produtos e rotas de veículos.</p>
+      <div class="grid two">
+        <article class="card"><span class="tag blue">Produção</span><h3>Capacidade por período</h3><div class="formula">Σₚ bₚ xₚₜ ≤ B</div><p>O consumo agregado de capacidade não pode superar a capacidade da planta.</p></article>
+        <article class="card"><span class="tag purple">Setup</span><h3>Vínculo de produção</h3><div class="formula">xₚₜ ≤ Uˣₚₜ yₚₜ</div><p>O limite é apertado por produto, capacidade e demanda restante, em vez de usar apenas o Big-M global.</p></article>
+        <article class="card"><span class="tag green">Planta</span><h3>Balanço de estoque</h3><div class="formula">xₚₜ + Iₚ₀,ₜ₋₁ − ΣᵥΣᵢ qₚᵥᵢₜ = Iₚ₀ₜ</div><p>Produção e estoque anterior sustentam as entregas e o estoque final da planta.</p></article>
+        <article class="card"><span class="tag orange">Cliente</span><h3>Balanço de demanda</h3><div class="formula">Σᵥ qₚᵥᵢₜ + Iₚᵢ,ₜ₋₁ − dₚᵢₜ = Iₚᵢₜ</div><p>Entregas e estoque anterior atendem a demanda do cliente.</p></article>
+      </div>
+      <h3>Fluxo de produto e capacidade</h3>
+      <div class="formula">Σᵢ≠ₖ rₚᵥᵢₖₜ − Σₗ≠ₖ rₚᵥₖₗₜ = qₚᵥₖₜ</div>
+      <p>O fluxo que chega ao cliente menos o fluxo que sai é a entrega. Na planta, o balanço global fecha o fluxo e contribui para eliminar subrotas desconectadas.</p>
+      <div class="formula">Σₚ rₚᵥᵢₖₜ ≤ C zᵥᵢₖₜ</div>
+      <p>A carga só pode existir em um arco ativo e não pode superar a capacidade do veículo.</p>
+      <h3>Rotas de veículos</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Regra</th><th>Equação</th><th>Implementação</th></tr></thead>
+        <tbody>
+          <tr><td>Uma saída por veículo</td><td><code>Σₖ z_v0kt ≤ 1</code></td><td><code>createImposeMostOneRouteEachVehicle</code></td></tr>
+          <tr><td>Conservação de fluxo</td><td><code>Σᵢ≠ₖ z_vikt − Σₗ≠ₖ z_vklt = 0</code></td><td><code>createEnsureRoutesOnlyPlant</code></td></tr>
+          <tr><td>Visitação única</td><td><code>ΣᵥΣᵢ≠ₖ z_vikt ≤ 1</code></td><td><code>createVehicleMostVisitCustomerEachPeriod</code></td></tr>
+          <tr><td>Entrega ligada à visita</td><td><code>Σₚ q_pvit ≤ C Σₖ≠ᵢ z_vikt</code></td><td><code>createVehicleVisitDeliveryBounds</code></td></tr>
+        </tbody>
+      </table></div>
+      <p>A variável de visita não é explícita: o código usa <code>visit_vit = Σₖ≠ᵢ z_vikt</code>. Também limita cada entrega por <code>q̄_pit = min(C, U_pi + d_pit)</code>.</p>
+    </section>
+
+    <section id="reforcos">
+      <h2>5. Reforços e variantes opcionais</h2>
+      <p class="section-intro">Esses mecanismos estão documentados no modelo, mas não são todos parte da configuração padrão. A página os separa para deixar claro o que muda o MIP em cada experimento.</p>
+      <div class="grid two">
+        <article class="card"><span class="tag orange">HC1</span><h3>Quebra de simetria VC + HC1</h3><div class="formula">sᵥₜ ≤ sᵥ₋₁,ₜ<br>uᵥᵢₜ ≤ Σⱼ&lt;ᵢ uᵥ₋₁,ⱼ,ₜ</div><p>Escolhe uma representação canônica quando os veículos são intercambiáveis. Controlada por <code>solver.symmetry_breaking.hc1</code>, padrão <code>false</code>.</p></article>
+        <article class="card"><span class="tag purple">Coelho</span><h3>Desigualdades lógicas (15)–(17)</h3><div class="formula">zᵥ₀ᵢₜ ≤ 2uᵥᵢₜ<br>zᵥᵢₖₜ ≤ uᵥᵢₜ<br>uᵥᵢₜ ≤ sᵥₜ</div><p>Projeção das desigualdades do artigo sobre os arcos orientados <code>Z</code>. Independente de HC1 e padrão <code>false</code>.</p></article>
+        <article class="card"><span class="tag green">Cortes</span><h3>Capacidade arredondada cumulativa</h3><div class="formula">Σₜ≤τ δ(S,t) ≥ 2⌈Σᵢ∈S dᵢ^obrigatória(τ) / C⌉</div><p>Separação heurística de cortes para reforçar a relaxação linear. Opcional, com limite de cortes e violação mínima configuráveis.</p></article>
+        <article class="card"><span class="tag blue">PSO</span><h3>Relaxação de dimensionamento</h3><p><code>LotSizingRelaxation.py</code> usa somente <code>X</code>, <code>I</code> e <code>Q</code>, com uma aproximação da capacidade de veículo, para obter bounds e orientar as partículas.</p></article>
+      </div>
+      <div class="callout"><strong>Condição para HC1:</strong> se veículos tiverem custos, capacidades, disponibilidade ou janelas específicas por índice, a troca de rótulos pode alterar a solução física. Nesse caso, a simetria não pode ser presumida.</div>
+      <h3>Construção de targets</h3>
+      <p>Quando <code>postprocessing.build_target=true</code>, o repositório pode resolver modelos para obter metas ideal/nadir e gerar <code>targets.xlsx</code>. Essa etapa é um processo computacional adicional; na formulação, os targets entram como parâmetros.</p>
+    </section>
+
+    <section id="fluxo">
+      <h2>6. Fluxo computacional</h2>
+      <div class="diagram" aria-label="Fluxo computacional do modelo">
+        <svg viewBox="0 0 930 230" role="img">
+          <defs><marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6d7b90"/></marker></defs>
+          <rect class="box" x="20" y="70" width="135" height="82" rx="16" fill="#e7effd" stroke="#9ab9ff"/><text x="87" y="103" text-anchor="middle" font-weight="750">Configuração</text><text x="87" y="128" text-anchor="middle" class="small">main + Config</text>
+          <path d="M155 111H205" stroke="#6d7b90" stroke-width="2" marker-end="url(#flow-arrow)"/>
+          <rect class="box" x="205" y="70" width="135" height="82" rx="16" fill="#fff2df" stroke="#efc17f"/><text x="272" y="103" text-anchor="middle" font-weight="750">Instância</text><text x="272" y="128" text-anchor="middle" class="small">ReadPrpFile</text>
+          <path d="M340 111H390" stroke="#6d7b90" stroke-width="2" marker-end="url(#flow-arrow)"/>
+          <rect class="box" x="390" y="70" width="150" height="82" rx="16" fill="#f0e8ff" stroke="#c6a9ee"/><text x="465" y="103" text-anchor="middle" font-weight="750">MIP</text><text x="465" y="128" text-anchor="middle" class="small">variáveis + restrições</text>
+          <path d="M540 111H590" stroke="#6d7b90" stroke-width="2" marker-end="url(#flow-arrow)"/>
+          <rect class="box" x="590" y="70" width="145" height="82" rx="16" fill="#e4f7ef" stroke="#9bd9c0"/><text x="662" y="103" text-anchor="middle" font-weight="750">CPLEX</text><text x="662" y="128" text-anchor="middle" class="small">solve + telemetria</text>
+          <path d="M735 111H785" stroke="#6d7b90" stroke-width="2" marker-end="url(#flow-arrow)"/>
+          <rect class="box" x="785" y="70" width="125" height="82" rx="16" fill="#edf1f7" stroke="#b7c1cf"/><text x="847" y="103" text-anchor="middle" font-weight="750">Resultados</text><text x="847" y="128" text-anchor="middle" class="small">xlsx + parquet</text>
+          <path d="M847 152V194H272V152" fill="none" stroke="#8b98aa" stroke-dasharray="6 5" stroke-width="2" marker-end="url(#flow-arrow)"/><text x="560" y="218" text-anchor="middle" class="small">pós-processamento e targets opcionais</text>
+        </svg>
+      </div>
+      <ol>
+        <li><code>main.py</code> carrega a configuração, enumera instâncias e chama o worker.</li>
+        <li><code>WorkerProcess</code> expande instância × pesos × <code>alpha</code>, em MPI ou sequencialmente.</li>
+        <li><code>InstanceProcess</code> lê o <code>.dat</code> e associa targets.</li>
+        <li><code>MultProductProdctionRoutingProblem</code> cria variáveis, objetivo e restrições e chama o solver.</li>
+        <li><code>ProcessResults</code> extrai métricas e variáveis; <code>PostProcessingProcess</code> consolida resultados.</li>
+      </ol>
+    </section>
+
+    <section id="correspondencia">
+      <h2>7. Correspondência matemática ↔ código</h2>
+      <p class="section-intro">A tabela concentra os pontos de integração mais relevantes para manutenção e revisão da formulação.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Elemento</th><th>Método / classe</th><th>Arquivo</th></tr></thead>
+        <tbody>
+          <tr><td>Conjuntos e parâmetros da instância</td><td><code>ReadPrpFile.read</code></td><td><code>src/helpers/ReadPrpFile.py</code></td></tr>
+          <tr><td>Variáveis <code>X,Y,I,Z,R,Q,p,n,λ</code></td><td><code>createDecisionVariables</code></td><td><code>src/solvers/MultProductProdctionRoutingProblem.py</code></td></tr>
+          <tr><td>Componentes <code>f1..f5</code> e objetivo</td><td><code>crateObjectiveFunction</code></td><td><code>src/solvers/MultProductProdctionRoutingProblem.py</code></td></tr>
+          <tr><td>Goal programming e <code>λ</code></td><td><code>createGoalProgrammingRestrictions</code> / <code>createEpsilonRestricted</code></td><td><code>src/solvers/MultProductProdctionRoutingProblem.py</code></td></tr>
+          <tr><td>Estoque, produção e setup</td><td><code>createEstablishInvetoryBalanceAtPlant</code>, <code>creteInventoryBalancingInventoryCustomers</code>, <code>createPlantsMaximum</code>, <code>createRelationshipBetweenProduction</code></td><td><code>src/solvers/MultProductProdctionRoutingProblem.py</code></td></tr>
+          <tr><td>Fluxo e roteamento</td><td><code>createVehiclePreventTransshipmentIntermediateNodes</code>, <code>createEliminationSubroutes</code>, <code>createVehicleLoadCapacityDelimited</code></td><td><code>src/solvers/MultProductProdctionRoutingProblem.py</code></td></tr>
+          <tr><td>Bounds de entrega</td><td><code>createVehicleVisitDeliveryBounds</code></td><td><code>src/solvers/MultProductProdctionRoutingProblem.py</code></td></tr>
+          <tr><td>HC1, Coelho e cortes arredondados</td><td><code>createVehicleSymmetryBreaking</code>, <code>createCoelhoValidInequalities</code>, callback de separação</td><td><code>src/solvers/MultProductProdctionRoutingProblem.py</code> e <code>RoundedCapacitySeparation.py</code></td></tr>
+          <tr><td>Targets e resultados</td><td><code>load_targets_by_file</code>, <code>getResults</code>, <code>union_results</code></td><td><code>TargetsLoader.py</code>, <code>ProcessResults.py</code>, <code>PostProcessingProcess.py</code></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="divergencias">
+      <h2>8. Divergências e checklist de cobertura</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Item</th><th>Avaliação</th><th>Leitura prática</th></tr></thead>
+        <tbody>
+          <tr><td>f¹ / f²</td><td class="status">Alinhado</td><td>Produção e setup têm a mesma correspondência no Markdown, LaTeX e código atual.</td></tr>
+          <tr><td>Objetivo multiobjetivo</td><td class="status">Alinhado</td><td><code>alpha * lambda</code> é somado uma vez; desvios são normalizados por target.</td></tr>
+          <tr><td>Pesos <code>v_t^j</code></td><td class="status warn">Ressalva</td><td>O código usa <code>weight[j]</code>; não há dependência temporal explícita.</td></tr>
+          <tr><td>Conjunto <code>I</code></td><td class="status warn">Ressalva</td><td>A formulação alterna entre clientes e locais; a implementação usa locais.</td></tr>
+          <tr><td>Targets</td><td class="status warn">Extensão</td><td>O código pode gerar <code>targets.xlsx</code> por ideal/nadir; a formulação os trata como dados.</td></tr>
+          <tr><td>Single-objective</td><td class="status warn">Extensão</td><td>Há um caminho alternativo que minimiza diretamente <code>f1+...+f5</code>.</td></tr>
+          <tr><td>Desvio negativo <code>n</code></td><td class="status warn">Variante</td><td>O padrão elimina <code>n</code> com <code>positive_only_deviations=true</code>.</td></tr>
+          <tr><td>Escopo de instâncias</td><td class="status warn">Experimento</td><td>Filtros do runtime não fazem parte da formulação matemática interna.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="good"><strong>Checklist final:</strong> conjuntos, parâmetros, variáveis, objetivo, desvios, restrições de produção/estoque/fluxo/rota e ajuste de targets possuem correspondência explícita. As exceções estão expostas acima como divergência, variante ou extensão computacional.</div>
+      <p class="footer-link"><a href="index.html">← Voltar para os documentos do projeto</a> · <a href="mathematical-model.md">Ver o Markdown completo</a> · <a href="symmetry-breaking-hc1.html">Ver HC1</a> · <a href="heuristica.html">Ver heurística PSO</a></p>
+    </section>
+  </main>
+</body>
+</html>
