@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from src.process.PostProcessingProcess import PostProcessingProcess
 
@@ -148,3 +149,54 @@ def test_union_deduplicates_run_config_metadata(tmp_path, monkeypatch):
     assert configs_df.set_index("config_hash").loc["a" * 64, "config_json"] == (
         '{"solver":{"method":"PSO"}}'
     )
+
+
+def test_union_raises_when_run_configs_sheet_has_invalid_schema(tmp_path, monkeypatch):
+    result_path = tmp_path / "result.xlsx"
+    with pd.ExcelWriter(result_path, engine="openpyxl") as writer:
+        pd.DataFrame({"file": ["a.dat"], "time": [1], "f1": [10]}).to_excel(
+            writer, index=False
+        )
+        pd.DataFrame({"config_hash": ["a" * 64]}).to_excel(
+            writer, sheet_name="run_configs", index=False
+        )
+
+    monkeypatch.setattr(
+        "src.process.PostProcessingProcess.Config.get_nested",
+        lambda *keys, default=None: default,
+    )
+    processor = PostProcessingProcess(log=None, output=str(tmp_path))
+
+    with pytest.raises(ValueError, match="run_configs.*config_json"):
+        processor.union_results(run_tag="test-run")
+
+
+def test_union_raises_when_result_workbook_cannot_be_read(tmp_path):
+    (tmp_path / "broken.xlsx").write_text("not an Excel workbook", encoding="utf-8")
+    processor = PostProcessingProcess(log=None, output=str(tmp_path))
+
+    with pytest.raises(Exception):
+        processor.union_results(run_tag="test-run")
+
+
+def test_union_reads_result_sheet_when_run_configs_is_first(tmp_path, monkeypatch):
+    result_path = tmp_path / "result.xlsx"
+    with pd.ExcelWriter(result_path, engine="openpyxl") as writer:
+        pd.DataFrame(
+            [{"config_hash": "a" * 64, "config_json": '{"solver":{}}'}]
+        ).to_excel(writer, sheet_name="run_configs", index=False)
+        pd.DataFrame({"file": ["a.dat"], "time": [1], "f1": [10]}).to_excel(
+            writer, sheet_name="resultados", index=False
+        )
+
+    monkeypatch.setattr(
+        "src.process.PostProcessingProcess.Config.get_nested",
+        lambda *keys, default=None: default,
+    )
+    processor = PostProcessingProcess(log=None, output=str(tmp_path))
+
+    union_path = processor.union_results(run_tag="test-run")
+    union_df = pd.read_excel(union_path, engine="openpyxl")
+
+    assert union_df["file"].tolist() == ["a.dat"]
+    assert union_df["f1"].tolist() == [10]

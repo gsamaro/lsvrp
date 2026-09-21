@@ -15,6 +15,55 @@ class PostProcessingProcess:
         if self.log is not None and hasattr(self.log, "info"):
             self.log.info(message)
 
+    def _log_debug(self, message):
+        if self.log is not None and hasattr(self.log, "debug"):
+            self.log.debug(message)
+
+    def _log_warning(self, message):
+        if self.log is not None and hasattr(self.log, "warning"):
+            self.log.warning(message)
+
+    def _log_error(self, message):
+        if self.log is not None and hasattr(self.log, "error"):
+            self.log.error(message)
+
+    @staticmethod
+    def _read_result_workbook(path):
+        """Read the result sheet and the optional legacy metadata sheet.
+
+        Older result workbooks do not have ``run_configs``.  Checking the
+        workbook's sheet names before reading it keeps that case explicit,
+        while errors in the workbook or in a present metadata sheet are not
+        mistaken for a legacy workbook.
+        """
+        with pd.ExcelFile(path, engine="openpyxl") as workbook:
+            result_sheet_names = [
+                sheet_name
+                for sheet_name in workbook.sheet_names
+                if sheet_name != "run_configs"
+            ]
+            if not result_sheet_names:
+                raise ValueError(
+                    f"O workbook {path} nao possui uma aba de resultados; "
+                    "apenas 'run_configs' foi encontrada."
+                )
+
+            result_sheet_name = result_sheet_names[0]
+            result_df = pd.read_excel(
+                workbook,
+                sheet_name=result_sheet_name,
+                dtype={"commit_hash": str, "config_hash": str},
+            )
+            config_df = None
+            if "run_configs" in workbook.sheet_names:
+                config_df = pd.read_excel(
+                    workbook,
+                    sheet_name="run_configs",
+                    dtype={"config_hash": str, "config_json": str},
+                )
+
+        return result_df, config_df
+
     def union_results(self, run_tag=None, build_target=False, include_targets=True):
         # Recursively collect all .xlsx files under output (including subfolders)
         excel_paths = []
@@ -27,65 +76,78 @@ class PostProcessingProcess:
                     and "union_results" not in fname
                 ):
                     excel_paths.append(os.path.join(root, fname))
+        excel_paths.sort()
 
         if not excel_paths:
-            self.log.error("Nenhum arquivo .xlsx encontrado.")
+            self._log_error("Nenhum arquivo .xlsx encontrado.")
             return None
 
         self._log_info(f"Arquivos encontrados: {len(excel_paths)}")
+        self._log_debug(f"Arquivos selecionados para consolidacao: {excel_paths}")
         frames = []
         config_frames = []
+        self._log_debug("config_frames inicializado vazio.")
         for path in excel_paths:
-            try:
-                df = pd.read_excel(
-                    path,
-                    engine="openpyxl",
-                    dtype={"commit_hash": str, "config_hash": str},
+            self._log_debug(f"Iniciando leitura do arquivo: {path}")
+            df, config_df = self._read_result_workbook(path)
+            self._log_debug(
+                f"Resultado lido de {path}: linhas={len(df)}, "
+                f"colunas={df.columns.tolist()}, "
+                f"run_configs={'presente' if config_df is not None else 'ausente'}"
+            )
+            df["__source_file__"] = os.path.relpath(path, start=self.output)
+            frames.append(df)
+            self._log_debug(f"frames agora contem {len(frames)} DataFrame(s).")
+
+            if config_df is None:
+                self._log_debug(
+                    f"{path} nao possui a aba run_configs; seguindo sem metadados."
                 )
-                df["__source_file__"] = os.path.relpath(path, start=self.output)
-                frames.append(df)
-
-                try:
-                    config_df = pd.read_excel(
-                        path,
-                        sheet_name="run_configs",
-                        engine="openpyxl",
-                        dtype={"config_hash": str, "config_json": str},
-                    )
-                except ValueError:
-                    # Legacy result workbooks have no run_configs sheet.
-                    config_df = None
-                except Exception as e:
-                    config_df = None
-                    if self.log:
-                        self.log.warning(
-                            f"Erro ao ler metadados de configuração em {path}: {e}"
-                        )
-
-                if config_df is not None and {
-                    "config_hash",
-                    "config_json",
-                }.issubset(config_df.columns):
-                    config_frames.append(
-                        config_df[["config_hash", "config_json"]].copy()
-                    )
-            except Exception as e:
-                # Skip files that cannot be read; could log if needed
-                self.log.error(f"Erro ao ler arquivo {path}: {e}")
                 continue
 
+            self._log_debug(
+                f"run_configs lido de {path}: linhas={len(config_df)}, "
+                f"colunas={config_df.columns.tolist()}"
+            )
+            required_config_columns = {"config_hash", "config_json"}
+            missing_config_columns = required_config_columns.difference(
+                config_df.columns
+            )
+            if missing_config_columns:
+                missing = sorted(missing_config_columns)
+                raise ValueError(
+                    f"A aba 'run_configs' de {path} nao possui as colunas obrigatorias: "
+                    f"{missing}"
+                )
+
+            config_frames.append(config_df[sorted(required_config_columns)].copy())
+            self._log_debug(
+                f"config_frames agora contem {len(config_frames)} DataFrame(s)."
+            )
+
         self._log_info("Fim da leitura dos arquivos.")
+        self._log_debug(
+            f"Leitura concluida: frames={len(frames)}, "
+            f"config_frames={len(config_frames)}"
+        )
 
         if not frames:
-            self.log.error("Nenhum DataFrame lido.")
+            self._log_error("Nenhum DataFrame lido.")
             return None
 
         union_df = pd.concat(frames, ignore_index=True, sort=False)
+        self._log_debug(
+            f"union_df concatenado: linhas={len(union_df)}, "
+            f"colunas={union_df.columns.tolist()}"
+        )
         if "config_hash" not in union_df.columns:
             union_df["config_hash"] = pd.NA
 
         if config_frames:
             run_configs_df = pd.concat(config_frames, ignore_index=True, sort=False)
+            self._log_debug(
+                f"run_configs concatenado antes da limpeza: linhas={len(run_configs_df)}"
+            )
             run_configs_df = run_configs_df.dropna(
                 subset=["config_hash", "config_json"]
             )
@@ -99,8 +161,12 @@ class PostProcessingProcess:
                 .sort_values("config_hash")
                 .reset_index(drop=True)
             )
+            self._log_debug(
+                f"run_configs apos limpeza/deduplicacao: linhas={len(run_configs_df)}"
+            )
         else:
             run_configs_df = pd.DataFrame(columns=["config_hash", "config_json"])
+            self._log_debug("Nenhum run_configs valido foi encontrado.")
 
         self._log_info("Arquivos concatenados.")
 
@@ -160,11 +226,11 @@ class PostProcessingProcess:
                     )
                 else:
                     missing = [c for c in required_cols if c not in targets_df.columns]
-                    self.log.warning(
+                    self._log_warning(
                         f"targets.xlsx encontrado, mas faltam colunas {missing}. Prosseguindo sem merge de targets."
                     )
             except Exception as e:
-                self.log.error(
+                self._log_error(
                     f"Erro ao carregar/mesclar targets.xlsx ({targets_path}): {e}. Prosseguindo sem targets."
                 )
         else:
