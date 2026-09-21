@@ -3,6 +3,7 @@ import os
 import pandas as pd
 from config import Config
 from constants import ALPHA
+from openpyxl import load_workbook
 from src.helpers.InstanceMetadata import enrich_with_instance_metadata
 
 
@@ -10,6 +11,23 @@ class PostProcessingProcess:
     def __init__(self, log, output):
         self.log = log
         self.output = output
+
+    @staticmethod
+    def _read_worksheet(worksheet, string_columns):
+        rows = worksheet.iter_rows(values_only=True)
+        headers = next(rows, None)
+        if headers is None:
+            return pd.DataFrame()
+
+        data = list(rows)
+        while data and all(value is None for value in data[-1]):
+            data.pop()
+
+        dataframe = pd.DataFrame(data, columns=list(headers))
+        for column in string_columns:
+            if column in dataframe.columns:
+                dataframe[column] = dataframe[column].astype("string")
+        return dataframe
 
     @staticmethod
     def _read_result_workbook(path):
@@ -20,10 +38,11 @@ class PostProcessingProcess:
         while errors in the workbook or in a present metadata sheet are not
         mistaken for a legacy workbook.
         """
-        with pd.ExcelFile(path, engine="openpyxl") as workbook:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
             result_sheet_names = [
                 sheet_name
-                for sheet_name in workbook.sheet_names
+                for sheet_name in workbook.sheetnames
                 if sheet_name != "run_configs"
             ]
             if not result_sheet_names:
@@ -33,18 +52,18 @@ class PostProcessingProcess:
                 )
 
             result_sheet_name = result_sheet_names[0]
-            result_df = pd.read_excel(
-                workbook,
-                sheet_name=result_sheet_name,
-                dtype={"commit_hash": str, "config_hash": str},
+            result_df = PostProcessingProcess._read_worksheet(
+                workbook[result_sheet_name],
+                string_columns=("commit_hash", "config_hash"),
             )
             config_df = None
-            if "run_configs" in workbook.sheet_names:
-                config_df = pd.read_excel(
-                    workbook,
-                    sheet_name="run_configs",
-                    dtype={"config_hash": str, "config_json": str},
+            if "run_configs" in workbook.sheetnames:
+                config_df = PostProcessingProcess._read_worksheet(
+                    workbook["run_configs"],
+                    string_columns=("config_hash", "config_json"),
                 )
+        finally:
+            workbook.close()
 
         return result_df, config_df
 
