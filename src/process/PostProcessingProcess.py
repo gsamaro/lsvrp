@@ -11,22 +11,6 @@ class PostProcessingProcess:
         self.log = log
         self.output = output
 
-    def _log_info(self, message):
-        if self.log is not None and hasattr(self.log, "info"):
-            self.log.info(message)
-
-    def _log_debug(self, message):
-        if self.log is not None and hasattr(self.log, "debug"):
-            self.log.debug(message)
-
-    def _log_warning(self, message):
-        if self.log is not None and hasattr(self.log, "warning"):
-            self.log.warning(message)
-
-    def _log_error(self, message):
-        if self.log is not None and hasattr(self.log, "error"):
-            self.log.error(message)
-
     @staticmethod
     def _read_result_workbook(path):
         """Read the result sheet and the optional legacy metadata sheet.
@@ -79,36 +63,46 @@ class PostProcessingProcess:
         excel_paths.sort()
 
         if not excel_paths:
-            self._log_error("Nenhum arquivo .xlsx encontrado.")
+            if self.log is not None:
+                self.log.error("Nenhum arquivo .xlsx encontrado.")
             return None
 
-        self._log_info(f"Arquivos encontrados: {len(excel_paths)}")
-        self._log_debug(f"Arquivos selecionados para consolidacao: {excel_paths}")
+        if self.log is not None:
+            self.log.info(f"Arquivos encontrados: {len(excel_paths)}")
+            self.log.debug(
+                f"Arquivos selecionados para consolidacao: {excel_paths}"
+            )
         frames = []
         config_frames = []
-        self._log_debug("config_frames inicializado vazio.")
+        if self.log is not None:
+            self.log.debug("config_frames inicializado vazio.")
         for path in excel_paths:
-            self._log_debug(f"Iniciando leitura do arquivo: {path}")
+            if self.log is not None:
+                self.log.debug(f"Iniciando leitura do arquivo: {path}")
             df, config_df = self._read_result_workbook(path)
-            self._log_debug(
-                f"Resultado lido de {path}: linhas={len(df)}, "
-                f"colunas={df.columns.tolist()}, "
-                f"run_configs={'presente' if config_df is not None else 'ausente'}"
-            )
+            if self.log is not None:
+                self.log.debug(
+                    f"Resultado lido de {path}: linhas={len(df)}, "
+                    f"colunas={df.columns.tolist()}, "
+                    f"run_configs={'presente' if config_df is not None else 'ausente'}"
+                )
             df["__source_file__"] = os.path.relpath(path, start=self.output)
             frames.append(df)
-            self._log_debug(f"frames agora contem {len(frames)} DataFrame(s).")
+            if self.log is not None:
+                self.log.debug(f"frames agora contem {len(frames)} DataFrame(s).")
 
             if config_df is None:
-                self._log_debug(
-                    f"{path} nao possui a aba run_configs; seguindo sem metadados."
-                )
+                if self.log is not None:
+                    self.log.debug(
+                        f"{path} nao possui a aba run_configs; seguindo sem metadados."
+                    )
                 continue
 
-            self._log_debug(
-                f"run_configs lido de {path}: linhas={len(config_df)}, "
-                f"colunas={config_df.columns.tolist()}"
-            )
+            if self.log is not None:
+                self.log.debug(
+                    f"run_configs lido de {path}: linhas={len(config_df)}, "
+                    f"colunas={config_df.columns.tolist()}"
+                )
             required_config_columns = {"config_hash", "config_json"}
             missing_config_columns = required_config_columns.difference(
                 config_df.columns
@@ -121,33 +115,38 @@ class PostProcessingProcess:
                 )
 
             config_frames.append(config_df[sorted(required_config_columns)].copy())
-            self._log_debug(
-                f"config_frames agora contem {len(config_frames)} DataFrame(s)."
+            if self.log is not None:
+                self.log.debug(
+                    f"config_frames agora contem {len(config_frames)} DataFrame(s)."
+                )
+
+        if self.log is not None:
+            self.log.info("Fim da leitura dos arquivos.")
+            self.log.debug(
+                f"Leitura concluida: frames={len(frames)}, "
+                f"config_frames={len(config_frames)}"
             )
 
-        self._log_info("Fim da leitura dos arquivos.")
-        self._log_debug(
-            f"Leitura concluida: frames={len(frames)}, "
-            f"config_frames={len(config_frames)}"
-        )
-
         if not frames:
-            self._log_error("Nenhum DataFrame lido.")
+            if self.log is not None:
+                self.log.error("Nenhum DataFrame lido.")
             return None
 
         union_df = pd.concat(frames, ignore_index=True, sort=False)
-        self._log_debug(
-            f"union_df concatenado: linhas={len(union_df)}, "
-            f"colunas={union_df.columns.tolist()}"
-        )
+        if self.log is not None:
+            self.log.debug(
+                f"union_df concatenado: linhas={len(union_df)}, "
+                f"colunas={union_df.columns.tolist()}"
+            )
         if "config_hash" not in union_df.columns:
             union_df["config_hash"] = pd.NA
 
         if config_frames:
             run_configs_df = pd.concat(config_frames, ignore_index=True, sort=False)
-            self._log_debug(
-                f"run_configs concatenado antes da limpeza: linhas={len(run_configs_df)}"
-            )
+            if self.log is not None:
+                self.log.debug(
+                    f"run_configs concatenado antes da limpeza: linhas={len(run_configs_df)}"
+                )
             run_configs_df = run_configs_df.dropna(
                 subset=["config_hash", "config_json"]
             )
@@ -161,14 +160,17 @@ class PostProcessingProcess:
                 .sort_values("config_hash")
                 .reset_index(drop=True)
             )
-            self._log_debug(
-                f"run_configs apos limpeza/deduplicacao: linhas={len(run_configs_df)}"
-            )
+            if self.log is not None:
+                self.log.debug(
+                    f"run_configs apos limpeza/deduplicacao: linhas={len(run_configs_df)}"
+                )
         else:
             run_configs_df = pd.DataFrame(columns=["config_hash", "config_json"])
-            self._log_debug("Nenhum run_configs valido foi encontrado.")
+            if self.log is not None:
+                self.log.debug("Nenhum run_configs valido foi encontrado.")
 
-        self._log_info("Arquivos concatenados.")
+        if self.log is not None:
+            self.log.info("Arquivos concatenados.")
 
         if not any(
             col in union_df.columns
@@ -201,10 +203,12 @@ class PostProcessingProcess:
             os.path.join(targets_dir, "targets.xlsx") if targets_dir else None
         )
 
-        self._log_info("Colunas validadas.")
+        if self.log is not None:
+            self.log.info("Colunas validadas.")
 
         if include_targets and targets_path and os.path.exists(targets_path):
-            self._log_info("Construindo targets.")
+            if self.log is not None:
+                self.log.info("Construindo targets.")
             try:
                 targets_df = pd.read_excel(targets_path, engine="openpyxl")
                 required_cols = [
@@ -226,13 +230,15 @@ class PostProcessingProcess:
                     )
                 else:
                     missing = [c for c in required_cols if c not in targets_df.columns]
-                    self._log_warning(
-                        f"targets.xlsx encontrado, mas faltam colunas {missing}. Prosseguindo sem merge de targets."
-                    )
+                    if self.log is not None:
+                        self.log.warning(
+                            f"targets.xlsx encontrado, mas faltam colunas {missing}. Prosseguindo sem merge de targets."
+                        )
             except Exception as e:
-                self._log_error(
-                    f"Erro ao carregar/mesclar targets.xlsx ({targets_path}): {e}. Prosseguindo sem targets."
-                )
+                if self.log is not None:
+                    self.log.error(
+                        f"Erro ao carregar/mesclar targets.xlsx ({targets_path}): {e}. Prosseguindo sem targets."
+                    )
         else:
             for c in [
                 "f1_target",
@@ -244,7 +250,8 @@ class PostProcessingProcess:
                 if c not in union_df.columns:
                     union_df[c] = pd.NA
 
-        self._log_info("Preparando para salvar.")
+        if self.log is not None:
+            self.log.info("Preparando para salvar.")
 
         if not build_target:
             out_name = f"{run_tag}-union_results.xlsx"
@@ -254,7 +261,8 @@ class PostProcessingProcess:
         with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
             union_df.to_excel(writer, index=False)
             run_configs_df.to_excel(writer, sheet_name="run_configs", index=False)
-        self._log_info("Salvo.")
+        if self.log is not None:
+            self.log.info("Salvo.")
         return out_path
 
     def build_target(self, union_results_path=None):
