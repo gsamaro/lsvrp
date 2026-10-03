@@ -3,7 +3,7 @@
     "threadsLimit":1,
     "timeLimit":3600,
     "method":"PSO",
-    "multiobjective":true,
+    "multiobjective":false,
     "strengthened_bounds": false,
     "goal_programming": {
       "positive_only_deviations": true
