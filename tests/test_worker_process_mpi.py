@@ -1,7 +1,10 @@
+import pickle
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.process.WorkerProcess import WorkerProcess, process
+from docplex.mp.utils import DOcplexLimitsExceeded
+
+from src.process.WorkerProcess import WorkerProcess, process, process_safely
 from constants import ALPHA, WEIGHTS_OPTIMIZE, WEIGHTS_TARGET
 
 
@@ -215,6 +218,25 @@ class WorkerProcessMPITestCase(unittest.TestCase):
             task_context=context,
         )
         instance_process.return_value.process.assert_called_once_with()
+
+    def test_process_safely_serializes_docplex_limits_error(self):
+        error = DOcplexLimitsExceeded(1, 2)
+
+        with patch("src.process.WorkerProcess.process", side_effect=error):
+            result = process_safely(
+                self.logger,
+                self._instance(1),
+                "GUROBY",
+                [0.2],
+                {},
+                0.99,
+                {"label": "tarefa de teste"},
+            )
+
+        self.assertEqual(result["error_type"], "DOcplexLimitsExceeded")
+        self.assertIn("Problem size limits", result["error_message"])
+        self.assertIsInstance(result["traceback"], str)
+        pickle.dumps(result)
 
 
 if __name__ == "__main__":

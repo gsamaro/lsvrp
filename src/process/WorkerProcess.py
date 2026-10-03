@@ -155,7 +155,7 @@ class WorkerProcess:
                         task_number=task["task_number"],
                     )
                     future = executor.submit(
-                        process,
+                        process_safely,
                         task["log"],
                         task["instancie"],
                         solver,
@@ -168,7 +168,15 @@ class WorkerProcess:
 
                 for future in as_completed(future_contexts):
                     try:
-                        future.result()
+                        task_error = future.result()
+                        if task_error:
+                            context = future_contexts[future]
+                            self.log.error(
+                                f"Erro em tarefa MPI ({context['label']}): "
+                                f"{task_error['error_type']}: "
+                                f"{task_error['error_message']}: "
+                                f"stack: {task_error['traceback']}"
+                            )
                     except Exception as e:
                         context = future_contexts[future]
                         self.log.error(
@@ -183,7 +191,7 @@ class WorkerProcess:
                     task["alpha"],
                     task_number=task["task_number"],
                 )
-                process(
+                task_error = process_safely(
                     task["log"],
                     task["instancie"],
                     solver,
@@ -192,6 +200,13 @@ class WorkerProcess:
                     task["alpha"],
                     context,
                 )
+                if task_error:
+                    self.log.error(
+                        f"Erro em tarefa ({context['label']}): "
+                        f"{task_error['error_type']}: "
+                        f"{task_error['error_message']}: "
+                        f"stack: {task_error['traceback']}"
+                    )
         self.log.info(">> Fim do processamento paralelo.")
 
 
@@ -210,3 +225,17 @@ def process(log, instancie, solver, w, targets_by_file, alpha, context=None):
         alpha=alpha,
         task_context=context,
     ).process()
+
+
+def process_safely(log, instancie, solver, w, targets_by_file, alpha, context=None):
+    """Execute uma tarefa sem propagar exceções não desserializáveis pelo MPI."""
+
+    try:
+        process(log, instancie, solver, w, targets_by_file, alpha, context)
+    except Exception as error:
+        return {
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+            "traceback": traceback.format_exc(),
+        }
+    return None
