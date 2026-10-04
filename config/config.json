@@ -1,9 +1,9 @@
 {
-  "solver":{
-    "threadsLimit":1,
-    "timeLimit":3600,
-    "method":"PSO",
-    "multiobjective":false,
+  "solver": {
+    "threadsLimit": 1,
+    "timeLimit": 30,
+    "method": "PSO",
+    "multiobjective": true,
     "strengthened_bounds": false,
     "goal_programming": {
       "positive_only_deviations": true
@@ -18,7 +18,7 @@
       "max_non_root_node": 200,
       "max_cuts_per_callback": 20,
       "max_cuts_per_non_root_callback": 3,
-      "min_violation": 0.000001
+      "min_violation": 1e-06
     },
     "telemetry": {
       "enabled": false,
@@ -64,19 +64,39 @@
         "integer_variables": false
       },
       "use_as_mip_start": true,
-      "return_heuristic_result_without_cplex": false
+      "return_heuristic_result_without_cplex": false,
+      "time_limit": null
+    },
+    "matheuristic": {
+      "enabled": true,
+      "use_as": "final",
+      "tsp": {
+        "time_limit": 10
+      },
+      "restricted": {
+        "time_limit": 60
+      },
+      "route_improvement": {
+        "enabled": true,
+        "time_limit": 30
+      },
+      "debug": {
+        "enabled": true
+      }
     }
   },
-  "workers":{
-    "num":"auto"
+  "workers": {
+    "num": "auto"
   },
   "logging": {
     "level": "INFO"
   },
-  "instance":{
+  "instance": {
     "dir": "./data/",
     "output": "./out/",
-    "files": ["DATA_PRP_20C"]
+    "files": [
+      "DATA_PRP_5C/PRP1_C5_P2_V1_T2_S1.dat"
+    ]
   },
   "relaxed_solution": {
     "replace_model": true,

@@ -5,7 +5,8 @@
 O PSO usa um modelo auxiliar de dimensionamento sem rotas para obter perfis de
 produção e entrega. No experimento atual, esse modelo está configurado como PL
 contínuo (`integer_variables=false`), com limite de 1 segundo por resolução.
-O modo inteiro (`integer_variables=true`) permanece disponível para comparação.
+A chave legada `integer_variables=true` é aceita e normalizada para `false`;
+as quantidades de produção, estoque, entrega e carga são contínuas em todos os métodos.
 O solver completo de produção e roteamento não participa da avaliação standalone
 do PSO.
 
@@ -480,3 +481,15 @@ Assim, o PSO opera sobre decisões contínuas de produção e entrega, mas cada 
 Quando `solver.telemetry.enabled` está ativo, cada tarefa salva shards Parquet em `telemetry/`: um resumo da execução, as métricas por iteração do PSO e, quando aplicável, os eventos MIP de primeira solução factível e alcance do gap-alvo. O script `scripts/consolidate_telemetry.py --input out/` consolida esses dados e cria quatro relatórios Plotly autocontidos: performance profiles de primeira factível, gap-alvo e execução concluída, além da taxa de sucesso.
 
 O cenário `pso_mip_start` preserva separadamente o tempo do PSO, do MIP e o total. Timeouts que não atingem um evento não entram na curva daquele evento, mas permanecem no denominador da taxa de sucesso.
+
+
+## Inicialização pela matheurística
+
+O PSO aceita uma solução completa opcional em `initial_solution`. O fluxo configurável,
+os limites separados, a avaliação mono/multiobjetivo e as saídas complementares
+são descritos em [matheuristic.md](matheuristic.md). A partícula inicial preserva rotas,
+atribuições e quantidades fracionárias; as demais partículas são construídas normalmente.
+`solver.pso.time_limit=null` mantém a parada por iterações; um limite positivo
+interrompe entre iterações e conserva a melhor solução. Medições anteriores
+registradas acima precedem a migração para quantidades contínuas e não constituem
+avaliação de desempenho desta implementação.

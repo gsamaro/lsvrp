@@ -10,6 +10,7 @@
 - [Quebra de simetria entre veículos: VC + HC1](#quebra-de-simetria-entre-veículos-vc--hc1)
 - [Desigualdades cumulativas de capacidade arredondada](#desigualdades-cumulativas-de-capacidade-arredondada)
 - [Desigualdades lógicas de Coelho (15)-(17)](#desigualdades-lógicas-de-coelho-15-17)
+- [Matheurística determinística configurável](#matheurística-determinística-configurável)
 - [9. Fluxo do Modelo](#9-fluxo-do-modelo)
 - [11. Correspondência Matemática ↔ Código](#11-correspondência-matemática--código)
 - [15. Divergências Encontradas](#15-divergências-encontradas)
@@ -68,7 +69,7 @@ Obtidas do LaTeX:
 Observadas na implementação:
 
 - os conjuntos não são materializados como objetos; eles são implícitos por cardinalidades e laços `range(...)` em `src/solvers/MultProductProdctionRoutingProblem.py`;
-- o modo experimental padrão está configurado como multiobjetivo em `config/config.json` (`"multiobjective": true`);
+- o modo configurado em `config/config.json` é monoobjetivo (`"multiobjective": false`); a chave permite selecionar programação por metas;
 - pesos e valores de `alpha` são externos à instância e vêm de `constants.py`.
 
 # 2. Formulação Matemática
@@ -189,12 +190,12 @@ Isso não está presente na formulação LaTeX como processo computacional, apen
 
 | Variável | Domínio no LaTeX | Domínio observado no código | Significado | Arquivo onde é criada |
 | --- | --- | --- | --- | --- |
-| `x_{pt}` | `x_{pt} \ge 0` | contínua não negativa (`continuous_var`) | quantidade produzida do item `p` no período `t` | `src/solvers/MultProductProdctionRoutingProblem.py`, `createDecisionVariables` |
+| `x_{pt}` | `x_{pt} \ge 0` | contínua não negativa (`continuous_var_dict`) | quantidade produzida do item `p` no período `t` | `src/solvers/MultProductProdctionRoutingProblem.py`, `createDecisionVariables` |
 | `y_{pt}` | binária | binária | ativa produção/setup do item `p` no período `t` | mesmo arquivo |
-| `I_{pit}` | `I_{pit} \ge 0` | contínua não negativa (`continuous_var`) | estoque do item `p` no local `i` ao final do período `t` | mesmo arquivo |
+| `I_{pit}` | `I_{pit} \ge 0` | contínua não negativa (`continuous_var_dict`) | estoque do item `p` no local `i` ao final do período `t` | mesmo arquivo |
 | `z_{vikt}` | binária | binária | uso do arco `(i,k)` pelo veículo `v` no período `t` | mesmo arquivo |
-| `r_{pvikt}` | `r_{pvikt} \ge 0` | contínua não negativa (`continuous_var`) | fluxo do item `p` no arco `(i,k)` do veículo `v` no período `t` | mesmo arquivo |
-| `q_{pvit}` | `q_{pvit} \ge 0` | contínua não negativa (`continuous_var`) | quantidade entregue do item `p` pelo veículo `v` ao cliente/local `i` no período `t` | mesmo arquivo |
+| `r_{pvikt}` | `r_{pvikt} \ge 0` | contínua não negativa (`continuous_var_dict`) | fluxo do item `p` no arco `(i,k)` do veículo `v` no período `t` | mesmo arquivo |
+| `q_{pvit}` | `q_{pvit} \ge 0` | contínua não negativa (`continuous_var_dict`) | quantidade entregue do item `p` pelo veículo `v` ao cliente/local `i` no período `t` | mesmo arquivo |
 | `f_t^1` | auxiliar | expressão linear | custo auxiliar periódico | construído em `crateObjectiveFunction` |
 | `f_t^2` | auxiliar | expressão linear | custo auxiliar periódico | construído em `crateObjectiveFunction` |
 | `f_t^3` | auxiliar | expressão linear | custo auxiliar periódico | construído em `crateObjectiveFunction` |
@@ -202,7 +203,7 @@ Isso não está presente na formulação LaTeX como processo computacional, apen
 | `f_t^5` | auxiliar | expressão linear | custo auxiliar periódico | construído em `crateObjectiveFunction` |
 | `n_t^j` | contínua opcional | criada somente quando `positive_only_deviations=false` | desvio negativo do objetivo `j` no período `t` | `createDecisionVariables` |
 | `p_t^j` | contínua implícita | contínua (`continuous_var_dict`) | desvio positivo do objetivo `j` no período `t` | `createDecisionVariables` |
-| `\lambda` | contínua | contínua (`continuous_var`) | variável de penalização máxima | `createDecisionVariables` |
+| `\lambda` | contínua | contínua (`continuous_var_dict`) | variável de penalização máxima | `createDecisionVariables` |
 
 ## Observação importante
 
@@ -296,7 +297,7 @@ Arquivos:
 - `config/config.json`
 - `src/solvers/MultProductProdctionRoutingProblem.py`
 
-Como `config/config.json` define `"multiobjective": true`, o caminho mais aderente ao LaTeX é o multiobjetivo.
+O LaTeX descreve as duas variantes. A chave `solver.multiobjective` seleciona a função correspondente, inclusive na etapa restrita da matheurística.
 
 # 8. Restrições
 
@@ -584,10 +585,10 @@ heurística; o mesmo acontece com `lower_solution['Q']` e
 e `upper` permanecem disponíveis como limites agregados para avaliação. Quando
 solicitado, `base` referencia a solução do PL que minimiza a soma.
 
-O tipo das variáveis é configurável por
-`solver.pso.lot_sizing_bounds.integer_variables`. Com `false`, o modelo é um
-PL contínuo; com `true`, transforma-se em uma formulação inteira de
-dimensionamento, ainda sem variáveis de rota. O limite de tempo é configurado
+As quantidades `X/I/Q` desse dimensionamento são contínuas, assim como
+`X/I/R/Q` no modelo completo e nos estados/reparos do PSO. A chave legada
+`solver.pso.lot_sizing_bounds.integer_variables` é aceita e normalizada para
+`false`; ela não torna mais as quantidades inteiras. O limite de tempo é configurado
 por `solver.pso.lot_sizing_bounds.time_limit` e, no experimento atual, está
 definido como 1 segundo por modelo.
 
@@ -764,7 +765,7 @@ Essa simetria de permutação pode fazer o branch-and-bound explorar várias có
 
 ### Variáveis usadas
 
-Não é criada uma variável adicional de visita. A variável binária existente `z_{vikt}` representa o uso do arco `(i,k)` pelo veículo `v` no período `t`.
+No modelo irrestrito, a variável binária `z_{vikt}` representa o uso do arco `(i,k)` pelo veículo `v` no período `t`, e não há variável adicional de visita. Nos perfis da matheurística, as expressões abaixo são substituídas por `eta_{v0t}` e `eta_{vit}`, respectivamente.
 
 Com os índices do código (`0` para a planta e `1..N` para clientes), definimos:
 
@@ -802,7 +803,7 @@ Essa conclusão não vale automaticamente se veículos tiverem capacidades, cust
 
 ### Origem e correspondência
 
-O artigo de Coelho e Laporte usa uma variável de arco não orientado `x` e uma variável binária de visita `y`. O modelo atual usa os arcos orientados `z` e não possui uma variável `y` explícita. Por isso, as três desigualdades são projetadas sobre expressões agregadas de `Z`.
+O artigo de Coelho e Laporte usa uma variável de arco não orientado `x` e uma variável binária de visita `y`. O modelo irrestrito usa os arcos orientados `z` e expressões agregadas de `Z` para representar visitas. Nos perfis da matheurística, as três desigualdades usam diretamente `eta` nas expressões de visita.
 
 Para veículo `v`, período `t` e cliente `i`:
 
@@ -860,8 +861,7 @@ Domínios das variáveis em `createDecisionVariables` de `src/solvers/MultProduc
 
 ### Equação
 
-LaTeX \eqref{eq:binary}: `y_{pt}, z_{vikt} \in \{0,1\}`. Não há variável
-binária adicional de visita.
+LaTeX \eqref{eq:binary}: `y_{pt}, z_{vikt} \in \{0,1\}` no modelo irrestrito. Os perfis da matheurística acrescentam `eta`; no perfil restrito, `z` é contínua em `[0,1]`.
 
 ### Interpretação
 
@@ -965,7 +965,7 @@ flowchart TD
 | Nomeação de `f_t^1` e `f_t^2` | `f_t^1` = produção, `f_t^2` = setup | `self.f1` = produção, `self.f2` = setup | Alinhado entre o `.md`, o `.tex` atual e o código. |
 | Função objetivo multiobjetivo | `\alpha \lambda + (1-\alpha)\sum_{t,j} v_t^j p_t^j / \overline{b}_t^j` | `crateObjectiveFunction` soma `alpha * lambda_` uma única vez e agrega os cinco desvios normalizados por período | Implementação alinhada à formulação. Uma versão anterior repetia `lambda` dentro da soma e foi corrigida. |
 | Peso `v_t^j` | peso indexado por `j` e `t` | `weight[j]`, sem índice temporal explícito | O código usa pesos constantes por componente, não pesos por período. |
-| Domínio de `x, I, r, q` | apenas não negatividade explícita | `continuous_var` | Código e formulação fornecida coincidem: as variáveis são contínuas e não negativas. |
+| Domínio de `x, I, r, q` | apenas não negatividade explícita | `continuous_var_dict` | Código e formulação fornecida coincidem: as variáveis são contínuas e não negativas. |
 | Targets ajustados | texto diz "média dos valores não nulos"; fórmula usa média no horizonte `\sum_t b_t^j / T` | `_adjust_targets` usa `np.mean(values_k)` sobre todos os valores disponíveis | O código coincide com a média simples dos valores presentes, mas não há filtro explícito de não nulos. |
 | Conjunto `I` | usado como clientes em alguns pontos e como locais em outros | `self.i = num_customers + 1` incluindo planta | A implementação resolve a ambiguidade tratando `i` como conjunto de locais. |
 | Objetivo singleobjective | não aparece no LaTeX fornecido | existe caminho alternativo `self.model.minimize(self.f1 + self.f2 + self.f3 + self.f4 + self.f5)` | O repositório contém um modo adicional não documentado na formulação oficial. |
@@ -992,3 +992,95 @@ flowchart TD
 | mecanismo de ajuste para target zero | mapeado com ressalva textual | `_adjust_targets`, seção de divergências |
 
 Conclusão da verificação: todos os elementos presentes na formulação matemática fornecida possuem correspondência explícita na implementação ou foram registrados como divergência/ressalva na Seção 15.
+
+
+# Matheurística determinística configurável
+
+A implementação em `src/solvers/DeterministicMatheuristic.py` coordena três
+formulações, detalhadas também em `docs/deterministic_multiphase_mpprp.tex`.
+Configuração, destinos e contratos de saída estão em [matheuristic.md](matheuristic.md).
+A demanda permanece determinística. `solver.matheuristic.enabled=false` mantém
+a seleção normal de métodos; as quantidades são contínuas em todos os fluxos.
+
+## TSP comum à frota
+
+Uma única ordem `pi=(0,pi_1,...,pi_n,0)` é obtida pelo TSP simétrico sem
+capacidades. Para cada arco dirigido entre nós distintos, `u_ij` é binária:
+
+\[
+\min \sum_{i\ne j}a_{ij}u_{ij},\qquad
+\sum_{j\ne i}u_{ij}=1,\quad \sum_{j\ne i}u_{ji}=1,
+\]
+\[
+\sum_{i\in S}\sum_{j\in S:j\ne i}u_{ij}\le |S|-1
+\quad (2\le |S|<|N|).
+\]
+
+SEC são separadas por callback lazy. Uma rota inicial determinística garante
+uma ordem válida mesmo sem incumbente do TSP dentro do limite. A ordem é
+comum aos produtos, veículos e períodos. O cache por processo tem 64 entradas.
+
+## MPPRP restrito
+
+São criadas variáveis `R/Z` somente para
+
+\[
+\mathcal A^\pi=\{(0,i):i\in N_c\}\cup
+\{(\pi_r,\pi_s):r<s\}\cup\{(i,0):i\in N_c\}.
+\]
+
+`Z` passa a ser contínua em `[0,1]`, e `eta_vit` é binária, inclusive no
+nó depósito. Produção, estoque, entregas, fluxos, capacidades, função
+configurada e variante de metas são reutilizados. O bloco antigo de grau,
+saída máxima e visita é substituído por:
+
+\[
+\sum_{j:(i,j)\in\mathcal A^\pi}Z_{vijt}=\eta_{vit},\qquad
+\sum_{j:(j,i)\in\mathcal A^\pi}Z_{vjit}=\eta_{vit},\qquad
+\sum_v\eta_{vit}\le1\quad(i\in N_c).
+\]
+
+Para cada vetor binário de visitas, a ordem total e esses graus determinam a
+única rota que visita os clientes selecionados na ordem `pi`. Assim `Z` é
+integral em toda solução factível com `eta` binária. A prova completa por
+indução está no LaTeX; não depende de integralidade das quantidades.
+
+As expressões opcionais de visita em Coelho, HC1 e bounds de entrega usam
+`eta` quando disponível. Os cortes arredondados conservam sua validade no
+modelo restrito: callbacks indexam arcos existentes e os omitidos são zero.
+
+## Melhoria de rotas e seleção
+
+Dada a solução restrita, ficam fixos `X_pt`, `Y_pt` e
+`qbar_pit=sum_v Q_pvit`. Produção e entregas agregadas fixas preservam os
+estoques pelos balanços. Atribuição de veículos e sequência são liberadas:
+
+\[
+\min F_4+F_5,\qquad \sum_vQ_{pvit}=\bar Q_{pit},\qquad
+Z_{vijt},\eta_{vit}\in\{0,1\},\quad Q,R\ge0.
+\]
+
+Entrada e saída continuam iguais a `eta`. Definindo
+`N_t^+={i:sum_p qbar_pit>0}`, a visita agregada é um para esses clientes e zero
+para os demais. Fluxos e capacidades excluem subtours: em um componente
+sem depósito, somar os balanços de produto obrigaria todas as entregas a zero,
+contradizendo a entrega positiva de seus clientes. Períodos sem entregas não
+criam arcos. O modelo original pode admitir ciclos desconectados com entregas
+zero; a auditoria de transmissão rejeita esses ciclos.
+
+A escolha final compara a função configurada entre etapas, usando `F4+F5`
+como desempate. No modo multiobjetivo, a avaliação usa os desvios positivos
+mínimos e
+
+\[
+\lambda=\max_{j,t}\frac{w_j\max(F_{jt}-\tau_{jt},0)}{\widetilde\tau_{jt}},
+\qquad
+\Phi_{\mathrm{cfg}}=\alpha\lambda+(1-\alpha)
+\sum_{j,t}\frac{w_j\max(F_{jt}-\tau_{jt},0)}{\widetilde\tau_{jt}}.
+\]
+
+O objetivo próprio de transporte da melhoria não substitui esse critério de
+seleção. Gaps e bounds restritos são identificados por etapa e não certificam
+o MPPRP irrestrito. A solução pode ser final, MIP start completo ou semente
+PSO. `u/eta` são salvos em Parquets complementares; o debug acrescenta estados
+físicos e auxiliares intermediários. A análise fica no notebook posterior.

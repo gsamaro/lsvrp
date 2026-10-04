@@ -5,6 +5,7 @@ import math
 import numpy as np
 from docplex.mp.model import Model
 
+from config import Config
 from src.log.Logger import Logger
 from src.solvers._solver_common import ProblemData
 
@@ -12,20 +13,32 @@ from src.solvers._solver_common import ProblemData
 class LotSizingRelaxation:
     """Solve the production/inventory formulation without routing variables.
 
-    The model keeps constraints 8, 9, 10, 12 and vehicle-load capacity, but can
-    use integer variables when ``integer_variables`` is enabled.  It is still
-    intentionally separate from the complete routing model.
+    The model keeps constraints 8, 9, 10, 12 and vehicle-load capacity.
+    Quantities are continuous; the legacy ``integer_variables`` argument is
+    accepted for configuration compatibility.
     """
 
-    def __init__(self, map, log: Logger, time_limit=None, integer_variables=True):
+    def __init__(
+        self,
+        map,
+        log: Logger,
+        time_limit=None,
+        integer_variables=False,
+        num_threads=None,
+    ):
         self.problem = ProblemData.from_map(map)
         self.log = log
         self.time_limit = time_limit
-        self.integer_variables = bool(integer_variables)
+        self.integer_variables = (
+            False  # Legacy argument accepted; quantities are continuous.
+        )
+        self.num_threads = (
+            num_threads
+            if num_threads is not None
+            else Config.get_nested("solver", "threadsLimit", default=1)
+        )
 
     def _variable(self, model, name):
-        if self.integer_variables:
-            return model.integer_var(lb=0, name=name)
         return model.continuous_var(lb=0, name=name)
 
     def _build_model(
@@ -61,29 +74,19 @@ class LotSizingRelaxation:
                     for v in range(problem.v)
                     for i in range(1, problem.i)
                 )
-                previous = (
-                    problem.I_p_i_0[p][0]
-                    if t == 0
-                    else inventory[p, 0, t - 1]
-                )
+                previous = problem.I_p_i_0[p][0] if t == 0 else inventory[p, 0, t - 1]
                 model.add_constraint(
                     x[p, t] + previous - delivered == inventory[p, 0, t],
                     ctname=f"relax_plant_balance_{p}_{t}",
                 )
 
                 for i in range(1, problem.i):
-                    received = model.sum(
-                        quantity[p, v, i, t] for v in range(problem.v)
-                    )
+                    received = model.sum(quantity[p, v, i, t] for v in range(problem.v))
                     previous_customer = (
-                        problem.I_p_i_0[p][i]
-                        if t == 0
-                        else inventory[p, i, t - 1]
+                        problem.I_p_i_0[p][i] if t == 0 else inventory[p, i, t - 1]
                     )
                     model.add_constraint(
-                        received
-                        + previous_customer
-                        - problem.d_p_i_t[p][i - 1][t]
+                        received + previous_customer - problem.d_p_i_t[p][i - 1][t]
                         == inventory[p, i, t],
                         ctname=f"relax_customer_balance_{p}_{i}_{t}",
                     )
@@ -191,7 +194,11 @@ class LotSizingRelaxation:
                 model.maximize(objective)
             solution = model.solve(log_output=False)
             if solution is None:
-                status = model.solve_details.status if model.solve_details else "desconhecido"
+                status = (
+                    model.solve_details.status
+                    if model.solve_details
+                    else "desconhecido"
+                )
                 raise RuntimeError(f"PL relaxado sem solução para {label} ({status})")
             return {
                 "objective": float(solution.objective_value),
@@ -202,6 +209,8 @@ class LotSizingRelaxation:
             model.end()
 
     def _apply_time_limit(self, model):
+        if self.num_threads is not None:
+            model.parameters.threads = int(self.num_threads)
         if self.time_limit is not None:
             model.set_time_limit(float(self.time_limit))
 
@@ -227,14 +236,18 @@ class LotSizingRelaxation:
     def _solve_model_value(self, model, variable):
         solution = model.solve(log_output=False)
         if solution is None:
-            status = model.solve_details.status if model.solve_details else "desconhecido"
+            status = (
+                model.solve_details.status if model.solve_details else "desconhecido"
+            )
             raise RuntimeError(f"PL relaxado sem solução ({status})")
         return self._value(solution, variable)
 
     def _extract_solution(self, solution, x, inventory, quantity):
         result = {
             "X": np.zeros((self.problem.p, self.problem.t), dtype=float),
-            "I": np.zeros((self.problem.p, self.problem.i, self.problem.t), dtype=float),
+            "I": np.zeros(
+                (self.problem.p, self.problem.i, self.problem.t), dtype=float
+            ),
             "Q": np.zeros(
                 (self.problem.p, self.problem.v, self.problem.i, self.problem.t),
                 dtype=float,

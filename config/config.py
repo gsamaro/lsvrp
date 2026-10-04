@@ -1,5 +1,6 @@
 import copy
 import json
+import math
 from pathlib import Path
 
 
@@ -7,6 +8,18 @@ class Config:
     _data = None
     _DEFAULTS = {
         "solver": {
+            "matheuristic": {
+                "enabled": False,
+                "use_as": "final",
+                "tsp": {"time_limit": 10},
+                "restricted": {"time_limit": 60},
+                "route_improvement": {"enabled": True, "time_limit": 30},
+                "debug": {"enabled": False},
+            },
+            "pso": {
+                "time_limit": None,
+                "lot_sizing_bounds": {"integer_variables": False},
+            },
             "threadsLimit": 1,
             "timeLimit": 3600,
             "method": "PSO",
@@ -78,7 +91,9 @@ class Config:
         try:
             time_limit = int(time_limit)
         except (TypeError, ValueError) as error:
-            raise ValueError("config.solver.timeLimit deve ser um inteiro positivo") from error
+            raise ValueError(
+                "config.solver.timeLimit deve ser um inteiro positivo"
+            ) from error
         if isinstance(solver["timeLimit"], bool) or time_limit <= 0:
             raise ValueError("config.solver.timeLimit deve ser um inteiro positivo")
         solver["timeLimit"] = time_limit
@@ -91,8 +106,14 @@ class Config:
         threads_limit = solver["threadsLimit"]
         if threads_limit is None or threads_limit == "None":
             solver["threadsLimit"] = None
-        elif isinstance(threads_limit, bool) or not isinstance(threads_limit, int) or threads_limit <= 0:
-            raise ValueError("config.solver.threadsLimit deve ser um inteiro positivo ou None")
+        elif (
+            isinstance(threads_limit, bool)
+            or not isinstance(threads_limit, int)
+            or threads_limit <= 0
+        ):
+            raise ValueError(
+                "config.solver.threadsLimit deve ser um inteiro positivo ou None"
+            )
 
         cls._validate_bool(solver["multiobjective"], "config.solver.multiobjective")
         cls._validate_bool(
@@ -124,13 +145,69 @@ class Config:
                     "deve ser um inteiro positivo"
                 )
         min_violation = rounded_capacity["min_violation"]
-        if isinstance(min_violation, bool) or not isinstance(min_violation, (int, float)) or min_violation < 0:
+        if (
+            isinstance(min_violation, bool)
+            or not isinstance(min_violation, (int, float))
+            or min_violation < 0
+        ):
             raise ValueError(
                 "config.solver.rounded_capacity_inequalities.min_violation "
                 "deve ser um numero nao negativo"
             )
         symmetry_breaking = solver["symmetry_breaking"]
-        cls._validate_bool(symmetry_breaking["hc1"], "config.solver.symmetry_breaking.hc1")
+        cls._validate_bool(
+            symmetry_breaking["hc1"], "config.solver.symmetry_breaking.hc1"
+        )
+        mat = solver["matheuristic"]
+        cls._validate_bool(mat["enabled"], "config.solver.matheuristic.enabled")
+        cls._validate_bool(
+            mat["debug"]["enabled"], "config.solver.matheuristic.debug.enabled"
+        )
+        cls._validate_bool(
+            mat["route_improvement"]["enabled"],
+            "config.solver.matheuristic.route_improvement.enabled",
+        )
+        if not isinstance(mat["use_as"], str) or mat["use_as"] not in {
+            "final",
+            "exact_start",
+            "pso_start",
+        }:
+            raise ValueError("config.solver.matheuristic.use_as inválido")
+        for stage in ("tsp", "restricted", "route_improvement"):
+            value = mat[stage]["time_limit"]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(
+                    f"config.solver.matheuristic.{stage}.time_limit deve ser positivo"
+                )
+        if mat["enabled"]:
+            destination = {"exact_start": "GUROBY", "pso_start": "PSO"}.get(
+                mat["use_as"]
+            )
+            if destination and solver["method"] != destination:
+                raise ValueError(
+                    "solver.method deve corresponder ao destino da matheurística"
+                )
+            if (
+                configured["postprocessing"]["build_target"]
+                or configured["relaxed_solution"]["use"]
+            ):
+                raise ValueError(
+                    "Matheurística incompatível com build_target ou relaxed_solution.use"
+                )
+        limit = solver["pso"]["time_limit"]
+        if limit is not None and (
+            isinstance(limit, bool)
+            or not isinstance(limit, (int, float))
+            or not math.isfinite(limit)
+            or limit <= 0
+        ):
+            raise ValueError("config.solver.pso.time_limit deve ser positivo ou null")
+        solver["pso"]["lot_sizing_bounds"]["integer_variables"] = False
         cls._validate_workers(configured["workers"]["num"])
 
         level = configured["logging"]["level"]
@@ -144,10 +221,14 @@ class Config:
         if not isinstance(instance["files"], list) or not all(
             isinstance(value, str) and value.strip() for value in instance["files"]
         ):
-            raise ValueError("config.instance.files deve ser uma lista de strings não vazias")
+            raise ValueError(
+                "config.instance.files deve ser uma lista de strings não vazias"
+            )
 
         relaxed = configured["relaxed_solution"]
-        cls._validate_bool(relaxed["replace_model"], "config.relaxed_solution.replace_model")
+        cls._validate_bool(
+            relaxed["replace_model"], "config.relaxed_solution.replace_model"
+        )
         cls._validate_bool(relaxed["use"], "config.relaxed_solution.use")
         cls._validate_bool(
             relaxed["target_use_relaxation"],
@@ -155,7 +236,9 @@ class Config:
         )
 
         postprocessing = configured["postprocessing"]
-        cls._validate_bool(postprocessing["build_target"], "config.postprocessing.build_target")
+        cls._validate_bool(
+            postprocessing["build_target"], "config.postprocessing.build_target"
+        )
         cls._validate_path(postprocessing["output"], "config.postprocessing.output")
 
     @staticmethod
@@ -171,13 +254,17 @@ class Config:
     @staticmethod
     def _validate_workers(value):
         if isinstance(value, bool):
-            raise ValueError("config.workers.num deve ser auto, max, all, 0 ou inteiro positivo")
+            raise ValueError(
+                "config.workers.num deve ser auto, max, all, 0 ou inteiro positivo"
+            )
         if value is None or value == 0 or value == "0":
             return
         if isinstance(value, str) and value.strip().lower() in {"auto", "max", "all"}:
             return
         if not isinstance(value, int) or value <= 0:
-            raise ValueError("config.workers.num deve ser auto, max, all, 0 ou inteiro positivo")
+            raise ValueError(
+                "config.workers.num deve ser auto, max, all, 0 ou inteiro positivo"
+            )
 
     @classmethod
     def get(cls, key, default=None):

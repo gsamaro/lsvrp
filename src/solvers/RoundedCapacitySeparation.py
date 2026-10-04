@@ -7,8 +7,8 @@ that can be materialized by the caller's callback.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -46,7 +46,9 @@ def build_obligatory_demands(demand, initial_inventory):
         raise ValueError("initial_inventory deve ter formato [produto, no]")
     products, customers, periods = demand.shape
     if initial_inventory.shape[0] != products:
-        raise ValueError("demanda e estoque inicial devem ter o mesmo numero de produtos")
+        raise ValueError(
+            "demanda e estoque inicial devem ter o mesmo numero de produtos"
+        )
     if initial_inventory.shape[1] < customers + 1:
         raise ValueError("estoque inicial deve conter planta e todos os clientes")
 
@@ -59,18 +61,19 @@ def build_obligatory_demands(demand, initial_inventory):
 def aggregate_route_arcs(z_values, tau):
     """Aggregate directed route values into an undirected prefix matrix.
 
-    ``z_values`` has layout ``[period][vehicle][node][node]``.  The returned
+    ``z_values`` has layout ``[period][vehicle][node][node]``, or
+    ``[period][node][node]`` with vehicles already summed. The returned
     matrix contains both directions of each pair exactly once when it is used
     through :func:`cut_value`.
     """
 
     z_values = np.asarray(z_values, dtype=float)
-    if z_values.ndim != 4:
+    if z_values.ndim not in (3, 4) or z_values.shape[-1] != z_values.shape[-2]:
         raise ValueError("z_values deve ter formato [periodo, veiculo, no, no]")
     if tau < 0 or tau >= z_values.shape[0]:
         raise ValueError("tau fora do horizonte de periodos")
 
-    directed = z_values[: tau + 1].sum(axis=(0, 1))
+    directed = z_values[: tau + 1].sum(axis=(0, 1) if z_values.ndim == 4 else 0)
     aggregated = directed + directed.T
     np.fill_diagonal(aggregated, 0.0)
     return aggregated
@@ -103,15 +106,15 @@ def _cut_candidate(
     statistics=None,
 ):
     if statistics is not None:
-        statistics["candidate_evaluations"] = statistics.get("candidate_evaluations", 0) + 1
+        statistics["candidate_evaluations"] = (
+            statistics.get("candidate_evaluations", 0) + 1
+        )
     customers = tuple(sorted(customers))
     volume = float(obligatory[tau, list(customers)].sum())
     rhs = _rounded_rhs(volume, capacity, tolerance)
     if rhs == 0:
         return None
-    violation = float(
-        rhs - cut_value(aggregated_arcs, customers, customer_node_offset)
-    )
+    violation = float(rhs - cut_value(aggregated_arcs, customers, customer_node_offset))
     return RoundedCapacityCut(tau, customers, rhs, violation)
 
 
@@ -133,9 +136,7 @@ def _rounded_rhs_array(volumes, capacity, tolerance):
     volumes = np.asarray(volumes, dtype=float)
     rhs = np.zeros(volumes.shape, dtype=int)
     positive = volumes > tolerance
-    rhs[positive] = 2 * np.ceil(
-        volumes[positive] / capacity - tolerance
-    ).astype(int)
+    rhs[positive] = 2 * np.ceil(volumes[positive] / capacity - tolerance).astype(int)
     return rhs
 
 
@@ -158,9 +159,9 @@ def _improve_subset(
     """
 
     if statistics is not None:
-        statistics["candidate_evaluations"] = statistics.get(
-            "candidate_evaluations", 0
-        ) + 1
+        statistics["candidate_evaluations"] = (
+            statistics.get("candidate_evaluations", 0) + 1
+        )
 
     customer_count = obligatory.shape[1]
     customer_nodes = np.arange(customer_count) + customer_node_offset
@@ -173,12 +174,9 @@ def _improve_subset(
     selected_mask[current] = True
     current_volume = float(demand_at_tau[current].sum())
     current_lhs = float(
-        row_sums[current].sum()
-        - customer_arcs[np.ix_(current, current)].sum()
+        row_sums[current].sum() - customer_arcs[np.ix_(current, current)].sum()
     )
-    current_rhs = int(
-        _rounded_rhs(current_volume, capacity, tolerance)
-    )
+    current_rhs = int(_rounded_rhs(current_volume, capacity, tolerance))
     current_result = (
         RoundedCapacityCut(
             tau,
@@ -225,9 +223,9 @@ def _improve_subset(
             for position, customer in enumerate(current):
                 remaining = np.delete(current, position)
                 if remaining.size:
-                    remove_lhs[position] += 2.0 * customer_arcs[
-                        customer, remaining
-                    ].sum()
+                    remove_lhs[position] += (
+                        2.0 * customer_arcs[customer, remaining].sum()
+                    )
             remove_volumes = current_volume - demand_at_tau[current]
             remove_rhs = _rounded_rhs_array(remove_volumes, capacity, tolerance)
             remove_violations = remove_rhs - remove_lhs
@@ -267,9 +265,7 @@ def _improve_subset(
                     - 2.0 * customer_arcs[np.ix_(outside, remaining)].sum(axis=1)
                 )
                 swap_volumes = (
-                    current_volume
-                    - demand_at_tau[removed]
-                    + demand_at_tau[outside]
+                    current_volume - demand_at_tau[removed] + demand_at_tau[outside]
                 )
                 swap_rhs = _rounded_rhs_array(swap_volumes, capacity, tolerance)
                 swap_violations = swap_rhs - swap_lhs
@@ -281,11 +277,7 @@ def _improve_subset(
                 candidate = (
                     float(swap_violations[swap_index]),
                     int(swap_rhs[swap_index]),
-                    tuple(
-                        sorted(
-                            (*remaining.tolist(), int(outside[swap_index]))
-                        )
-                    ),
+                    tuple(sorted((*remaining.tolist(), int(outside[swap_index])))),
                     float(swap_volumes[swap_index]),
                     float(swap_lhs[swap_index]),
                     "swap",
@@ -311,7 +303,9 @@ def _improve_subset(
             growth = [candidate for candidate in candidates if candidate[5] == "add"]
             if not growth:
                 break
-            next_candidate = max(growth, key=lambda candidate: (candidate[3], candidate[0]))
+            next_candidate = max(
+                growth, key=lambda candidate: (candidate[3], candidate[0])
+            )
             selected = list(next_candidate[2])
 
         current = np.array(selected, dtype=int)
@@ -340,11 +334,7 @@ def _improve_subset(
 
 def _build_seeds(aggregated_arcs, obligatory, tau, customer_node_offset):
     customers = set(range(obligatory.shape[1]))
-    positive = [
-        customer
-        for customer in customers
-        if obligatory[tau, customer] > 0
-    ]
+    positive = [customer for customer in customers if obligatory[tau, customer] > 0]
     seeds = {tuple([customer]) for customer in positive}
 
     pair_scores = []
@@ -381,7 +371,10 @@ def separate_cumulative_cuts(
         raise ValueError("obligatory_demands deve ter formato [prefixo, cliente]")
     if z_values.shape[0] != obligatory_demands.shape[0]:
         raise ValueError("Z e demandas devem ter o mesmo numero de periodos")
-    if customer_node_offset < 0 or customer_node_offset + obligatory_demands.shape[1] > z_values.shape[2]:
+    if (
+        customer_node_offset < 0
+        or customer_node_offset + obligatory_demands.shape[1] > z_values.shape[2]
+    ):
         raise ValueError("Z deve conter todos os nos dos clientes")
     if max_cuts <= 0:
         return []
@@ -393,9 +386,7 @@ def separate_cumulative_cuts(
     candidates = {}
     for tau in range(z_values.shape[0]):
         aggregated = aggregate_route_arcs(z_values, tau)
-        seeds = _build_seeds(
-            aggregated, obligatory_demands, tau, customer_node_offset
-        )
+        seeds = _build_seeds(aggregated, obligatory_demands, tau, customer_node_offset)
         if statistics is not None:
             statistics["seeds"] = statistics.get("seeds", 0) + len(seeds)
         for seed in seeds:

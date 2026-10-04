@@ -42,6 +42,7 @@ def minimal_data(B=10):
     }
 
 
+@pytest.mark.cplex_integration
 def test_relaxation_keeps_only_lot_sizing_constraints_and_calculates_bounds():
     relaxation = LotSizingRelaxation(minimal_data(), DummyLogger())
     model, _, _, _ = relaxation._build_model()
@@ -63,14 +64,8 @@ def test_relaxation_keeps_only_lot_sizing_constraints_and_calculates_bounds():
         result["base"]["X"],
         result["lower_solution"]["X"],
     )
-    assert np.all(
-        result["upper_solution"]["X"]
-        >= result["lower_solution"]["X"] - 1e-8
-    )
-    assert np.all(
-        result["upper_solution"]["Q"]
-        >= result["lower_solution"]["Q"] - 1e-8
-    )
+    assert np.all(result["upper_solution"]["X"] >= result["lower_solution"]["X"] - 1e-8)
+    assert np.all(result["upper_solution"]["Q"] >= result["lower_solution"]["Q"] - 1e-8)
 
 
 def test_upper_model_contains_lower_production_constraints():
@@ -91,6 +86,7 @@ def test_upper_model_contains_lower_production_constraints():
     assert "relax_delivery_lower_bound_0_0_1_1" in names
 
 
+@pytest.mark.cplex_integration
 def test_relaxation_limits_total_delivery_per_vehicle_and_period():
     data = minimal_data()
     data["C"] = 4
@@ -102,6 +98,7 @@ def test_relaxation_limits_total_delivery_per_vehicle_and_period():
         assert np.sum(result["upper_solution"]["Q"][0, 0, 1:, t]) <= 4.0 + 1e-8
 
 
+@pytest.mark.cplex_integration
 def test_relaxation_reports_infeasible_instance():
     with pytest.raises(RuntimeError, match="PL relaxado sem solução"):
         LotSizingRelaxation(minimal_data(B=1), DummyLogger()).solve_bounds()

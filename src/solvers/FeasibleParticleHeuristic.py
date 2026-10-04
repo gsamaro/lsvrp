@@ -8,13 +8,16 @@ from numba import config as numba_config
 from numba import set_num_threads
 
 from src.log.Logger import Logger
+from src.solvers._pso_numba_kernel import build_population_kernel, population_components
 from src.solvers._solver_common import (
     ProblemData,
     clone_solution,
+    compute_delivery_upper_bounds,
     compute_production_upper_bounds,
     empty_solution,
+    evaluate_configured_objective,
+    objective_from_components,
 )
-from src.solvers._pso_numba_kernel import build_population_kernel
 
 
 @dataclass
@@ -49,7 +52,11 @@ class FeasibleParticleHeuristic:
         relaxed_base=None,
         execution_backend="python",
         parallel_workers=1,
+        objective_config=None,
     ):
+        self.objective_config = objective_config or {
+            "solver": {"multiobjective": False}
+        }
         self.data = map
         self.dir = dir
         self.log = log
@@ -72,27 +79,33 @@ class FeasibleParticleHeuristic:
         self.kernel_seconds = 0.0
         self.adapter_seconds = 0.0
         self.fast_validation_seconds = 0.0
-        self._production_time = np.asarray(self.problem.b_p, dtype=np.int64)
-        self._production_cost = np.asarray(self.problem.c_p, dtype=np.int64)
-        self._setup_cost = np.asarray(self.problem.s_p, dtype=np.int64)
-        self._inventory_cost = np.asarray(self.problem.h_p_i, dtype=np.int64)
-        self._inventory_capacity = np.asarray(self.problem.U_p_i, dtype=np.int64)
-        self._initial_inventory = np.asarray(self.problem.I_p_i_0, dtype=np.int64)
-        self._demand = np.asarray(self.problem.d_p_i_t, dtype=np.int64)
-        self._distance = np.asarray(self.problem.a_i_k, dtype=np.int64)
+        self._production_time = np.asarray(self.problem.b_p, dtype=np.float64)
+        self._production_cost = np.asarray(self.problem.c_p, dtype=np.float64)
+        self._setup_cost = np.asarray(self.problem.s_p, dtype=np.float64)
+        self._inventory_cost = np.asarray(self.problem.h_p_i, dtype=np.float64)
+        self._inventory_capacity = np.asarray(self.problem.U_p_i, dtype=np.float64)
+        self._initial_inventory = np.asarray(self.problem.I_p_i_0, dtype=np.float64)
+        self._demand = np.asarray(self.problem.d_p_i_t, dtype=np.float64)
+        self._distance = np.asarray(self.problem.a_i_k, dtype=np.float64)
         if bool(map.get("strengthened_bounds", True)):
-            self._production_upper_bounds = compute_production_upper_bounds(self.problem)
+            self._production_upper_bounds = compute_production_upper_bounds(
+                self.problem
+            )
         else:
             self._production_upper_bounds = np.full(
                 (self.problem.p, self.problem.t),
                 float(self.problem.M),
                 dtype=float,
             )
+        self._delivery_upper_bounds = compute_delivery_upper_bounds(self.problem)
         if bounds is not None:
             self.lower_bounds = np.asarray(bounds["lower"], dtype=float)
             self.upper_bounds = np.asarray(bounds["upper"], dtype=float)
             expected_shape = (self.problem.p, self.problem.t)
-            if self.lower_bounds.shape != expected_shape or self.upper_bounds.shape != expected_shape:
+            if (
+                self.lower_bounds.shape != expected_shape
+                or self.upper_bounds.shape != expected_shape
+            ):
                 raise ValueError(f"bounds devem ter formato {expected_shape}")
             if np.any(self.lower_bounds > self.upper_bounds + 1e-8):
                 raise ValueError("bounds relaxados inválidos: LB maior que UB")
@@ -139,7 +152,9 @@ class FeasibleParticleHeuristic:
     def build_population(self, particles: np.ndarray):
         if self.execution_backend == "numba":
             state = self.build_population_state(particles)
-            return [self.solution_from_state(state, index) for index in range(len(state))]
+            return [
+                self.solution_from_state(state, index) for index in range(len(state))
+            ]
         return [self._build_solution_from_particle(row) for row in particles]
 
     def warmup_numba(self):
@@ -208,7 +223,30 @@ class FeasibleParticleHeuristic:
             self.lower_delivery_bounds is not None,
         )
         self.kernel_seconds += time.perf_counter() - started_at
-        return PopulationState(*values, np.zeros(len(particles), dtype=bool))
+        state = PopulationState(*values, np.zeros(len(particles), dtype=bool))
+        if self.objective_config.get("solver", {}).get(
+            "multiobjective", False
+        ) or self.objective_config.get("postprocessing", {}).get("build_target", False):
+            components = population_components(
+                state.X,
+                state.Y,
+                state.I,
+                state.route_nodes,
+                state.route_lengths,
+                self._production_cost,
+                self._setup_cost,
+                self._inventory_cost,
+                self._distance,
+                float(self.problem.f),
+            )
+            state.costs[:] = np.where(
+                state.feasible,
+                objective_from_components(
+                    self.problem, components, self.objective_config
+                ),
+                np.inf,
+            )
+        return state
 
     def _state_from_solutions(self, solutions):
         count = len(solutions)
@@ -216,11 +254,15 @@ class FeasibleParticleHeuristic:
         Y = np.stack([solution["Y"] for solution in solutions])
         I = np.stack([solution["I"] for solution in solutions])
         Q = np.stack([solution["Q"] for solution in solutions])
-        assignments = np.full((count, self.problem.t, self.problem.i), -1, dtype=np.int16)
+        assignments = np.full(
+            (count, self.problem.t, self.problem.i), -1, dtype=np.int16
+        )
         route_nodes = np.zeros(
             (count, self.problem.t, self.problem.v, self.problem.i - 1), dtype=np.int16
         )
-        route_lengths = np.zeros((count, self.problem.t, self.problem.v), dtype=np.int16)
+        route_lengths = np.zeros(
+            (count, self.problem.t, self.problem.v), dtype=np.int16
+        )
         for index, solution in enumerate(solutions):
             for period, mapping in enumerate(solution.get("assignments", [])):
                 for customer, vehicle in mapping.items():
@@ -241,9 +283,7 @@ class FeasibleParticleHeuristic:
             assignment_fingerprints[index] = self._fingerprint_uint64(
                 assignments[index, :, 1:]
             )
-            q_full_fingerprints[index] = self._fingerprint_uint64(
-                Q[index, :, :, 1:, :]
-            )
+            q_full_fingerprints[index] = self._fingerprint_uint64(Q[index, :, :, 1:, :])
         return PopulationState(
             X,
             Y,
@@ -252,7 +292,9 @@ class FeasibleParticleHeuristic:
             assignments,
             route_nodes,
             route_lengths,
-            np.asarray([solution["feasible"] for solution in solutions], dtype=np.uint8),
+            np.asarray(
+                [solution["feasible"] for solution in solutions], dtype=np.uint8
+            ),
             np.asarray([solution["cost"] for solution in solutions], dtype=float),
             x_fingerprints,
             q_quantity_fingerprints,
@@ -279,7 +321,9 @@ class FeasibleParticleHeuristic:
             for vehicle in range(self.problem.v):
                 length = int(state.route_lengths[index, period, vehicle])
                 period_routes.append(
-                    state.route_nodes[index, period, vehicle, :length].astype(int).tolist()
+                    state.route_nodes[index, period, vehicle, :length]
+                    .astype(int)
+                    .tolist()
                 )
             route_plan.append(period_routes)
             assignment_plan.append(
@@ -318,7 +362,11 @@ class FeasibleParticleHeuristic:
                 if previous_solutions is not None and index < len(previous_solutions)
                 else None
             )
-            if not solution["feasible"] and previous is not None and previous["feasible"]:
+            if (
+                not solution["feasible"]
+                and previous is not None
+                and previous["feasible"]
+            ):
                 solution = clone_solution(previous)
                 solution["reused_previous"] = True
             else:
@@ -328,10 +376,10 @@ class FeasibleParticleHeuristic:
 
     def _empty_compact_solution(self):
         return {
-            "X": np.zeros((self.problem.p, self.problem.t), dtype=int),
+            "X": np.zeros((self.problem.p, self.problem.t), dtype=float),
             "Y": np.zeros((self.problem.p, self.problem.t), dtype=int),
             "I": np.zeros(
-                (self.problem.p, self.problem.i, self.problem.t), dtype=int
+                (self.problem.p, self.problem.i, self.problem.t), dtype=float
             ),
             "Q": np.zeros(
                 (
@@ -340,7 +388,7 @@ class FeasibleParticleHeuristic:
                     self.problem.i,
                     self.problem.t,
                 ),
-                dtype=int,
+                dtype=float,
             ),
             "route_plan": [],
             "assignments": [],
@@ -354,41 +402,47 @@ class FeasibleParticleHeuristic:
         Q = np.asarray(solution["Q"])
         violations = []
 
-        if np.any(X < 0):
+        if not all(np.all(np.isfinite(a)) for a in (X, Y, I, Q)) or np.any(Q < -1e-6):
+            violations.append("quantidade inválida")
+        if np.any(X < -1e-6):
             violations.append("X negativo")
         if np.any((Y != 0) & (Y != 1)):
             violations.append("Y nao binario")
-        if np.any(X > self._production_upper_bounds * Y + 1e-8):
+        if np.any(X > self._production_upper_bounds * Y + 1e-6):
             violations.append("X excede bound fortalecido de produção")
 
-        production_time = np.asarray(self.problem.b_p, dtype=int) @ X
-        if np.any(production_time > self.problem.B):
+        production_time = np.asarray(self.problem.b_p, dtype=float) @ X
+        if np.any(production_time > self.problem.B + 1e-6):
             violations.append("capacidade producao excedida")
 
-        inventory_capacity = np.asarray(self.problem.U_p_i, dtype=int)[:, :, None]
-        if np.any(I < 0):
+        inventory_capacity = np.asarray(self.problem.U_p_i, dtype=float)[:, :, None]
+        if np.any(I < -1e-6):
             violations.append("estoque negativo")
-        if np.any(I > inventory_capacity):
+        if np.any(I > inventory_capacity + 1e-6):
             violations.append("capacidade estoque excedida")
 
-        initial_inventory = np.asarray(self.problem.I_p_i_0, dtype=int)
+        initial_inventory = np.asarray(self.problem.I_p_i_0, dtype=float)
         previous_plant = np.concatenate(
             (initial_inventory[:, 0, None], I[:, 0, :-1]), axis=1
         )
         delivered_from_plant = Q[:, :, 1:, :].sum(axis=(1, 2))
-        if np.any(previous_plant + X - delivered_from_plant != I[:, 0, :]):
+        if not np.allclose(
+            previous_plant + X - delivered_from_plant, I[:, 0, :], atol=1e-6, rtol=1e-6
+        ):
             violations.append("balanco planta")
 
         previous_customers = np.concatenate(
             (initial_inventory[:, 1:, None], I[:, 1:, :-1]), axis=2
         )
         received = Q[:, :, 1:, :].sum(axis=1)
-        demand = np.asarray(self.problem.d_p_i_t, dtype=int)
-        if np.any(previous_customers + received - demand != I[:, 1:, :]):
+        demand = np.asarray(self.problem.d_p_i_t, dtype=float)
+        if not np.allclose(
+            previous_customers + received - demand, I[:, 1:, :], atol=1e-6, rtol=1e-6
+        ):
             violations.append("balanco cliente")
 
         vehicle_load = Q[:, :, 1:, :].sum(axis=(0, 2))
-        if np.any(vehicle_load > self.problem.C):
+        if np.any(vehicle_load > self.problem.C + 1e-6):
             violations.append("capacidade veiculo")
 
         active_vehicle = Q[:, :, 1:, :].sum(axis=0) > 0
@@ -403,19 +457,19 @@ class FeasibleParticleHeuristic:
                 if len(period_routes) != self.problem.v:
                     violations.append(f"quantidade de rotas invalida t={t}")
                     continue
+                visited = [customer for route in period_routes for customer in route]
+                if len(visited) != len(set(visited)):
+                    violations.append(f"cliente visitado por mais de um veiculo t={t}")
                 for vehicle, route in enumerate(period_routes):
                     route = list(route)
                     if len(route) != len(set(route)):
-                        violations.append(
-                            f"cliente repetido v={vehicle} t={t}"
-                        )
-                    expected = set(
-                        np.flatnonzero(active_vehicle[vehicle, :, t]) + 1
-                    )
-                    if set(route) != expected:
-                        violations.append(
-                            f"rota inconsistente v={vehicle} t={t}"
-                        )
+                        violations.append(f"cliente repetido v={vehicle} t={t}")
+                    expected = set(np.flatnonzero(active_vehicle[vehicle, :, t]) + 1)
+                    if not expected.issubset(set(route)) or any(
+                        customer <= 0 or customer >= self.problem.i
+                        for customer in route
+                    ):
+                        violations.append(f"rota inconsistente v={vehicle} t={t}")
 
         return {"feasible": not violations, "violations": violations[:50]}
 
@@ -446,34 +500,22 @@ class FeasibleParticleHeuristic:
         compact_report = self.validate_compact_solution(solution)
         if not compact_report["feasible"]:
             return compact_report
-        full = solution if "R" in solution and "Z" in solution else self.materialize_solution(solution)
+        full = (
+            solution
+            if "R" in solution and "Z" in solution
+            else self.materialize_solution(solution)
+        )
         route_capacity = np.asarray(full["R"]).sum(axis=0)
         route_enabled_capacity = self.problem.C * np.asarray(full["Z"])
         violations = list(compact_report["violations"])
-        if np.any(route_capacity > route_enabled_capacity):
+        if np.any(route_capacity > route_enabled_capacity + 1e-8):
             violations.append("capacidade rota")
         return {"feasible": not violations, "violations": violations[:50]}
 
     def evaluate_compact_cost(self, solution):
-        X = np.asarray(solution["X"], dtype=int)
-        Y = np.asarray(solution["Y"], dtype=int)
-        I = np.asarray(solution["I"], dtype=int)
-        total = int(np.sum(np.asarray(self.problem.s_p)[:, None] * Y))
-        total += int(np.sum(np.asarray(self.problem.c_p)[:, None] * X))
-        total += int(
-            np.sum(np.asarray(self.problem.h_p_i)[:, :, None] * I)
+        return evaluate_configured_objective(
+            self.problem, solution, self.objective_config
         )
-        for period_routes in solution.get("route_plan", []):
-            for route in period_routes:
-                if not route:
-                    continue
-                total += self.problem.f
-                full_route = [0] + list(route) + [0]
-                total += sum(
-                    self.problem.a_i_k[full_route[index]][full_route[index + 1]]
-                    for index in range(len(full_route) - 1)
-                )
-        return total
 
     def _build_solution_from_particle(self, row):
         if row.shape[0] != self.particle_dim:
@@ -483,7 +525,7 @@ class FeasibleParticleHeuristic:
 
         raw_x, raw_q = self._decode_particle(row)
         solution = self._empty_compact_solution()
-        previous_inventory = np.array(self.problem.I_p_i_0, dtype=int)
+        previous_inventory = np.array(self.problem.I_p_i_0, dtype=float)
 
         for t in range(self.problem.t):
             period_state = self._build_period_state(t, raw_x, raw_q, previous_inventory)
@@ -516,7 +558,11 @@ class FeasibleParticleHeuristic:
                     for v in range(self.problem.v)
                     for i in range(1, self.problem.i)
                 )
-                solution["I"][p, 0, t] = previous_inventory[p, 0] + solution["X"][p, t] - delivered_from_plant
+                solution["I"][p, 0, t] = (
+                    previous_inventory[p, 0]
+                    + solution["X"][p, t]
+                    - delivered_from_plant
+                )
 
                 for i in range(1, self.problem.i):
                     delivered_to_customer = sum(
@@ -558,13 +604,13 @@ class FeasibleParticleHeuristic:
         bounded_value = min(60.0, max(-60.0, float(value)))
         return 1.0 / (1.0 + math.exp(-bounded_value))
 
-    def _pick_int_in_range(self, low, high, gene):
-        low = int(max(0, round(low)))
-        high = int(max(low, round(high)))
+    def _pick_quantity_in_range(self, low, high, gene):
+        low = float(max(0, low))
+        high = float(max(low, high))
         if high == low:
             return low
         normalized = self._normalize_gene(gene)
-        return low + int(round(normalized * (high - low)))
+        return low + normalized * (high - low)
 
     def _bounded_production_from_gene(self, p, t, gene):
         if self.lower_bounds is None:
@@ -573,7 +619,7 @@ class FeasibleParticleHeuristic:
         value = self.lower_bounds[p, t] + normalized * (
             self.upper_bounds[p, t] - self.lower_bounds[p, t]
         )
-        return int(round(value))
+        return float(value)
 
     def _bounded_delivery_from_genes(self, p, customer, t, raw_q):
         if self.lower_delivery_bounds is None:
@@ -585,40 +631,48 @@ class FeasibleParticleHeuristic:
             total += lower + self._normalize_gene(raw_q[p, v, customer, t]) * (
                 upper - lower
             )
-        return int(round(total))
+        return float(total)
 
     def _build_period_state(self, t, raw_x, raw_q, previous_inventory):
         deficits = {
             customer: [
-                max(0, int(self.problem.d_p_i_t[p][customer - 1][t] - previous_inventory[p, customer]))
+                max(
+                    0,
+                    float(
+                        self.problem.d_p_i_t[p][customer - 1][t]
+                        - previous_inventory[p, customer]
+                    ),
+                )
                 for p in range(self.problem.p)
             ]
             for customer in range(1, self.problem.i)
         }
 
-        minimum_production = np.zeros(self.problem.p, dtype=int)
+        minimum_production = np.zeros(self.problem.p, dtype=float)
         for p in range(self.problem.p):
             total_deficit = sum(deficits[customer][p] for customer in deficits)
-            minimum_production[p] = max(0, total_deficit - int(previous_inventory[p, 0]))
+            minimum_production[p] = max(
+                0, total_deficit - float(previous_inventory[p, 0])
+            )
 
         minimum_time = sum(
             self.problem.b_p[p] * minimum_production[p] for p in range(self.problem.p)
         )
-        if minimum_time > self.problem.B:
+        if minimum_time > self.problem.B + 1e-8:
             return None
 
         production = minimum_production.copy()
         if self.lower_bounds is not None:
             production = np.maximum(
                 production,
-                np.ceil(self.lower_bounds[:, t]).astype(int),
+                self.lower_bounds[:, t],
             )
         minimum_time = sum(
             self.problem.b_p[p] * production[p] for p in range(self.problem.p)
         )
-        if minimum_time > self.problem.B:
+        if minimum_time > self.problem.B + 1e-8:
             return None
-        remaining_time = int(self.problem.B - minimum_time)
+        remaining_time = float(self.problem.B - minimum_time)
         priority_products = sorted(
             range(self.problem.p),
             key=lambda p: self._normalize_gene(raw_x[p, t]),
@@ -628,15 +682,15 @@ class FeasibleParticleHeuristic:
         for p in priority_products:
             if self.problem.b_p[p] <= 0:
                 continue
-            max_extra_by_time = int(remaining_time // self.problem.b_p[p])
+            max_extra_by_time = remaining_time / self.problem.b_p[p]
             if self.lower_bounds is None:
                 storage_headroom = max(
                     0,
-                    int(self.problem.U_p_i[p][0] - previous_inventory[p, 0]),
+                    float(self.problem.U_p_i[p][0] - previous_inventory[p, 0]),
                 )
                 strengthened_headroom = max(
                     0,
-                    int(self._production_upper_bounds[p, t] - production[p]),
+                    float(self._production_upper_bounds[p, t] - production[p]),
                 )
                 extra_high = min(
                     storage_headroom,
@@ -645,23 +699,26 @@ class FeasibleParticleHeuristic:
                 )
             else:
                 decoded = self._bounded_production_from_gene(p, t, raw_x[p, t])
-                bound_extra = max(0, decoded - int(production[p]))
+                bound_extra = max(0, decoded - float(production[p]))
                 extra_high = min(max_extra_by_time, bound_extra)
             if extra_high <= 0:
                 continue
             if self.lower_bounds is None:
-                extra_units = self._pick_int_in_range(0, extra_high, raw_x[p, t])
+                extra_units = self._pick_quantity_in_range(0, extra_high, raw_x[p, t])
             else:
                 extra_units = extra_high
             production[p] += extra_units
             remaining_time -= self.problem.b_p[p] * extra_units
 
-        period_deliveries = {customer: [0 for _ in range(self.problem.p)] for customer in range(1, self.problem.i)}
+        period_deliveries = {
+            customer: [0 for _ in range(self.problem.p)]
+            for customer in range(1, self.problem.i)
+        }
 
         for customer in range(1, self.problem.i):
             lower_by_product = deficits[customer]
             lower_total = sum(lower_by_product)
-            if lower_total > self.problem.C:
+            if lower_total > self.problem.C + 1e-8:
                 return None
 
             for p in range(self.problem.p):
@@ -699,17 +756,17 @@ class FeasibleParticleHeuristic:
     ):
         available_by_product = np.array(
             previous_inventory[:, 0] + production,
-            dtype=int,
+            dtype=float,
         )
         mandatory_by_product = np.array(
             [
                 sum(period_deliveries[customer][p] for customer in period_deliveries)
                 for p in range(self.problem.p)
             ],
-            dtype=int,
+            dtype=float,
         )
         plant_inventory_before_extra = available_by_product - mandatory_by_product
-        if np.any(plant_inventory_before_extra < 0):
+        if np.any(plant_inventory_before_extra < -1e-8):
             return False
 
         # A planta pode carregar estoque para o próximo período.  Portanto,
@@ -717,13 +774,13 @@ class FeasibleParticleHeuristic:
         excess_by_product = np.maximum(
             0,
             plant_inventory_before_extra
-            - np.asarray(self.problem.U_p_i, dtype=int)[:, 0],
+            - np.asarray(self.problem.U_p_i, dtype=float)[:, 0],
         )
 
         remaining_capacity = [self.problem.C for _ in range(self.problem.v)]
         for customer, vehicle in vehicle_assignment.items():
             remaining_capacity[vehicle] -= sum(period_deliveries[customer])
-        if any(capacity < 0 for capacity in remaining_capacity):
+        if any(capacity < -1e-8 for capacity in remaining_capacity):
             return False
 
         product_priority = sorted(
@@ -742,7 +799,7 @@ class FeasibleParticleHeuristic:
             ),
         )
         for p in product_priority:
-            while excess_by_product[p] > 0:
+            while excess_by_product[p] > 1e-8:
                 candidates = []
                 for customer in period_deliveries:
                     customer_inventory = (
@@ -750,7 +807,7 @@ class FeasibleParticleHeuristic:
                         + period_deliveries[customer][p]
                         - self.problem.d_p_i_t[p][customer - 1][t]
                     )
-                    stock_headroom = int(
+                    stock_headroom = float(
                         self.problem.U_p_i[p][customer] - customer_inventory
                     )
                     if stock_headroom <= 0:
@@ -780,18 +837,22 @@ class FeasibleParticleHeuristic:
                                 t,
                                 raw_q,
                             )
-                            preference += int(
-                                desired > period_deliveries[customer][p]
-                            )
+                            preference += int(desired > period_deliveries[customer][p])
                         candidates.append(
-                            (preference, -remaining_capacity[vehicle], customer, vehicle, available)
+                            (
+                                preference,
+                                -remaining_capacity[vehicle],
+                                customer,
+                                vehicle,
+                                available,
+                            )
                         )
 
                 if not candidates:
                     return False
 
                 _, _, customer, vehicle, available = max(candidates)
-                quantity = min(int(excess_by_product[p]), available)
+                quantity = min(float(excess_by_product[p]), available)
                 period_deliveries[customer][p] += quantity
                 remaining_capacity[vehicle] -= quantity
                 vehicle_assignment[customer] = vehicle
@@ -802,7 +863,11 @@ class FeasibleParticleHeuristic:
         remaining_capacity = [self.problem.C for _ in range(self.problem.v)]
         assignment = {}
         customers = sorted(
-            [customer for customer in period_deliveries if sum(period_deliveries[customer]) > 0],
+            [
+                customer
+                for customer in period_deliveries
+                if sum(period_deliveries[customer]) > 0
+            ],
             key=lambda customer: sum(period_deliveries[customer]),
             reverse=True,
         )
@@ -819,7 +884,7 @@ class FeasibleParticleHeuristic:
             feasible_vehicles = [
                 vehicle
                 for vehicle in vehicle_preferences
-                if remaining_capacity[vehicle] >= total_delivery
+                if remaining_capacity[vehicle] + 1e-8 >= total_delivery
             ]
             if not feasible_vehicles:
                 return None
@@ -850,12 +915,14 @@ class FeasibleParticleHeuristic:
                     unvisited,
                     key=lambda customer: (
                         self.problem.a_i_k[current][customer],
-                        -sum(
-                            raw_q[p, vehicle, customer, t]
-                            for p in range(self.problem.p)
-                        )
-                        if raw_q is not None
-                        else 0,
+                        (
+                            -sum(
+                                raw_q[p, vehicle, customer, t]
+                                for p in range(self.problem.p)
+                            )
+                            if raw_q is not None
+                            else 0
+                        ),
                         customer,
                     ),
                 )

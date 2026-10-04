@@ -6,25 +6,42 @@ import time
 import numpy as np
 
 from config import Config
-from src.log.Logger import Logger
 from src.helpers.SolverTelemetry import get_config
-from src.solvers.FeasibleParticleHeuristic import FeasibleParticleHeuristic
-from src.solvers.LotSizingRelaxation import LotSizingRelaxation
-from src.solvers.MultProductProdctionRoutingProblem import (
-    MultProductProdctionRoutingProblem as MPPRP,
-)
+from src.log.Logger import Logger
+from src.solvers._pso_numba_kernel import update_swarm_kernel
+from src.solvers._routing_common import compact_solution, validate_variables
 from src.solvers._solver_common import (
     ProblemData,
     build_results_from_variables,
     clone_solution,
     empty_solution,
-    evaluate_solution_cost,
+    evaluate_configured_objective,
+    result_variables,
 )
-from src.solvers._pso_numba_kernel import update_swarm_kernel
+from src.solvers.FeasibleParticleHeuristic import FeasibleParticleHeuristic
+from src.solvers.LotSizingRelaxation import LotSizingRelaxation
+from src.solvers.MultProductProdctionRoutingProblem import (
+    MultProductProdctionRoutingProblem as MPPRP,
+)
 
 
 class ParticleSwarmOptimization:
-    def __init__(self, map, dir, log: Logger):
+    def __init__(self, map, dir, log: Logger, initial_solution=None):
+        self.initial_solution = (
+            clone_solution(initial_solution) if initial_solution is not None else None
+        )
+        self.objective_config = {
+            "solver": {
+                "multiobjective": Config.get_nested(
+                    "solver", "multiobjective", default=False
+                )
+            },
+            "postprocessing": {
+                "build_target": Config.get_nested(
+                    "postprocessing", "build_target", default=False
+                )
+            },
+        }
         self.data = map
         self.dir = dir
         self.log = log
@@ -46,7 +63,9 @@ class ParticleSwarmOptimization:
         bounds_config = self.pso_config["lot_sizing_bounds"]
         if bounds_config["enabled"]:
             bounds_started_at = time.perf_counter()
-            self.log.debug(">> Calculando bounds relaxados de dimensionamento de lotes.")
+            self.log.debug(
+                ">> Calculando bounds relaxados de dimensionamento de lotes."
+            )
             time_limit = bounds_config["time_limit"]
             if time_limit is None:
                 time_limit = Config.get_nested("solver", "timeLimit", default=None)
@@ -82,6 +101,7 @@ class ParticleSwarmOptimization:
             relaxed_base=self.relaxed_base,
             execution_backend=self.pso_config["execution_backend"],
             parallel_workers=self.parallel_workers,
+            objective_config=self.objective_config,
         )
         self.rng = np.random.default_rng(seed=self.pso_config["seed"])
         self.audit_rng = np.random.default_rng(seed=int(self.pso_config["seed"]) + 1)
@@ -96,6 +116,7 @@ class ParticleSwarmOptimization:
         self.global_best_solution = None
         self.global_best_cost = float("inf")
         self.solverGurobi = None
+        self._selected_exact_result = None
         self.time = 0
         self.solCount = 0
         self._population_history = []
@@ -111,17 +132,22 @@ class ParticleSwarmOptimization:
         self._audit_failures = 0
         self._phase_times = self._new_phase_times()
         self._random_states = None
+        self.stopped_by_time_limit = False
         self._adapter_seconds_accounted = 0.0
         self.log.debug(
             f"PSO execution backend={self.pso_config['execution_backend']} "
             f"parallel_workers={self.parallel_workers}"
         )
-        if self.pso_config["execution_backend"] == "numba" and self.pso_config["jit_warmup"]:
+        if (
+            self.pso_config["execution_backend"] == "numba"
+            and self.pso_config["jit_warmup"]
+        ):
             self.jit_warmup_seconds = self.heuristic.warmup_numba()
 
     def _load_pso_config(self):
         configured = Config.get_nested("solver", "pso", default={}) or {}
         defaults = {
+            "time_limit": None,
             "swarm_size": 20,
             "max_iterations": 50,
             "inertia": 0.7,
@@ -154,7 +180,7 @@ class ParticleSwarmOptimization:
                 "enabled": True,
                 "use_base_solution": False,
                 "time_limit": None,
-                "integer_variables": True,
+                "integer_variables": False,
             },
             "use_as_mip_start": True,
             "return_heuristic_result_without_cplex": False,
@@ -176,6 +202,7 @@ class ParticleSwarmOptimization:
             ):
                 merged[initial_key] = configured[legacy_key]
                 merged[final_key] = configured[legacy_key]
+        merged["lot_sizing_bounds"]["integer_variables"] = False
         return merged
 
     @staticmethod
@@ -200,7 +227,11 @@ class ParticleSwarmOptimization:
             if self._running_under_mpi():
                 return 1
             return max(1, min(8, os.cpu_count() or 1))
-        return max(1, int(configured))
+        requested = max(1, int(configured))
+        if self._running_under_mpi():
+            limit = Config.get_nested("solver", "threadsLimit", default=1)
+            requested = min(requested, int(limit) if limit is not None else 1)
+        return requested
 
     @staticmethod
     def _new_phase_times():
@@ -235,6 +266,8 @@ class ParticleSwarmOptimization:
             dtype=np.uint64,
         )
         self._seed_relaxed_base_position()
+        if self.initial_solution is not None:
+            self._encode_initial_solution()
         kernel_before = self.heuristic.kernel_seconds
         started_at = time.perf_counter()
         self.population_state = self.heuristic.build_population_state(self.positions)
@@ -243,6 +276,11 @@ class ParticleSwarmOptimization:
         self._phase_times["kernel"] += kernel_elapsed
         self._phase_times["build"] += max(0.0, build_elapsed - kernel_elapsed)
         self._repair_invalid_particles(allow_resample=True)
+        if self.initial_solution is not None:
+            compact = compact_solution(self.problem, self.initial_solution)
+            compact["cost"] = self.heuristic.evaluate_compact_cost(compact)
+            seed_state = self.heuristic._state_from_solutions([compact])
+            self._copy_state_row(seed_state, 0, self.population_state, 0)
         self._initialize_bests()
         diversity = self._record_population_metrics(iteration=0)
         self.initialization_seconds = time.perf_counter() - initialization_started_at
@@ -257,6 +295,62 @@ class ParticleSwarmOptimization:
             f"vehicle_assignment_profiles={diversity['vehicle_assignment_profiles']} "
             f"q_full_profiles={diversity['q_full_profiles']}"
         )
+
+    def _encode_initial_solution(self):
+        report = validate_variables(self.problem, self.initial_solution)
+        if not report["feasible"]:
+            raise ValueError("Semente PSO inválida: " + "; ".join(report["violations"]))
+        pairs = (
+            ("X", "lower_bounds", "upper_bounds", 0),
+            (
+                "Q",
+                "lower_delivery_bounds",
+                "upper_delivery_bounds",
+                self.heuristic.dim_x,
+            ),
+        )
+        for name, lower_name, upper_name, offset in pairs:
+            values = np.asarray(self.initial_solution[name], dtype=float)
+            lower, upper = getattr(self.heuristic, lower_name), getattr(
+                self.heuristic, upper_name
+            )
+            if lower is None:
+                lower = np.zeros_like(values)
+                upper = (
+                    self.heuristic._production_upper_bounds.copy()
+                    if name == "X"
+                    else np.broadcast_to(
+                        self.heuristic._delivery_upper_bounds[:, None, :, :],
+                        values.shape,
+                    ).copy()
+                )
+            lower = np.minimum(lower, values)
+            upper = np.maximum(upper, values)
+            physical = (
+                np.minimum(
+                    self.heuristic._production_upper_bounds,
+                    np.divide(
+                        float(self.problem.B),
+                        np.asarray(self.problem.b_p, dtype=float),
+                        out=np.full(self.problem.p, np.inf),
+                        where=np.asarray(self.problem.b_p) > 0,
+                    )[:, None],
+                )
+                if name == "X"
+                else self.heuristic._delivery_upper_bounds[:, None, :, :]
+            )
+            if np.any(values > physical + 1e-6):
+                raise ValueError("Semente PSO excede bounds físicos de " + name)
+            upper = np.minimum(upper, physical)
+            setattr(self.heuristic, lower_name, lower)
+            setattr(self.heuristic, upper_name, upper)
+            span = upper - lower
+            ratio = np.divide(
+                values - lower, span, out=np.full_like(values, 0.5), where=span > 1e-12
+            )
+            ratio = np.clip(ratio, 1e-6, 1 - 1e-6)
+            genes = np.log(ratio / (1 - ratio)).ravel()
+            self.positions[0, offset : offset + len(genes)] = genes
 
     def _seed_relaxed_base_position(self):
         if self.relaxed_base is None or self.relaxed_bounds is None:
@@ -293,7 +387,12 @@ class ParticleSwarmOptimization:
                             gene = math.log(float(ratio) / float(1 - ratio))
                         index = self.heuristic.dim_x + np.ravel_multi_index(
                             (p, v, i, t),
-                            (self.problem.p, self.problem.v, self.problem.i, self.problem.t),
+                            (
+                                self.problem.p,
+                                self.problem.v,
+                                self.problem.i,
+                                self.problem.t,
+                            ),
                         )
                         self.positions[0, index] = gene
 
@@ -307,7 +406,9 @@ class ParticleSwarmOptimization:
             if replacement is None:
                 continue
             self.positions[index] = replacement["position"]
-            self._copy_state_row(replacement["state"], 0, self.population_state, int(index))
+            self._copy_state_row(
+                replacement["state"], 0, self.population_state, int(index)
+            )
 
     @staticmethod
     def _copy_state_row(source, source_index, destination, destination_index):
@@ -327,7 +428,9 @@ class ParticleSwarmOptimization:
             "q_full_fingerprints",
             "reused_previous",
         ):
-            getattr(destination, name)[destination_index] = getattr(source, name)[source_index]
+            getattr(destination, name)[destination_index] = getattr(source, name)[
+                source_index
+            ]
 
     def _resample_solution(self):
         for _ in range(int(self.pso_config["max_initial_resample_attempts"])):
@@ -391,8 +494,7 @@ class ParticleSwarmOptimization:
         population_size = len(self.positions)
         count = int(
             math.ceil(
-                float(self.pso_config["mutation_particle_rate"])
-                * population_size
+                float(self.pso_config["mutation_particle_rate"]) * population_size
             )
         )
         if count <= 0:
@@ -452,10 +554,7 @@ class ParticleSwarmOptimization:
             return
         population_size = len(self.positions)
         count = int(
-            math.ceil(
-                float(self.pso_config["reinitialize_fraction"])
-                * population_size
-            )
+            math.ceil(float(self.pso_config["reinitialize_fraction"]) * population_size)
         )
         elite = self._elite_indices()
         worst_first = np.argsort(self.personal_best_costs)[::-1]
@@ -491,7 +590,10 @@ class ParticleSwarmOptimization:
             else self.positions
         )
         velocity_limit = float(self.pso_config["velocity_limit"])
-        if self.pso_config["execution_backend"] == "numba" and self._random_states is not None:
+        if (
+            self.pso_config["execution_backend"] == "numba"
+            and self._random_states is not None
+        ):
             update_swarm_kernel(
                 self.positions,
                 self.velocities,
@@ -511,7 +613,9 @@ class ParticleSwarmOptimization:
                 + cognitive * r1 * (self.personal_best_positions - self.positions)
                 + social * r2 * (social_target - self.positions)
             )
-            np.clip(self.velocities, -velocity_limit, velocity_limit, out=self.velocities)
+            np.clip(
+                self.velocities, -velocity_limit, velocity_limit, out=self.velocities
+            )
             self.positions = self.positions + self.velocities
         self._mutate_non_elites(iteration)
         self._reinitialize_if_stagnant()
@@ -545,8 +649,7 @@ class ParticleSwarmOptimization:
             1,
             int(
                 math.ceil(
-                    float(self.pso_config["audit_fraction"])
-                    * len(feasible_indices)
+                    float(self.pso_config["audit_fraction"]) * len(feasible_indices)
                 )
             ),
         )
@@ -572,7 +675,9 @@ class ParticleSwarmOptimization:
         self._invalid_before_repair.append(len(invalid_indices))
         for index in invalid_indices:
             if previous_state is not None and previous_state.feasible[index]:
-                self._copy_state_row(previous_state, int(index), candidate_state, int(index))
+                self._copy_state_row(
+                    previous_state, int(index), candidate_state, int(index)
+                )
                 candidate_state.reused_previous[index] = True
                 self.positions[index] -= self.velocities[index]
                 self.velocities[index] = 0
@@ -590,12 +695,17 @@ class ParticleSwarmOptimization:
         )
         improved_personal = costs < self.personal_best_costs
         self.personal_best_costs[improved_personal] = costs[improved_personal]
-        self.personal_best_positions[improved_personal] = self.positions[improved_personal]
+        self.personal_best_positions[improved_personal] = self.positions[
+            improved_personal
+        ]
 
         improved = False
         for best_index in np.argsort(self.personal_best_costs):
             candidate_cost = float(self.personal_best_costs[best_index])
-            if not np.isfinite(candidate_cost) or candidate_cost >= self.global_best_cost:
+            if (
+                not np.isfinite(candidate_cost)
+                or candidate_cost >= self.global_best_cost
+            ):
                 break
             if (
                 self.population_state.feasible[best_index]
@@ -623,9 +733,7 @@ class ParticleSwarmOptimization:
 
     def _population_diversity(self):
         feasible_indices = np.flatnonzero(self.population_state.feasible)
-        x_profiles = np.unique(
-            self.population_state.x_fingerprints[feasible_indices]
-        )
+        x_profiles = np.unique(self.population_state.x_fingerprints[feasible_indices])
         q_quantity_profiles = np.unique(
             self.population_state.q_quantity_fingerprints[feasible_indices]
         )
@@ -659,9 +767,7 @@ class ParticleSwarmOptimization:
 
     def _record_population_metrics(self, iteration):
         started_at = time.perf_counter()
-        adapter_delta = (
-            self.heuristic.adapter_seconds - self._adapter_seconds_accounted
-        )
+        adapter_delta = self.heuristic.adapter_seconds - self._adapter_seconds_accounted
         self._phase_times["adapter"] += max(0.0, adapter_delta)
         self._adapter_seconds_accounted = self.heuristic.adapter_seconds
         metrics = {
@@ -703,8 +809,7 @@ class ParticleSwarmOptimization:
             metrics["q_profiles"] for metrics in self._population_history
         )
         minimum_q_quantity_profiles = min(
-            metrics["q_quantity_profiles"]
-            for metrics in self._population_history
+            metrics["q_quantity_profiles"] for metrics in self._population_history
         )
         minimum_vehicle_assignment_profiles = min(
             metrics["vehicle_assignment_profiles"]
@@ -768,9 +873,7 @@ class ParticleSwarmOptimization:
             if any(old != new for old, new in old_to_new.items()):
                 changed_periods += 1
 
-            canonical["route_plan"].append(
-                [list(routes[old]) for old in order]
-            )
+            canonical["route_plan"].append([list(routes[old]) for old in order])
             canonical["assignments"].append(
                 {
                     customer: old_to_new[vehicle]
@@ -836,10 +939,21 @@ class ParticleSwarmOptimization:
         self.solverGurobi.solver(timeLimit=timeLimit, numThreads=numThreads)
 
     def solver(self, numThreads=None, timeLimit=None):
+        if numThreads is not None and self.pso_config["execution_backend"] == "numba":
+            from numba import set_num_threads
+
+            set_num_threads(min(self.parallel_workers, max(1, int(numThreads))))
         started_at = time.perf_counter()
         self._initialize_swarm()
 
+        limit = self.pso_config.get("time_limit")
+        deadline = started_at + float(limit) if limit is not None else None
         for iteration in range(int(self.pso_config["max_iterations"])):
+            if deadline is not None and time.perf_counter() >= deadline:
+                self.stopped_by_time_limit = True
+                break
+            if self.global_best_solution is None:
+                break
             iteration_number = iteration + 1
             self._current_iteration = iteration_number
             self._phase_times = self._new_phase_times()
@@ -847,9 +961,7 @@ class ParticleSwarmOptimization:
             self._update_positions(iteration=iteration_number)
             self._evaluate_swarm(iteration=iteration_number)
             diversity = self._record_population_metrics(iteration=iteration_number)
-            diversity["elapsed_seconds"] = (
-                time.perf_counter() - iteration_started_at
-            )
+            diversity["elapsed_seconds"] = time.perf_counter() - iteration_started_at
             self.log.debug(
                 f"PSO iteration={iteration_number} "
                 f"best_cost={self.global_best_cost} "
@@ -902,17 +1014,30 @@ class ParticleSwarmOptimization:
         )
 
     def get_telemetry(self):
-        if self.solverGurobi is not None and hasattr(self.solverGurobi, "get_telemetry"):
-            exact = self.solverGurobi.get_telemetry()
+        if self.solverGurobi is not None and hasattr(
+            self.solverGurobi, "get_telemetry"
+        ):
+            exact = dict(self.solverGurobi.get_telemetry())
             pso_elapsed = float(self.pso_hot_elapsed_seconds)
             events = []
             if self._pso_first_feasible_seconds is not None:
-                events.append({"event": "first_feasible", "elapsed_seconds": self.bounds_seconds + self._pso_first_feasible_seconds, "source": "pso"})
+                events.append(
+                    {
+                        "event": "first_feasible",
+                        "elapsed_seconds": self.bounds_seconds
+                        + self._pso_first_feasible_seconds,
+                        "source": "pso",
+                    }
+                )
             for event in exact.get("mip_events", []):
                 item = dict(event)
                 item["elapsed_seconds"] = pso_elapsed + float(item["elapsed_seconds"])
                 events.append(item)
-            first = (self.bounds_seconds + self._pso_first_feasible_seconds if self._pso_first_feasible_seconds is not None else None)
+            first = (
+                self.bounds_seconds + self._pso_first_feasible_seconds
+                if self._pso_first_feasible_seconds is not None
+                else None
+            )
             exact_first = exact.get("first_feasible_seconds")
             if exact_first is not None:
                 exact_first += pso_elapsed
@@ -920,40 +1045,109 @@ class ParticleSwarmOptimization:
             gap_target = exact.get("gap_target_seconds")
             if gap_target is not None:
                 gap_target += pso_elapsed
-            return {**exact, "strategy": "pso_mip_start", "pso_hot_seconds": pso_elapsed,
-                    "pso_cold_seconds": float(self.pso_cold_elapsed_seconds),
-                    "bounds_seconds": float(self.bounds_seconds), "jit_warmup_seconds": float(self.jit_warmup_seconds),
-                    "initialization_seconds": float(self.initialization_seconds),
-                    "first_feasible_seconds": first, "gap_target_seconds": gap_target,
-                    "mip_events": events, "pso_iterations": list(self._population_history)}
-        return {"strategy": "pso_standalone", "mip_seconds": 0.0, "status": "heuristic_complete",
-                "timed_out": False, "objective": self.global_best_cost, "best_bound": None,
-                "relative_gap": None, "node_count": 0, "solution_count": self.solCount,
-                "first_feasible_seconds": (self.bounds_seconds + self._pso_first_feasible_seconds if self._pso_first_feasible_seconds is not None else None),
-                "gap_target_seconds": None,
-                "mip_events": ([{"event": "first_feasible", "elapsed_seconds": self.bounds_seconds + self._pso_first_feasible_seconds, "source": "pso"}] if self._pso_first_feasible_seconds is not None else []),
-                "pso_hot_seconds": float(self.pso_hot_elapsed_seconds), "pso_cold_seconds": float(self.pso_cold_elapsed_seconds),
-                "bounds_seconds": float(self.bounds_seconds), "jit_warmup_seconds": float(self.jit_warmup_seconds),
-                "initialization_seconds": float(self.initialization_seconds), "pso_iterations": list(self._population_history)}
+            selected = "exact" if self._selected_exact_result is not False else "pso"
+            if selected == "pso":
+                exact.update(
+                    exact_status=exact.get("status"),
+                    status=(
+                        "heuristic_complete"
+                        if self.global_best_solution is not None
+                        else "no_solution"
+                    ),
+                    objective=self.global_best_cost,
+                    best_bound=None,
+                    root_bound=None,
+                    relative_gap=None,
+                    solution_count=int(self.global_best_solution is not None),
+                )
+                gap_target = None
+            return {
+                **exact,
+                "strategy": "pso_mip_start",
+                "selected_solution": selected,
+                "timed_out": bool(exact.get("timed_out")) or self.stopped_by_time_limit,
+                "pso_hot_seconds": pso_elapsed,
+                "pso_cold_seconds": float(self.pso_cold_elapsed_seconds),
+                "bounds_seconds": float(self.bounds_seconds),
+                "jit_warmup_seconds": float(self.jit_warmup_seconds),
+                "initialization_seconds": float(self.initialization_seconds),
+                "first_feasible_seconds": first,
+                "gap_target_seconds": gap_target,
+                "mip_events": events,
+                "pso_iterations": list(self._population_history),
+            }
+        return {
+            "strategy": "pso_standalone",
+            "mip_seconds": 0.0,
+            "status": "heuristic_complete",
+            "timed_out": self.stopped_by_time_limit,
+            "objective": self.global_best_cost,
+            "best_bound": None,
+            "relative_gap": None,
+            "node_count": 0,
+            "solution_count": self.solCount,
+            "first_feasible_seconds": (
+                self.bounds_seconds + self._pso_first_feasible_seconds
+                if self._pso_first_feasible_seconds is not None
+                else None
+            ),
+            "gap_target_seconds": None,
+            "mip_events": (
+                [
+                    {
+                        "event": "first_feasible",
+                        "elapsed_seconds": self.bounds_seconds
+                        + self._pso_first_feasible_seconds,
+                        "source": "pso",
+                    }
+                ]
+                if self._pso_first_feasible_seconds is not None
+                else []
+            ),
+            "pso_hot_seconds": float(self.pso_hot_elapsed_seconds),
+            "pso_cold_seconds": float(self.pso_cold_elapsed_seconds),
+            "bounds_seconds": float(self.bounds_seconds),
+            "jit_warmup_seconds": float(self.jit_warmup_seconds),
+            "initialization_seconds": float(self.initialization_seconds),
+            "pso_iterations": list(self._population_history),
+        }
 
     def getResults(self):
+        self._selected_exact_result = False
         standalone = bool(self.pso_config["return_heuristic_result_without_cplex"])
         use_as_mip_start = bool(self.pso_config["use_as_mip_start"])
         if self.solverGurobi is not None and not standalone and use_as_mip_start:
-            return self.solverGurobi.getResults()
+            result = self.solverGurobi.getResults()
+            if result[11]:
+                candidate = result_variables(self.problem, result)
+                report = validate_variables(self.problem, candidate)
+                if report["feasible"] and (
+                    self.global_best_solution is None
+                    or evaluate_configured_objective(
+                        self.problem, candidate, self.objective_config
+                    )
+                    <= self.global_best_cost + 1e-8
+                ):
+                    self._selected_exact_result = True
+                    return result
+            # A missing or worse exact incumbent cannot erase the PSO best.
 
         if self.global_best_solution is None:
             variables = empty_solution(self.problem)
             objective_value = float("inf")
         else:
             variables = self._materialized_global_best()
-            objective_value = evaluate_solution_cost(self.problem, variables)
+            objective_value = evaluate_configured_objective(
+                self.problem, variables, self.objective_config
+            )
 
         return build_results_from_variables(
             self.problem,
             variables,
             objective_value,
             self.time,
+            config=self.objective_config,
+            solution_count=int(self.global_best_solution is not None),
         )
 
     def terminate(self):

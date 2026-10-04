@@ -13,11 +13,6 @@ def _sigmoid(value):
 
 
 @njit(cache=True, inline="always")
-def _round_int(value):
-    return int(round(value))
-
-
-@njit(cache=True, inline="always")
 def _next_random(state):
     state ^= state >> np.uint64(12)
     state ^= state << np.uint64(25)
@@ -46,9 +41,7 @@ def update_swarm_kernel(
             position = positions[particle, gene]
             velocity = (
                 inertia * velocities[particle, gene]
-                + cognitive
-                * r1
-                * (personal_best_positions[particle, gene] - position)
+                + cognitive * r1 * (personal_best_positions[particle, gene] - position)
                 + social * r2 * (global_best_position[gene] - position)
             )
             if velocity > velocity_limit:
@@ -91,10 +84,10 @@ def build_population_kernel(
     customer_count = location_count - 1
     dim_x = product_count * period_count
 
-    x_all = np.zeros((population_size, product_count, period_count), dtype=np.int64)
-    y_all = np.zeros((population_size, product_count, period_count), dtype=np.int64)
+    x_all = np.zeros((population_size, product_count, period_count), dtype=np.float64)
+    y_all = np.zeros((population_size, product_count, period_count), dtype=np.int8)
     i_all = np.zeros(
-        (population_size, product_count, location_count, period_count), dtype=np.int64
+        (population_size, product_count, location_count, period_count), dtype=np.float64
     )
     q_all = np.zeros(
         (
@@ -104,7 +97,7 @@ def build_population_kernel(
             location_count,
             period_count,
         ),
-        dtype=np.int64,
+        dtype=np.float64,
     )
     assignments_all = np.full(
         (population_size, period_count, location_count), -1, dtype=np.int16
@@ -127,14 +120,17 @@ def build_population_kernel(
         feasible = True
 
         for period in range(period_count):
-            deficits = np.zeros((product_count, location_count), dtype=np.int64)
-            production = np.zeros(product_count, dtype=np.int64)
-            deliveries = np.zeros((product_count, location_count), dtype=np.int64)
+            deficits = np.zeros((product_count, location_count), dtype=np.float64)
+            production = np.zeros(product_count, dtype=np.float64)
+            deliveries = np.zeros((product_count, location_count), dtype=np.float64)
 
             for product in range(product_count):
                 total_deficit = 0
                 for customer in range(1, location_count):
-                    value = demand[product, customer - 1, period] - previous_inventory[product, customer]
+                    value = (
+                        demand[product, customer - 1, period]
+                        - previous_inventory[product, customer]
+                    )
                     if value < 0:
                         value = 0
                     deficits[product, customer] = value
@@ -145,10 +141,13 @@ def build_population_kernel(
                     required = 0
                 production[product] = required
                 if has_x_bounds:
-                    bound = int(math.ceil(lower_x[product, period]))
+                    bound = lower_x[product, period]
                     if bound > production[product]:
                         production[product] = bound
-                if production[product] > strengthened_production_upper[product, period]:
+                if (
+                    production[product]
+                    > strengthened_production_upper[product, period] + 1e-8
+                ):
                     feasible = False
                     break
 
@@ -158,7 +157,7 @@ def build_population_kernel(
             used_time = 0
             for product in range(product_count):
                 used_time += production_time[product] * production[product]
-            if used_time > production_capacity:
+            if used_time > production_capacity + 1e-8:
                 feasible = False
                 break
 
@@ -188,19 +187,18 @@ def build_population_kernel(
                 product = product_order[order_index]
                 if production_time[product] <= 0:
                     continue
-                max_extra = remaining_time // production_time[product]
-                strengthened_extra = int(
-                    strengthened_production_upper[product, period]
-                    - production[product]
+                max_extra = remaining_time / production_time[product]
+                strengthened_extra = float(
+                    strengthened_production_upper[product, period] - production[product]
                 )
                 if strengthened_extra < max_extra:
                     max_extra = strengthened_extra
-                if max_extra < 0:
+                if max_extra < -1e-8:
                     feasible = False
                     break
                 gene = positions[particle, product * period_count + period]
                 if has_x_bounds:
-                    decoded = _round_int(
+                    decoded = float(
                         lower_x[product, period]
                         + _sigmoid(gene)
                         * (upper_x[product, period] - lower_x[product, period])
@@ -211,11 +209,13 @@ def build_population_kernel(
                     if extra > max_extra:
                         extra = max_extra
                 else:
-                    storage_room = inventory_capacity[product, 0] - previous_inventory[product, 0]
+                    storage_room = (
+                        inventory_capacity[product, 0] - previous_inventory[product, 0]
+                    )
                     if storage_room < 0:
                         storage_room = 0
                     high = min(storage_room, max_extra)
-                    extra = _round_int(_sigmoid(gene) * high)
+                    extra = float(_sigmoid(gene) * high)
                 production[product] += extra
                 remaining_time -= production_time[product] * extra
 
@@ -227,14 +227,14 @@ def build_population_kernel(
                 break
 
             customer_order = np.zeros(customer_count, dtype=np.int64)
-            customer_load = np.zeros(location_count, dtype=np.int64)
+            customer_load = np.zeros(location_count, dtype=np.float64)
             active_count = 0
             for customer in range(1, location_count):
                 total = 0
                 for product in range(product_count):
                     total += deliveries[product, customer]
                 customer_load[customer] = total
-                if total > vehicle_capacity:
+                if total > vehicle_capacity + 1e-8:
                     feasible = False
                     break
                 if total > 0:
@@ -259,7 +259,9 @@ def build_population_kernel(
                     customer_order[best] = temp
 
             assignments = np.full(location_count, -1, dtype=np.int16)
-            remaining_vehicle = np.full(vehicle_count, vehicle_capacity, dtype=np.int64)
+            remaining_vehicle = np.full(
+                vehicle_count, vehicle_capacity, dtype=np.float64
+            )
             for customer_index in range(active_count):
                 customer = customer_order[customer_index]
                 total = customer_load[customer]
@@ -267,13 +269,16 @@ def build_population_kernel(
                 selected_remainder = 0
                 selected_preference = 0.0
                 for vehicle in range(vehicle_count):
-                    if remaining_vehicle[vehicle] < total:
+                    if remaining_vehicle[vehicle] + 1e-8 < total:
                         continue
                     remainder = remaining_vehicle[vehicle] - total
                     preference = 0.0
                     for product in range(product_count):
                         q_index = dim_x + (
-                            ((product * vehicle_count + vehicle) * location_count + customer)
+                            (
+                                (product * vehicle_count + vehicle) * location_count
+                                + customer
+                            )
                             * period_count
                             + period
                         )
@@ -304,8 +309,8 @@ def build_population_kernel(
             if not feasible:
                 break
 
-            excess = np.zeros(product_count, dtype=np.int64)
-            headroom_total = np.zeros(product_count, dtype=np.int64)
+            excess = np.zeros(product_count, dtype=np.float64)
+            headroom_total = np.zeros(product_count, dtype=np.float64)
             for product in range(product_count):
                 mandatory = 0
                 room_total = 0
@@ -319,8 +324,10 @@ def build_population_kernel(
                     room = inventory_capacity[product, customer] - customer_inventory
                     if room > 0:
                         room_total += room
-                remaining_at_plant = previous_inventory[product, 0] + production[product] - mandatory
-                if remaining_at_plant < 0:
+                remaining_at_plant = (
+                    previous_inventory[product, 0] + production[product] - mandatory
+                )
+                if remaining_at_plant < -1e-8:
                     feasible = False
                     break
                 excess[product] = remaining_at_plant - inventory_capacity[product, 0]
@@ -348,7 +355,7 @@ def build_population_kernel(
 
             for order_index in range(product_count):
                 product = drain_order[order_index]
-                while excess[product] > 0:
+                while excess[product] > 1e-8:
                     selected_customer = -1
                     selected_vehicle = -1
                     selected_available = 0
@@ -360,18 +367,25 @@ def build_population_kernel(
                             + deliveries[product, customer]
                             - demand[product, customer - 1, period]
                         )
-                        stock_room = inventory_capacity[product, customer] - customer_inventory
+                        stock_room = (
+                            inventory_capacity[product, customer] - customer_inventory
+                        )
                         if stock_room <= 0:
                             continue
                         first_vehicle = assignments[customer]
                         vehicle_start = 0 if first_vehicle < 0 else first_vehicle
-                        vehicle_end = vehicle_count if first_vehicle < 0 else first_vehicle + 1
+                        vehicle_end = (
+                            vehicle_count if first_vehicle < 0 else first_vehicle + 1
+                        )
                         for vehicle in range(vehicle_start, vehicle_end):
                             available = min(stock_room, remaining_vehicle[vehicle])
                             if available <= 0:
                                 continue
                             q_index = dim_x + (
-                                ((product * vehicle_count + vehicle) * location_count + customer)
+                                (
+                                    (product * vehicle_count + vehicle) * location_count
+                                    + customer
+                                )
                                 * period_count
                                 + period
                             )
@@ -380,17 +394,25 @@ def build_population_kernel(
                                 desired_value = 0.0
                                 for desired_vehicle in range(vehicle_count):
                                     desired_index = dim_x + (
-                                        ((product * vehicle_count + desired_vehicle) * location_count + customer)
+                                        (
+                                            (product * vehicle_count + desired_vehicle)
+                                            * location_count
+                                            + customer
+                                        )
                                         * period_count
                                         + period
                                     )
                                     desired_value += lower_q[
                                         product, desired_vehicle, customer, period
                                     ] + _sigmoid(positions[particle, desired_index]) * (
-                                        upper_q[product, desired_vehicle, customer, period]
-                                        - lower_q[product, desired_vehicle, customer, period]
+                                        upper_q[
+                                            product, desired_vehicle, customer, period
+                                        ]
+                                        - lower_q[
+                                            product, desired_vehicle, customer, period
+                                        ]
                                     )
-                                if _round_int(desired_value) > deliveries[product, customer]:
+                                if desired_value > deliveries[product, customer]:
                                     preference += 1.0
                             negative_capacity = -remaining_vehicle[vehicle]
                             if (
@@ -401,7 +423,8 @@ def build_population_kernel(
                                     and (
                                         negative_capacity > selected_negative_capacity
                                         or (
-                                            negative_capacity == selected_negative_capacity
+                                            negative_capacity
+                                            == selected_negative_capacity
                                             and (
                                                 customer > selected_customer
                                                 or (
@@ -410,7 +433,8 @@ def build_population_kernel(
                                                         vehicle > selected_vehicle
                                                         or (
                                                             vehicle == selected_vehicle
-                                                            and available > selected_available
+                                                            and available
+                                                            > selected_available
                                                         )
                                                     )
                                                 )
@@ -445,17 +469,22 @@ def build_population_kernel(
                 assignments_all[particle, period, customer] = vehicle
                 if vehicle >= 0:
                     for product in range(product_count):
-                        q_all[particle, product, vehicle, customer, period] = deliveries[
-                            product, customer
-                        ]
+                        q_all[particle, product, vehicle, customer, period] = (
+                            deliveries[product, customer]
+                        )
 
             for product in range(product_count):
                 delivered = 0
                 for customer in range(1, location_count):
                     delivered += deliveries[product, customer]
-                plant_inventory = previous_inventory[product, 0] + production[product] - delivered
+                plant_inventory = (
+                    previous_inventory[product, 0] + production[product] - delivered
+                )
                 i_all[particle, product, 0, period] = plant_inventory
-                if plant_inventory < 0 or plant_inventory > inventory_capacity[product, 0]:
+                if (
+                    plant_inventory < -1e-8
+                    or plant_inventory > inventory_capacity[product, 0] + 1e-8
+                ):
                     feasible = False
                     break
                 for customer in range(1, location_count):
@@ -465,7 +494,10 @@ def build_population_kernel(
                         - demand[product, customer - 1, period]
                     )
                     i_all[particle, product, customer, period] = inventory
-                    if inventory < 0 or inventory > inventory_capacity[product, customer]:
+                    if (
+                        inventory < -1e-8
+                        or inventory > inventory_capacity[product, customer] + 1e-8
+                    ):
                         feasible = False
                         break
                 if not feasible:
@@ -487,7 +519,10 @@ def build_population_kernel(
                         q_preference = 0.0
                         for product in range(product_count):
                             q_index = dim_x + (
-                                ((product * vehicle_count + vehicle) * location_count + customer)
+                                (
+                                    (product * vehicle_count + vehicle) * location_count
+                                    + customer
+                                )
                                 * period_count
                                 + period
                             )
@@ -512,9 +547,9 @@ def build_population_kernel(
                             selected_q_preference = q_preference
                     if selected_customer < 0:
                         break
-                    route_nodes_all[
-                        particle, period, vehicle, route_length
-                    ] = selected_customer
+                    route_nodes_all[particle, period, vehicle, route_length] = (
+                        selected_customer
+                    )
                     route_length += 1
                     visited[selected_customer] = 1
                     current = selected_customer
@@ -527,7 +562,9 @@ def build_population_kernel(
             for product in range(product_count):
                 for period in range(period_count):
                     total_cost += setup_cost[product] * y_all[particle, product, period]
-                    total_cost += production_cost[product] * x_all[particle, product, period]
+                    total_cost += (
+                        production_cost[product] * x_all[particle, product, period]
+                    )
                     for location in range(location_count):
                         total_cost += (
                             inventory_cost[product, location]
@@ -541,7 +578,9 @@ def build_population_kernel(
                     total_cost += fixed_vehicle_cost
                     previous = 0
                     for route_index in range(length):
-                        customer = route_nodes_all[particle, period, vehicle, route_index]
+                        customer = route_nodes_all[
+                            particle, period, vehicle, route_index
+                        ]
                         total_cost += distance[previous, customer]
                         previous = customer
                     total_cost += distance[previous, 0]
@@ -553,14 +592,19 @@ def build_population_kernel(
             prime = np.uint64(1099511628211)
             for period in range(period_count):
                 for product in range(product_count):
-                    x_hash = (x_hash ^ np.uint64(x_all[particle, product, period])) * prime
+                    x_hash = (
+                        x_hash
+                        ^ np.uint64(round(x_all[particle, product, period] * 1e6))
+                    ) * prime
                     for customer in range(1, location_count):
                         quantity = 0
                         for vehicle in range(vehicle_count):
                             value = q_all[particle, product, vehicle, customer, period]
                             quantity += value
-                            q_hash = (q_hash ^ np.uint64(value)) * prime
-                        quantity_hash = (quantity_hash ^ np.uint64(quantity)) * prime
+                            q_hash = (q_hash ^ np.uint64(round(value * 1e6))) * prime
+                        quantity_hash = (
+                            quantity_hash ^ np.uint64(round(quantity * 1e6))
+                        ) * prime
                 for customer in range(1, location_count):
                     assignment_hash = (
                         assignment_hash
@@ -595,3 +639,28 @@ def build_population_kernel(
         assignment_fingerprints,
         q_full_fingerprints,
     )
+
+
+@njit(cache=True, parallel=True)
+def population_components(
+    x, y, inventory, nodes, lengths, c, s, h, distance, fixed_cost
+):
+    components = np.zeros((x.shape[0], 5, x.shape[2]), dtype=np.float64)
+    for row in prange(x.shape[0]):
+        for t in range(x.shape[2]):
+            for p in range(x.shape[1]):
+                components[row, 0, t] += c[p] * x[row, p, t]
+                components[row, 1, t] += s[p] * y[row, p, t]
+                for i in range(inventory.shape[2]):
+                    components[row, 2, t] += h[p, i] * inventory[row, p, i, t]
+            for v in range(lengths.shape[2]):
+                length = lengths[row, t, v]
+                if length:
+                    components[row, 3, t] += fixed_cost
+                    previous = 0
+                    for k in range(length):
+                        customer = nodes[row, t, v, k]
+                        components[row, 4, t] += distance[previous, customer]
+                        previous = customer
+                    components[row, 4, t] += distance[previous, 0]
+    return components

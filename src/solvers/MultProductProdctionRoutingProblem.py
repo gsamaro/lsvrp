@@ -12,23 +12,28 @@
 import time
 
 import numpy as np
-from config import Config
 
 # Veja a Licença Pública Geral GNU para mais detalhes
 #################################################################################################
 from docplex.mp.model import Model
 from docplex.mp.relax_linear import LinearRelaxer
-from src.log.Logger import Logger
+
+from config import Config
 from src.helpers.SolverTelemetry import get_config
-from src.solvers.RoundedCapacitySeparation import (
-    build_obligatory_demands,
-    separate_cumulative_cuts,
-)
+from src.log.Logger import Logger
+from src.solvers._routing_common import ZeroArcDict, ordered_arcs
 from src.solvers._solver_common import (
     ProblemData,
+    adjusted_targets,
+    build_results_from_variables,
     compute_delivery_upper_bounds,
     compute_inventory_upper_bounds,
     compute_production_upper_bounds,
+    goal_start_values,
+)
+from src.solvers.RoundedCapacitySeparation import (
+    build_obligatory_demands,
+    separate_cumulative_cuts,
 )
 
 
@@ -43,7 +48,11 @@ class MultProductProdctionRoutingProblem:
         symmetry_breaking_hc1=None,
         coelho_inequalities=None,
         positive_only_deviations=None,
+        routing_profile=None,
+        fixed_plan=None,
+        transport_objective=False,
     ):
+        self.data = map
         self.log: Logger = log
         self.log.debug(">> Iniciando MultProductProdctionRoutingProblem.")
         self.model = Model(name="Multi_Product_Prodction_Routing_Problem")
@@ -90,6 +99,40 @@ class MultProductProdctionRoutingProblem:
         self.nodeCount = 0
         self.nodesRemaining = 0
         self.start = start
+        self.routing_profile = routing_profile
+        self.fixed_plan = fixed_plan
+        self.transport_objective = transport_objective
+        self._relaxation_replaced = False
+        all_arcs = tuple((i, k) for i in range(self.i) for k in range(self.k) if i != k)
+        base_arcs = (
+            ordered_arcs(routing_profile["order"])
+            if routing_profile and routing_profile["mode"] == "ordered"
+            else all_arcs
+        )
+        self.arcs_by_period = {}
+        for t in range(self.t):
+            active = set(range(self.i))
+            if fixed_plan is not None:
+                active = {
+                    0,
+                    *(
+                        i
+                        for i in range(1, self.i)
+                        if fixed_plan["delivery_totals"][:, i, t].sum() > 0
+                    ),
+                }
+            self.arcs_by_period[t] = tuple(
+                (i, k) for i, k in base_arcs if i in active and k in active
+            )
+        self.outgoing, self.incoming = {}, {}
+        for t, arcs in self.arcs_by_period.items():
+            outgoing = {i: [] for i in range(self.i)}
+            incoming = {i: [] for i in range(self.i)}
+            for i, k in arcs:
+                outgoing[i].append(k)
+                incoming[k].append(i)
+            self.outgoing[t] = {i: tuple(nodes) for i, nodes in outgoing.items()}
+            self.incoming[t] = {i: tuple(nodes) for i, nodes in incoming.items()}
         self.symmetry_breaking_hc1 = symmetry_breaking_hc1
         self.coelho_inequalities = coelho_inequalities
         if positive_only_deviations is None:
@@ -125,9 +168,10 @@ class MultProductProdctionRoutingProblem:
         self._last_bound_progress_value = None
         self._first_feasible_seconds = None
         self._gap_target_seconds = None
-        self.rounded_capacity_config = Config.get_nested(
-            "solver", "rounded_capacity_inequalities", default={}
-        ) or {}
+        self.rounded_capacity_config = (
+            Config.get_nested("solver", "rounded_capacity_inequalities", default={})
+            or {}
+        )
         self._rounded_capacity_z_indices = []
         self._rounded_capacity_cut_rows = {}
         self._rounded_capacity_obligatory_demands = None
@@ -147,96 +191,125 @@ class MultProductProdctionRoutingProblem:
         self.log.debug(">> Finalizado MultProductProdctionRoutingProblem.")
 
     def createDecisionVariables(self):
-        self.log.debug(">> Iniciando createDecisionVariables.")
-        for p in range(self.p):
-            for t in range(self.t):
-                self.model.X_p_t[p, t] = self.model.continuous_var(lb=0, name=f"X_{p}_{t}")
-                self.model.Y_p_t[p, t] = self.model.binary_var(name=f"Y_{p}_{t}")
-            for i in range(self.i):
-                for t in range(self.t):
-                    self.model.I_p_i_t[p, i, t] = self.model.continuous_var(
-                        lb=0, name=f"I_{p}_{i}_{t}"
-                    )
-            for v in range(self.v):
-                for i in range(self.i):
-                    for k in range(self.k):
-                        if i == k:
-                            continue
-                        for t in range(self.t):
-                            self.model.R_p_v_i_k_t[p, v, i, k, t] = (
-                                self.model.continuous_var(
-                                    lb=0, name=f"R_{p}_{v}_{i}_{k}_{t}"
-                                )
-                            )
-                for i in range(self.i):
-                    for t in range(self.t):
-                        self.model.Q_p_v_i_t[p, v, i, t] = self.model.continuous_var(
-                            lb=0, name=f"Q_{p}_{v}_{i}_{t}"
-                        )
-        for v in range(self.v):
-            for i in range(self.i):
-                for k in range(self.k):
-                    if i == k:
-                        continue
-                    for t in range(self.t):
-                        self.model.Z_v_i_k_t[v, i, k, t] = self.model.binary_var(
-                            name=f"Z_{v}_{i}_{k}_{t}"
-                        )
-        self.positive = self.model.continuous_var_dict(
-            keys=((j, t) for j in range(self.j) for t in range(self.t)), name=f"p"
+        self.model.X_p_t = self.model.continuous_var_dict(
+            ((p, t) for p in range(self.p) for t in range(self.t)), lb=0, name="X"
         )
-        self.negative = None
-        if not self.positive_only_deviations:
-            self.negative = self.model.continuous_var_dict(
-                keys=((j, t) for j in range(self.j) for t in range(self.t)), name=f"n"
+        self.model.Y_p_t = self.model.binary_var_dict(
+            ((p, t) for p in range(self.p) for t in range(self.t)), name="Y"
+        )
+        self.model.I_p_i_t = self.model.continuous_var_dict(
+            (
+                (p, i, t)
+                for p in range(self.p)
+                for i in range(self.i)
+                for t in range(self.t)
+            ),
+            lb=0,
+            name="I",
+        )
+        self.model.Q_p_v_i_t = ZeroArcDict(
+            self.model.continuous_var_dict(
+                (
+                    (p, v, i, t)
+                    for p in range(self.p)
+                    for v in range(self.v)
+                    for i in range(1, self.i)
+                    for t in range(self.t)
+                ),
+                lb=0,
+                name="Q",
             )
+        )
+        self.model.R_p_v_i_k_t = ZeroArcDict(
+            self.model.continuous_var_dict(
+                (
+                    (p, v, i, k, t)
+                    for p in range(self.p)
+                    for v in range(self.v)
+                    for t in range(self.t)
+                    for i, k in self.arcs_by_period[t]
+                ),
+                lb=0,
+                name="R",
+            )
+        )
+        keys = [
+            (v, i, k, t)
+            for v in range(self.v)
+            for t in range(self.t)
+            for i, k in self.arcs_by_period[t]
+        ]
+        if self.routing_profile and self.routing_profile["mode"] == "ordered":
+            z = self.model.continuous_var_dict(keys, lb=0, ub=1, name="Z")
+        else:
+            z = self.model.binary_var_dict(keys, name="Z")
+        self.model.Z_v_i_k_t = ZeroArcDict(z)
+        self.eta = (
+            self.model.binary_var_dict(
+                (
+                    (v, i, t)
+                    for v in range(self.v)
+                    for i in range(self.i)
+                    for t in range(self.t)
+                ),
+                name="eta",
+            )
+            if self.routing_profile
+            else {}
+        )
+        self.positive = self.model.continuous_var_dict(
+            ((j, t) for j in range(self.j) for t in range(self.t)), name="p"
+        )
+        self.negative = (
+            None
+            if self.positive_only_deviations
+            else self.model.continuous_var_dict(
+                ((j, t) for j in range(self.j) for t in range(self.t)), name="n"
+            )
+        )
         self.lambda_ = self.model.continuous_var(name="lambda")
 
     def startVariables(self):
+        values = self.start["variables"]
         warm_start = self.model.new_solution()
-        for p in range(self.p):
-            for t in range(self.t):
+        for name, mapping in (
+            ("X", self.model.X_p_t),
+            ("Y", self.model.Y_p_t),
+            ("I", self.model.I_p_i_t),
+            ("Q", self.model.Q_p_v_i_t),
+            ("R", self.model.R_p_v_i_k_t),
+            ("Z", self.model.Z_v_i_k_t),
+            ("eta", self.eta),
+        ):
+            if name not in values:
+                continue
+            source = (
+                values[name]
+                if isinstance(values[name], dict)
+                else np.asarray(values[name])
+            )
+            for key, variable in mapping.items():
                 warm_start.add_var_value(
-                    self.model.X_p_t[p, t], float(self.start["variables"]["X"][p][t])
+                    variable,
+                    float(
+                        source.get(key, 0) if isinstance(source, dict) else source[key]
+                    ),
                 )
-                warm_start.add_var_value(
-                    self.model.Y_p_t[p, t], float(self.start["variables"]["Y"][p][t])
-                )
-            for i in range(self.i):
-                for t in range(self.t):
-                    warm_start.add_var_value(
-                        self.model.I_p_i_t[p, i, t],
-                        float(self.start["variables"]["I"][p][i][t]),
-                    )
-            for v in range(self.v):
-                for i in range(self.i):
-                    for k in range(self.k):
-                        if i == k:
-                            continue
-                        for t in range(self.t):
-                            warm_start.add_var_value(
-                                self.model.R_p_v_i_k_t[p, v, i, k, t],
-                                float(self.start["variables"]["R"][p][v][i][k][t]),
-                            )
-                for i in range(self.i):
-                    for t in range(self.t):
-                        warm_start.add_var_value(
-                            self.model.Q_p_v_i_t[p, v, i, t],
-                            float(self.start["variables"]["Q"][p][v][i][t]),
-                        )
-        for v in range(self.v):
-            for i in range(self.i):
-                for k in range(self.k):
-                    if i == k:
-                        continue
-                    for t in range(self.t):
-                        warm_start.add_var_value(
-                            self.model.Z_v_i_k_t[v, i, k, t],
-                            float(self.start["variables"]["Z"][v][i][k][t]),
-                        )
-        self.model.add_mip_start(warm_start)
+        if Config.get_nested("solver", "multiobjective", default=False):
+            positive, negative, limit = goal_start_values(
+                ProblemData.from_map(self.data), values
+            )
+            for key, variable in self.positive.items():
+                warm_start.add_var_value(variable, float(positive[key]))
+            for key, variable in (self.negative or {}).items():
+                warm_start.add_var_value(variable, float(negative[key]))
+            warm_start.add_var_value(self.lambda_, limit)
+        from docplex.mp.constants import WriteLevel
+
+        self.model.add_mip_start(warm_start, write_level=WriteLevel.AllVars)
 
     def _adjust_targets(self):
+        adjusted_targets(self.targets, self.t)
         self.new_targets = {}
         for t in range(self.t):
             self.new_targets[t] = self.targets[t].copy()
@@ -285,7 +358,7 @@ class MultProductProdctionRoutingProblem:
             self.model.sum(
                 self.f * self.model.Z_v_i_k_t[v, 0, k, t]
                 for v in range(self.v)
-                for k in range(1, self.k)
+                for k in self.outgoing[t][0]
             )
             for t in range(self.t)
         ]
@@ -295,9 +368,7 @@ class MultProductProdctionRoutingProblem:
             self.model.sum(
                 self.a_i_k[i][k] * self.model.Z_v_i_k_t[v, i, k, t]
                 for v in range(self.v)
-                for i in range(self.i)
-                for k in range(self.k)
-                if i != k
+                for i, k in self.arcs_by_period[t]
             )
             for t in range(self.t)
         ]
@@ -310,7 +381,11 @@ class MultProductProdctionRoutingProblem:
             + self.weight[3] * sum(self.f4)
             + self.weight[4] * sum(self.f5)
         )
-        if Config.get_nested("postprocessing", "build_target"):
+        if self.transport_objective:
+            if Config.get_nested("solver", "multiobjective", default=False):
+                self._adjust_targets()
+            self.model.minimize(self.model.sum(self.f4) + self.model.sum(self.f5))
+        elif Config.get_nested("postprocessing", "build_target"):
             self.log.debug(">> FO build_target.")
             self.model.minimize(objExpr)
         else:
@@ -320,7 +395,7 @@ class MultProductProdctionRoutingProblem:
                 self.model.minimize(
                     self.alpha * self.lambda_
                     + self.model.sum(
-                        + (1 - self.alpha)
+                        +(1 - self.alpha)
                         * (self.weight[0] * self.positive[0, t])
                         / self.new_targets[t]["f1_target"]
                         + (1 - self.alpha)
@@ -420,20 +495,18 @@ class MultProductProdctionRoutingProblem:
     def createVehiclePreventTransshipmentIntermediateNodes(self):
         for p in range(self.p):
             for v in range(self.v):
-                for k in range(1, self.k):
-                    for t in range(self.t):
-                        r7_a = self.model.sum(
+                for t in range(self.t):
+                    for k in range(1, self.i):
+                        incoming = self.model.sum(
                             self.model.R_p_v_i_k_t[p, v, i, k, t]
-                            for i in range(self.i)
-                            if k != i
+                            for i in self.incoming[t][k]
                         )
-                        r7_b = self.model.sum(
-                            self.model.R_p_v_i_k_t[p, v, k, l, t]
-                            for l in range(self.i)
-                            if k != l
+                        outgoing = self.model.sum(
+                            self.model.R_p_v_i_k_t[p, v, k, j, t]
+                            for j in self.outgoing[t][k]
                         )
                         self.model.add_constraint(
-                            r7_a - r7_b == self.model.Q_p_v_i_t[p, v, k, t],
+                            incoming - outgoing == self.model.Q_p_v_i_t[p, v, k, t],
                             ctname=f"EQ_7_p_{p}_v_{v}_k_{k}_t_{t}",
                         )
 
@@ -461,25 +534,20 @@ class MultProductProdctionRoutingProblem:
 
     def createVehicleLoadCapacityDelimited(self):
         for v in range(self.v):
-            for i in range(self.i):
-                for k in range(self.k):
-                    for t in range(self.t):
-                        if i != k:
-                            r9 = self.model.sum(
-                                self.model.R_p_v_i_k_t[p, v, i, k, t]
-                                for p in range(self.p)
-                            )
-                            self.model.add_constraint(
-                                r9 <= self.C * self.model.Z_v_i_k_t[v, i, k, t],
-                                ctname=f"EQ_9_v_{v}_i_{i}_k_{k}_t_{t}",
-                            )
+            for t in range(self.t):
+                for i, k in self.arcs_by_period[t]:
+                    self.model.add_constraint(
+                        self.model.sum(
+                            self.model.R_p_v_i_k_t[p, v, i, k, t] for p in range(self.p)
+                        )
+                        <= self.C * self.model.Z_v_i_k_t[v, i, k, t],
+                        ctname=f"EQ_9_v_{v}_i_{i}_k_{k}_t_{t}",
+                    )
 
     def createImposeMostOneRouteEachVehicle(self):
         for v in range(self.v):
             for t in range(self.t):
-                r10 = self.model.sum(
-                    self.model.Z_v_i_k_t[v, 0, k, t] for k in range(1, self.k)
-                )
+                r10 = self._visit_expression(v, 0, t)
                 self.model.add_constraint(r10 <= 1, ctname=f"EQ_10_v_{v}_t_{t}")
 
     def createEnsureRoutesOnlyPlant(self):
@@ -515,15 +583,10 @@ class MultProductProdctionRoutingProblem:
         for v in range(self.v):
             for i in range(1, self.i):
                 for t in range(self.t):
-                    visit = self.model.sum(
-                        self.model.Z_v_i_k_t[v, i, k, t]
-                        for k in range(self.k)
-                        if k != i
-                    )
+                    visit = self._visit_expression(v, i, t)
                     self.model.add_constraint(
                         self.model.sum(
-                            self.model.Q_p_v_i_t[p, v, i, t]
-                            for p in range(self.p)
+                            self.model.Q_p_v_i_t[p, v, i, t] for p in range(self.p)
                         )
                         <= self.C * visit,
                         ctname=f"VISIT_CAP_Z_v_{v}_i_{i}_t_{t}",
@@ -531,8 +594,7 @@ class MultProductProdctionRoutingProblem:
                     for p in range(self.p):
                         q_upper = float(self.delivery_upper_bounds[p, i, t])
                         self.model.add_constraint(
-                            self.model.Q_p_v_i_t[p, v, i, t]
-                            <= q_upper * visit,
+                            self.model.Q_p_v_i_t[p, v, i, t] <= q_upper * visit,
                             ctname=f"VISIT_Q_Z_p_{p}_v_{v}_i_{i}_t_{t}",
                         )
         return True
@@ -554,17 +616,11 @@ class MultProductProdctionRoutingProblem:
 
         for v in range(self.v):
             for t in range(self.t):
-                vehicle_active = self.model.sum(
-                    self.model.Z_v_i_k_t[v, 0, k, t] for k in range(1, self.k)
-                )
+                vehicle_active = self._visit_expression(v, 0, t)
 
                 # Eq. (15): x_0i <= 2 y_i.
                 for i in range(1, self.i):
-                    customer_visit = self.model.sum(
-                        self.model.Z_v_i_k_t[v, i, k, t]
-                        for k in range(self.k)
-                        if k != i
-                    )
+                    customer_visit = self._visit_expression(v, i, t)
                     self.model.add_constraint(
                         self.model.Z_v_i_k_t[v, 0, i, t] <= 2 * customer_visit,
                         ctname=f"COELHO_15_v_{v}_i_{i}_t_{t}",
@@ -573,17 +629,9 @@ class MultProductProdctionRoutingProblem:
                 # Eq. (16): x_ij <= y_i.
                 for i in range(self.i):
                     origin_visit = (
-                        vehicle_active
-                        if i == 0
-                        else self.model.sum(
-                            self.model.Z_v_i_k_t[v, i, k, t]
-                            for k in range(self.k)
-                            if k != i
-                        )
+                        vehicle_active if i == 0 else self._visit_expression(v, i, t)
                     )
-                    for k in range(self.k):
-                        if i == k:
-                            continue
+                    for k in self.outgoing[t][i]:
                         self.model.add_constraint(
                             self.model.Z_v_i_k_t[v, i, k, t] <= origin_visit,
                             ctname=f"COELHO_16_v_{v}_i_{i}_k_{k}_t_{t}",
@@ -591,11 +639,7 @@ class MultProductProdctionRoutingProblem:
 
                 # Eq. (17): y_i <= y_0.
                 for i in range(1, self.i):
-                    customer_visit = self.model.sum(
-                        self.model.Z_v_i_k_t[v, i, k, t]
-                        for k in range(self.k)
-                        if k != i
-                    )
+                    customer_visit = self._visit_expression(v, i, t)
                     self.model.add_constraint(
                         customer_visit <= vehicle_active,
                         ctname=f"COELHO_17_v_{v}_i_{i}_t_{t}",
@@ -620,13 +664,8 @@ class MultProductProdctionRoutingProblem:
 
         for v in range(1, self.v):
             for t in range(self.t):
-                current_vehicle_active = self.model.sum(
-                    self.model.Z_v_i_k_t[v, 0, k, t] for k in range(1, self.k)
-                )
-                previous_vehicle_active = self.model.sum(
-                    self.model.Z_v_i_k_t[v - 1, 0, k, t]
-                    for k in range(1, self.k)
-                )
+                current_vehicle_active = self._visit_expression(v, 0, t)
+                previous_vehicle_active = self._visit_expression(v - 1, 0, t)
                 self.model.add_constraint(
                     current_vehicle_active <= previous_vehicle_active,
                     ctname=f"SB_VC_v_{v}_t_{t}",
@@ -634,16 +673,9 @@ class MultProductProdctionRoutingProblem:
 
             for i in range(1, self.i):
                 for t in range(self.t):
-                    current_vehicle_visit = self.model.sum(
-                        self.model.Z_v_i_k_t[v, i, k, t]
-                        for k in range(self.k)
-                        if k != i
-                    )
+                    current_vehicle_visit = self._visit_expression(v, i, t)
                     previous_vehicle_lower_customer_visit = self.model.sum(
-                        self.model.Z_v_i_k_t[v - 1, j, k, t]
-                        for j in range(1, i)
-                        for k in range(self.k)
-                        if k != j
+                        self._visit_expression(v - 1, j, t) for j in range(1, i)
                     )
                     self.model.add_constraint(
                         current_vehicle_visit <= previous_vehicle_lower_customer_visit,
@@ -654,17 +686,22 @@ class MultProductProdctionRoutingProblem:
     def createGoalProgrammingRestrictions(self):
         for t in range(self.t):
             objectives = self.f1, self.f2, self.f3, self.f4, self.f5
-            target_keys = "f1_target", "f2_target", "f3_target", "f4_target", "f5_target"
+            target_keys = (
+                "f1_target",
+                "f2_target",
+                "f3_target",
+                "f4_target",
+                "f5_target",
+            )
             if self.positive_only_deviations:
                 self.model.add_constraints(
-                    self.positive[j, t] >= objectives[j][t] - self.targets[t][target_keys[j]]
+                    self.positive[j, t]
+                    >= objectives[j][t] - self.targets[t][target_keys[j]]
                     for j in range(self.j)
                 )
             else:
                 self.model.add_constraints(
-                    objectives[j][t]
-                    + self.negative[j, t]
-                    - self.positive[j, t]
+                    objectives[j][t] + self.negative[j, t] - self.positive[j, t]
                     == self.targets[t][target_keys[j]]
                     for j in range(self.j)
                 )
@@ -690,148 +727,179 @@ class MultProductProdctionRoutingProblem:
         self.model.export_as_lp(f"{self.dir}modelo.lp")
 
     def getResults(self):
-        if self.solCount == 0:
-            return (
-                [],
-                [],
-                [],
-                [],
-                [],
-                [],
-                [],
-                0,
-                0,
-                self.time,
-                None,
-                self.solCount,
-                self.relaxedModelObjVal,
-                self.nodeCount,
-                self.objBound,
-                None,
+        config = {
+            "solver": {
+                "multiobjective": Config.get_nested(
+                    "solver", "multiobjective", default=False
+                )
+            }
+        }
+        values = self.get_variables() if self.solCount else None
+        if values is None:
+            return build_results_from_variables(
+                ProblemData.from_map(self.data), {}, 0, self.time, solution_count=0
             )
-
-        epsilon = None
-        try:
-            if Config.get_nested("solver", "multiobjective"):
-                epsilon = float(self.lambda_.solution_value)
-        except Exception:
-            epsilon = None
-
-        P = []
-        try:
-            for t in range(self.t):
-                p_t = []
-                for j in range(self.j):
-                    p_t.append(float(self.positive[j, t].solution_value))
-                P.append(p_t)
-        except Exception:
-            P = []
-
-        Z = []
-        for t in range(self.t):
-            v_list = []
-            for v in range(self.v):
-                i_list = []
-                for i in range(self.i):
-                    k_list = []
-                    for k in range(self.k):
-                        if i == k:
-                            k_list.append(0.0)
-                            continue
-                        variable = abs(
-                            self.model.get_var_by_name(
-                                f"Z_{v}_{i}_{k}_{t}"
-                            ).solution_value
-                        )
-                        k_list.append(variable)
-                    i_list.append(k_list)
-                v_list.append(i_list)
-            Z.append(v_list)
-        Y = []
-        for t in range(self.t):
-            p_list_y = []
-            for p in range(self.p):
-                variable = abs(self.model.get_var_by_name(f"Y_{p}_{t}").solution_value)
-                p_list_y.append(variable)
-            Y.append(p_list_y)
-
-        X = []
-        for t in range(self.t):
-            p_list_x = []
-            for p in range(self.p):
-                variable = self.model.get_var_by_name(f"X_{p}_{t}").solution_value
-                p_list_x.append(variable)
-            X.append(p_list_x)
-
-        I = []
-        for t in range(self.t):
-            p_list_i = []
-            for i in range(self.i):
-                i_list_i = []
-                for p in range(self.p):
-                    variable = self.model.get_var_by_name(
-                        f"I_{p}_{i}_{t}"
-                    ).solution_value
-                    i_list_i.append(variable)
-                p_list_i.append(i_list_i)
-            I.append(p_list_i)
-        R = []
-        for t in range(self.t):
-            t_list = []
-            for v in range(self.v):
-                v_list = []
-                for p in range(self.p):
-                    p_list = []
-                    for i in range(self.i):
-                        i_list = []
-                        for k in range(self.k):
-                            if i == k:
-                                i_list.append(0.0)
-                                continue
-                            i_list.append(
-                                float(
-                                    self.model.get_var_by_name(
-                                        f"R_{p}_{v}_{i}_{k}_{t}"
-                                    ).solution_value
-                                )
-                            )
-                        p_list.append(i_list)
-                    v_list.append(p_list)
-                t_list.append(v_list)
-            R.append(t_list)
-        Q = []
-        for t in range(self.t):
-            t_list = []
-            for v in range(self.v):
-                v_list = []
-                for p in range(self.p):
-                    p_list = []
-                    for i in range(self.i):
-                        variable = self.model.get_var_by_name(
-                            f"Q_{p}_{v}_{i}_{t}"
-                        ).solution_value
-                        p_list.append(variable)
-                    v_list.append(p_list)
-                t_list.append(v_list)
-            Q.append(t_list)
-        return (
-            Z,
-            X,
-            Y,
-            I,
-            R,
-            Q,
-            P,
-            self.model.objective_value,
-            self.model.solve_details.mip_relative_gap,
-            self.time,
-            epsilon,
-            self.solCount,
+        result = list(
+            build_results_from_variables(
+                ProblemData.from_map(self.data),
+                values,
+                float(self.model.objective_value),
+                self.time,
+                config=config,
+            )
+        )
+        result[8] = self.model.solve_details.mip_relative_gap
+        result[6] = [
+            [self.model.solution.get_value(self.positive[j, t]) for j in range(self.j)]
+            for t in range(self.t)
+        ]
+        result[10] = self.model.solution.get_value(self.lambda_)
+        if self._relaxation_replaced:
+            # Target generation still exports fractional arc/setup values.
+            result[0] = values["Z"].transpose(3, 0, 1, 2).tolist()
+            result[2] = values["Y"].T.tolist()
+        result[12:16] = [
             self.relaxedModelObjVal,
             self.nodeCount,
             self.objBound,
             getattr(self, "new_targets", None),
+        ]
+        return tuple(result)
+
+    def get_snapshot(self):
+        # Physical states are linear in nodes; sparse arc maps avoid R/Z tensors.
+        values = {
+            "X": np.zeros((self.p, self.t), dtype=float),
+            "Y": np.zeros((self.p, self.t), dtype=float),
+            "I": np.zeros((self.p, self.i, self.t), dtype=float),
+            "Q": np.zeros((self.p, self.v, self.i, self.t), dtype=float),
+        }
+        solution = self.model.solution
+        for name, mapping in (
+            ("X", self.model.X_p_t),
+            ("Y", self.model.Y_p_t),
+            ("I", self.model.I_p_i_t),
+            ("Q", self.model.Q_p_v_i_t),
+        ):
+            for key, variable in mapping.items():
+                values[name][key] = solution.get_value(variable)
+        for name, mapping in (
+            ("R", self.model.R_p_v_i_k_t),
+            ("Z", self.model.Z_v_i_k_t),
+        ):
+            values[name] = {}
+            for key, variable in mapping.items():
+                value = float(solution.get_value(variable))
+                if value != 0:
+                    values[name][key] = value
+        if self.eta:
+            values["eta"] = np.zeros((self.v, self.i, self.t), dtype=float)
+            for key, variable in self.eta.items():
+                values["eta"][key] = solution.get_value(variable)
+        return values
+
+    def get_variables(self):
+        from src.solvers._routing_common import materialize_snapshot
+
+        return materialize_snapshot(
+            ProblemData.from_map(self.data), self.get_snapshot()
         )
+
+    def get_auxiliary_variables(self):
+        if not self.solCount or not Config.get_nested(
+            "solver", "multiobjective", default=False
+        ):
+            return {}
+        auxiliary = {
+            "P": np.asarray(
+                [
+                    [
+                        self.model.solution.get_value(self.positive[j, t])
+                        for t in range(self.t)
+                    ]
+                    for j in range(5)
+                ]
+            ),
+            "lambda": np.asarray(self.model.solution.get_value(self.lambda_)),
+        }
+        if self.negative:
+            auxiliary["N"] = np.asarray(
+                [
+                    [
+                        self.model.solution.get_value(self.negative[j, t])
+                        for t in range(self.t)
+                    ]
+                    for j in range(5)
+                ]
+            )
+        return auxiliary
+
+    def _visit_expression(self, v, i, t):
+        return (
+            self.eta[v, i, t]
+            if self.eta
+            else self.model.sum(
+                self.model.Z_v_i_k_t[v, i, k, t] for k in self.outgoing[t][i]
+            )
+        )
+
+    def createRouteVisitDegrees(self):
+        for v in range(self.v):
+            for t in range(self.t):
+                for i in range(self.i):
+                    self.model.add_constraint(
+                        self.model.sum(
+                            self.model.Z_v_i_k_t[v, i, k, t]
+                            for k in self.outgoing[t][i]
+                        )
+                        == self.eta[v, i, t],
+                        ctname=f"ETA_OUT_{v}_{i}_{t}",
+                    )
+                    self.model.add_constraint(
+                        self.model.sum(
+                            self.model.Z_v_i_k_t[v, k, i, t]
+                            for k in self.incoming[t][i]
+                        )
+                        == self.eta[v, i, t],
+                        ctname=f"ETA_IN_{v}_{i}_{t}",
+                    )
+                if self.fixed_plan is not None:
+                    self.model.add_constraint(
+                        self.model.sum(self.eta[v, i, t] for i in range(1, self.i))
+                        <= (self.i - 1) * self.eta[v, 0, t],
+                        ctname=f"ETA_ACTIVE_{v}_{t}",
+                    )
+        for t in range(self.t):
+            for i in range(1, self.i):
+                visits = self.model.sum(self.eta[v, i, t] for v in range(self.v))
+                if self.fixed_plan is None:
+                    self.model.add_constraint(visits <= 1, ctname=f"ETA_ASSIGN_{i}_{t}")
+                else:
+                    required = int(
+                        self.fixed_plan["delivery_totals"][:, i, t].sum() > 0
+                    )
+                    self.model.add_constraint(
+                        visits == required, ctname=f"ETA_REQUIRED_{i}_{t}"
+                    )
+        if self.fixed_plan is not None:
+            for p in range(self.p):
+                for t in range(self.t):
+                    self.model.add_constraint(
+                        self.model.X_p_t[p, t] == float(self.fixed_plan["X"][p, t]),
+                        ctname=f"FIX_X_{p}_{t}",
+                    )
+                    self.model.add_constraint(
+                        self.model.Y_p_t[p, t] == int(self.fixed_plan["Y"][p, t]),
+                        ctname=f"FIX_Y_{p}_{t}",
+                    )
+                    for i in range(1, self.i):
+                        self.model.add_constraint(
+                            self.model.sum(
+                                self.model.Q_p_v_i_t[p, v, i, t] for v in range(self.v)
+                            )
+                            == float(self.fixed_plan["delivery_totals"][p, i, t]),
+                            ctname=f"FIX_Q_{p}_{i}_{t}",
+                        )
 
     def terminate(self):
         model = getattr(self, "model", None)
@@ -844,14 +912,55 @@ class MultProductProdctionRoutingProblem:
     def generteRelax(self, REPLACE_MODEL=True):
         # Create a linear relaxation of the model using docplex
         linear_relaxer = LinearRelaxer()
-        relaxed = linear_relaxer.linear_relaxation(self.model.clone())
+        cloned = self.model.clone()
+        try:
+            relaxed = linear_relaxer.linear_relaxation(cloned)
+        finally:
+            cloned.end()
         if relaxed is None:
             self.log.error("Relaxation not generated")
             return
         if REPLACE_MODEL:
             self.log.debug("Relaxation model replaced")
             original_model = self.model
+            for attr in (
+                "X_p_t",
+                "Y_p_t",
+                "I_p_i_t",
+                "Q_p_v_i_t",
+                "R_p_v_i_k_t",
+                "Z_v_i_k_t",
+            ):
+                source = getattr(original_model, attr)
+                rebound = {
+                    key: relaxed.get_var_by_name(variable.name)
+                    for key, variable in source.items()
+                }
+                setattr(
+                    relaxed,
+                    attr,
+                    (
+                        ZeroArcDict(rebound)
+                        if isinstance(source, ZeroArcDict)
+                        else rebound
+                    ),
+                )
+            self.eta = {
+                key: relaxed.get_var_by_name(variable.name)
+                for key, variable in self.eta.items()
+            }
+            self.positive = {
+                key: relaxed.get_var_by_name(variable.name)
+                for key, variable in self.positive.items()
+            }
+            if self.negative is not None:
+                self.negative = {
+                    key: relaxed.get_var_by_name(variable.name)
+                    for key, variable in self.negative.items()
+                }
+            self.lambda_ = relaxed.get_var_by_name(self.lambda_.name)
             self.model = relaxed
+            self._relaxation_replaced = True
             original_model.end()
 
         try:
@@ -882,14 +991,10 @@ class MultProductProdctionRoutingProblem:
         details = getattr(self.model, "solve_details", None)
         if details:
             self.solCount = 1 if self.model.solution else 0
-            self.objBound = (
-                details.best_bound if hasattr(details, "best_bound") else 0
-            )
+            self.objBound = details.best_bound if hasattr(details, "best_bound") else 0
 
             detail_nodes = getattr(details, "nb_nodes_processed", None)
-            progress_nodes = self._get_cplex_progress_value(
-                "get_num_nodes_processed"
-            )
+            progress_nodes = self._get_cplex_progress_value("get_num_nodes_processed")
             self._update_node_progress(processed=progress_nodes)
             node_counts = [
                 int(value)
@@ -912,10 +1017,26 @@ class MultProductProdctionRoutingProblem:
             return
         if has_incumbent and self._first_feasible_seconds is None:
             self._first_feasible_seconds = float(elapsed_seconds)
-            self._telemetry_events.append({"event": "first_feasible", "elapsed_seconds": float(elapsed_seconds), "source": "mip"})
-        if relative_gap is not None and relative_gap <= self.telemetry_config["gap_target_relative"] and self._gap_target_seconds is None:
+            self._telemetry_events.append(
+                {
+                    "event": "first_feasible",
+                    "elapsed_seconds": float(elapsed_seconds),
+                    "source": "mip",
+                }
+            )
+        if (
+            relative_gap is not None
+            and relative_gap <= self.telemetry_config["gap_target_relative"]
+            and self._gap_target_seconds is None
+        ):
             self._gap_target_seconds = float(elapsed_seconds)
-            self._telemetry_events.append({"event": "gap_target", "elapsed_seconds": float(elapsed_seconds), "gap": float(relative_gap)})
+            self._telemetry_events.append(
+                {
+                    "event": "gap_target",
+                    "elapsed_seconds": float(elapsed_seconds),
+                    "gap": float(relative_gap),
+                }
+            )
 
     def _record_bound_progress(
         self,
@@ -947,13 +1068,9 @@ class MultProductProdctionRoutingProblem:
             "elapsed_seconds": elapsed_seconds,
             "best_bound": best_bound,
             "incumbent_objective": (
-                float(incumbent_objective)
-                if incumbent_objective is not None
-                else None
+                float(incumbent_objective) if incumbent_objective is not None else None
             ),
-            "relative_gap": (
-                float(relative_gap) if relative_gap is not None else None
-            ),
+            "relative_gap": (float(relative_gap) if relative_gap is not None else None),
             "nodes_processed": (
                 int(nodes_processed) if nodes_processed is not None else None
             ),
@@ -987,7 +1104,9 @@ class MultProductProdctionRoutingProblem:
             nodes_remaining=self.nodesRemaining,
         )
         rounded_capacity = dict(self._rounded_capacity_stats)
-        rounded_capacity["callback_registered"] = self._rounded_capacity_callback_registered
+        rounded_capacity["callback_registered"] = (
+            self._rounded_capacity_callback_registered
+        )
         separator_calls = rounded_capacity["separator_calls"]
         rounded_capacity["separator_average_seconds"] = (
             rounded_capacity["separator_seconds"] / separator_calls
@@ -1001,17 +1120,24 @@ class MultProductProdctionRoutingProblem:
         ]
         return {
             "strategy": "solver",
-            "mip_seconds": float(self.time), "status": status, "timed_out": timed_out,
-            "objective": objective, "best_bound": getattr(details, "best_bound", None),
+            "mip_seconds": float(self.time),
+            "status": status,
+            "timed_out": timed_out,
+            "objective": objective,
+            "best_bound": getattr(details, "best_bound", None),
             "root_bound": root_bounds[0] if root_bounds else None,
-            "relative_gap": gap, "node_count": self.nodeCount, "solution_count": self.solCount,
+            "relative_gap": gap,
+            "node_count": self.nodeCount,
+            "solution_count": self.solCount,
             "nodes_remaining": self.nodesRemaining,
             "positive_only_deviations": self.positive_only_deviations,
             "strengthened_bounds": self.strengthened_bounds,
             "first_feasible_seconds": self._first_feasible_seconds,
             "gap_target_seconds": self._gap_target_seconds,
-            "mip_events": list(self._telemetry_events), "pso_iterations": [],
+            "mip_events": list(self._telemetry_events),
+            "pso_iterations": [],
             "rounded_capacity": rounded_capacity,
+            "applied_features": getattr(self, "applied_features", {}),
         }
 
     def _rounded_capacity_enabled(self):
@@ -1028,21 +1154,10 @@ class MultProductProdctionRoutingProblem:
         index_by_name = {
             name: index for index, name in enumerate(cplex_model.variables.get_names())
         }
-        self._rounded_capacity_z_indices = []
-        for t in range(self.t):
-            for v in range(self.v):
-                for i in range(self.i):
-                    for k in range(self.k):
-                        if i == k:
-                            continue
-                        name = f"Z_{v}_{i}_{k}_{t}"
-                        try:
-                            index = index_by_name[name]
-                        except KeyError as error:
-                            raise RuntimeError(
-                                f"Variavel de rota ausente no callback: {name}"
-                            ) from error
-                        self._rounded_capacity_z_indices.append((t, v, i, k, index))
+        self._rounded_capacity_z_indices = [
+            (t, v, i, k, index_by_name[variable.name])
+            for (v, i, k, t), variable in self.model.Z_v_i_k_t.items()
+        ]
         return True
 
     def _rounded_capacity_should_separate(self, node_count):
@@ -1072,10 +1187,11 @@ class MultProductProdctionRoutingProblem:
         try:
             indices = [item[4] for item in self._rounded_capacity_z_indices]
             values = callback.get_values(indices)
-            z_values = np.zeros((self.t, self.v, self.i, self.k), dtype=float)
+            # The separator uses vehicle sums; avoid constructing a dense Z tensor.
+            z_values = np.zeros((self.t, self.i, self.k), dtype=float)
             for item, value in zip(self._rounded_capacity_z_indices, values):
                 t, v, i, k, _ = item
-                z_values[t, v, i, k] = float(value)
+                z_values[t, i, k] += float(value)
 
             separation_stats = {}
             cuts = separate_cumulative_cuts(
@@ -1152,14 +1268,18 @@ class MultProductProdctionRoutingProblem:
             self._rounded_capacity_callback_registered = True
             return True
         except Exception as error:
-            self.log.warning(f"Callback de capacidade arredondada indisponivel: {error}")
+            self.log.warning(
+                f"Callback de capacidade arredondada indisponivel: {error}"
+            )
             return False
 
     def _install_mip_telemetry_callback(self):
         try:
             from cplex.callbacks import MIPInfoCallback
+
             owner = self
             started_at = time.perf_counter()
+
             class TelemetryCallback(MIPInfoCallback):
                 def __call__(self):
                     try:
@@ -1174,9 +1294,7 @@ class MultProductProdctionRoutingProblem:
                         gap = self.get_MIP_relative_gap() if incumbent else None
                         best_bound = self.get_best_objective_value()
                         incumbent_objective = (
-                            self.get_incumbent_objective_value()
-                            if incumbent
-                            else None
+                            self.get_incumbent_objective_value() if incumbent else None
                         )
                         owner._record_bound_progress(
                             elapsed,
@@ -1189,17 +1307,16 @@ class MultProductProdctionRoutingProblem:
                         owner._record_mip_telemetry(elapsed, incumbent, gap)
                     except Exception:
                         pass
+
             self.model.register_callback(TelemetryCallback)
         except Exception as error:
             self.log.warning(f"Telemetria MIP sem callback: {error}")
 
     def solver(self, numThreads=None, timeLimit=None):
+        build_started_at = time.perf_counter()
         self.createDecisionVariables()
 
         self.log.debug(f"Variabes.start == {self.start['start']}")
-        if self.start["start"] == True:
-            self.startVariables()
-
         self.crateObjectiveFunction()
         self.log.debug("Objetivo criado")
         if Config.get_nested("solver", "multiobjective"):
@@ -1221,18 +1338,34 @@ class MultProductProdctionRoutingProblem:
         self.log.debug("Subrotas criado")
         self.createVehicleLoadCapacityDelimited()
         self.log.debug("Capacidade maxima veículo criado")
-        self.createImposeMostOneRouteEachVehicle()
-        self.log.debug("Max rota veículo criado")
-        self.createEnsureRoutesOnlyPlant()
-        self.log.debug("Rota somente entre plantas criado")
-        self.createVehicleMostVisitCustomerEachPeriod()
-        self.log.debug("Veículo visita cliente criado")
-        if self.createVehicleVisitDeliveryBounds():
+        if self.routing_profile:
+            self.createRouteVisitDegrees()
+        else:
+            self.createImposeMostOneRouteEachVehicle()
+            self.createEnsureRoutesOnlyPlant()
+            self.createVehicleMostVisitCustomerEachPeriod()
+        self.applied_features = {
+            "strengthened_bounds": self.strengthened_bounds,
+            "positive_only_deviations": self.positive_only_deviations,
+            "routing_profile": (
+                self.routing_profile["mode"] if self.routing_profile else "full"
+            ),
+        }
+        self.applied_features["visit_delivery_bounds"] = (
+            self.createVehicleVisitDeliveryBounds()
+        )
+        if self.applied_features["visit_delivery_bounds"]:
             self.log.debug("Bounds de entrega por visita em função de Z criados")
-        if self.createCoelhoValidInequalities():
+        self.applied_features["coelho_inequalities"] = (
+            self.createCoelhoValidInequalities()
+        )
+        if self.applied_features["coelho_inequalities"]:
             self.log.debug("Desigualdades lógicas de Coelho (15)-(17) criadas")
-        if self.createVehicleSymmetryBreaking():
+        self.applied_features["hc1"] = self.createVehicleSymmetryBreaking()
+        if self.applied_features["hc1"]:
             self.log.debug("Quebra de simetria VC + HC1 criada")
+        if self.start["start"]:
+            self.startVariables()
         # self.outModel()
         if Config.get_nested("postprocessing", "build_target"):
             target_use_relaxation = Config.get_nested(
@@ -1254,11 +1387,14 @@ class MultProductProdctionRoutingProblem:
         if numThreads is not None:
             self.model.context.cplex_parameters.threads = numThreads
 
+        self.build_seconds = time.perf_counter() - build_started_at
         start_time = time.time()
         self._telemetry_started_at = time.perf_counter()
         self._install_mip_telemetry_callback()
         if not Config.get_nested("postprocessing", "build_target", default=False):
-            self._install_rounded_capacity_callback()
+            self.applied_features["rounded_capacity_callback"] = (
+                self._install_rounded_capacity_callback()
+            )
         if not Config.get_nested("relaxed_solution", "use"):
             self.solution = self.model.solve(log_output=False)
         end_time = time.time()
@@ -1267,4 +1403,6 @@ class MultProductProdctionRoutingProblem:
         self.processInformationsSolver()
         elapsed = time.perf_counter() - self._telemetry_started_at
         details = getattr(self.model, "solve_details", None)
-        self._record_mip_telemetry(elapsed, self.solCount > 0, getattr(details, "mip_relative_gap", None))
+        self._record_mip_telemetry(
+            elapsed, self.solCount > 0, getattr(details, "mip_relative_gap", None)
+        )

@@ -1,19 +1,16 @@
+import gc
 import time
 
 from config import Config
-
 from src.helpers.ReadPrpFile import ReadPrpFile as RD
+from src.helpers.SolverTelemetry import get_config, new_run_id, write_shards
 from src.helpers.TargetsLoader import normalize_instance_file_key
 from src.log.Logger import Logger
 from src.process.ProcessResults import getResults
-from src.helpers.SolverTelemetry import get_config, new_run_id, write_shards
 from src.solvers.MultProductProdctionRoutingProblem import (
     MultProductProdctionRoutingProblem as MPPRP,
 )
-from src.solvers.ParticleSwarmOptimization import (
-    ParticleSwarmOptimization as PSOSolver,
-)
-import gc
+from src.solvers.ParticleSwarmOptimization import ParticleSwarmOptimization as PSOSolver
 
 
 class InstanceProcess:
@@ -45,6 +42,10 @@ class InstanceProcess:
         self.telemetry_config = get_config(Config)
 
     def solverInstancie(self, data):
+        if Config.get_nested("solver", "matheuristic", "enabled", default=False):
+            from src.solvers.DeterministicMatheuristic import DeterministicMatheuristic
+
+            return DeterministicMatheuristic(map=data, dir=self.output, log=self.log)
         # Python 3.8-compatible replacement for match-case
         if self.solver == "GUROBY":
             self.log.debug("Solver: GUROBY")
@@ -115,9 +116,13 @@ class InstanceProcess:
                 summary = {
                     "run_id": new_run_id(self.task_context, strategy),
                     "experiment_id": self.telemetry_config["experiment_id"],
-                    "run_tag": self.task_context.get("run_tag"), "task_number": self.task_context.get("task_number"),
-                    "instance_file": data.get("file"), "weight": str(data.get("weight")), "alpha": data.get("alpha"),
-                    "threads": self.numThreads, "time_limit_seconds": self.timeLimit,
+                    "run_tag": self.task_context.get("run_tag"),
+                    "task_number": self.task_context.get("task_number"),
+                    "instance_file": data.get("file"),
+                    "weight": str(data.get("weight")),
+                    "alpha": data.get("alpha"),
+                    "threads": self.numThreads,
+                    "time_limit_seconds": self.timeLimit,
                     "solver_variant": strategy,
                     "symmetry_breaking_hc1": Config.get_nested(
                         "solver", "symmetry_breaking", "hc1", default=False
@@ -126,17 +131,32 @@ class InstanceProcess:
                         "solver", "coelho_inequalities", default=False
                     ),
                     "rounded_capacity_inequalities": Config.get_nested(
-                        "solver", "rounded_capacity_inequalities", "enabled", default=False
+                        "solver",
+                        "rounded_capacity_inequalities",
+                        "enabled",
+                        default=False,
                     ),
                     "strengthened_bounds": bool(data.get("strengthened_bounds", True)),
                     "positive_only_deviations": Config.get_nested(
-                        "solver", "goal_programming", "positive_only_deviations", default=True
+                        "solver",
+                        "goal_programming",
+                        "positive_only_deviations",
+                        default=True,
                     ),
                     "pipeline_solver_seconds": solve_elapsed_seconds,
                     "total_seconds": time.time() - strategy_started_at,
                     **telemetry,
                 }
-                write_shards(self.output, summary, telemetry.get("pso_iterations") if self.telemetry_config["save_pso_iterations"] else [], telemetry.get("mip_events", []))
+                write_shards(
+                    self.output,
+                    summary,
+                    (
+                        telemetry.get("pso_iterations")
+                        if self.telemetry_config["save_pso_iterations"]
+                        else []
+                    ),
+                    telemetry.get("mip_events", []),
+                )
             getResults(
                 data,
                 self.output,
@@ -158,6 +178,12 @@ class InstanceProcess:
                 NEW_TARGETS,
                 log=self.log,
             )
+            if hasattr(instance, "get_artifacts"):
+                from src.process.MatheuristicResults import write_artifacts
+
+                write_artifacts(
+                    self.output, data, instance.get_artifacts(), self.task_context
+                )
             self.log.debug("Resultados gerados.")
             self.isFinished = True
         finally:

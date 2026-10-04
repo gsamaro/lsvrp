@@ -8,11 +8,13 @@ from src.solvers.MultProductProdctionRoutingProblem import (
     MultProductProdctionRoutingProblem,
 )
 
-
-pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("cplex") is None,
-    reason="CPLEX não está instalado neste ambiente",
-)
+pytestmark = [
+    pytest.mark.cplex_integration,
+    pytest.mark.skipif(
+        importlib.util.find_spec("cplex") is None,
+        reason="CPLEX não está instalado neste ambiente",
+    ),
+]
 
 
 class DummyLogger:
@@ -76,12 +78,16 @@ def _solve_with_rounding(monkeypatch, enabled):
     )
     try:
         solver.solver(timeLimit=3)
-        return str(solver.model.solve_details.status), float(solver.model.objective_value)
+        return str(solver.model.solve_details.status), float(
+            solver.model.objective_value
+        )
     finally:
         solver.terminate()
 
 
-def test_small_cplex_instance_solves_with_and_without_rounded_capacity_cuts(monkeypatch):
+def test_small_cplex_instance_solves_with_and_without_rounded_capacity_cuts(
+    monkeypatch,
+):
     status_without, objective_without = _solve_with_rounding(monkeypatch, False)
     status_with, objective_with = _solve_with_rounding(monkeypatch, True)
 

@@ -1,0 +1,618 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazilian]{babel}
+\usepackage{geometry}
+\usepackage{amsmath,amssymb,mathtools,amsthm}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\geometry{margin=2.5cm}
+\setlist{nosep}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\Pset}{\mathcal{P}}
+\newcommand{\Tset}{\mathcal{T}}
+\newcommand{\Vset}{\mathcal{V}}
+\newcommand{\A}{\mathcal{A}}
+\newtheorem{proposition}{Proposição}
+\renewcommand{\proofname}{Demonstração}
+
+\title{Matheurística determinística por etapas para o MPPRP}
+\author{Formulação e implementação}
+\date{3 de outubro de 2026}
+
+\begin{document}
+\maketitle
+
+\section{Objetivo e escopo}
+
+Este documento descreve uma adaptação determinística, multiproduto e multiperíodo da estratégia de construção por fases apresentada por Kermani, Cordeau e Jans (2024). A demanda é conhecida e fixa. Não há cenários de demanda, probabilidades, não antecipatividade ou Progressive Hedging (PH).
+
+O método implementado contém três problemas:
+\begin{enumerate}
+    \item um TSP não capacitado para obter uma ordem-base de clientes;
+    \item um MPPRP restrito, que mantém as decisões integradas do problema atual, mas limita os arcos às conexões compatíveis com essa ordem;
+    \item uma etapa opcional de melhoria de rotas, com produção e entregas agregadas fixas.
+\end{enumerate}
+
+As duas primeiras fases são necessárias para a adaptação. A terceira é opcional e reotimiza transporte com produção e entregas agregadas fixas. A implementação aprovada usa CPLEX nas etapas e pode retornar a solução final ou inicializar o exato e o PSO. A validação desta implementação é limitada a testes unitários; experimentos reais dependem de orientação posterior.
+
+\section{Notação do MPPRP}
+\label{sec:notation}
+
+\subsection{Dimensões, conjuntos e índices}
+
+Sejam $n$ o número de clientes, $P$ o número de produtos, $T$ o número de períodos e $V$ o número de veículos. A planta/depósito é o nó $0$ e não é contada entre os $n$ clientes. Definimos:
+\begin{itemize}
+    \item $\N=\{0,1,\ldots,n\}$: conjunto de nós;
+    \item $\N_c=\N\setminus\{0\}$: conjunto de clientes;
+    \item $\Pset=\{1,\ldots,P\}$: conjunto de produtos;
+    \item $\Tset=\{1,\ldots,T\}$: conjunto de períodos de decisão;
+    \item $\Vset=\{1,\ldots,V\}$: conjunto de veículos;
+    \item $\mathcal J=\{1,\ldots,5\}$: conjunto de componentes de custo.
+\end{itemize}
+Os índices $i,j,k$ representam nós nas expressões de rota; $p\in\Pset$ representa um produto, $v\in\Vset$ um veículo e $t\in\Tset$ um período. Nas expressões de custos e metas, $j\in\mathcal J$ representa o componente de custo; o domínio indicado em cada expressão distingue esse uso do índice de nó. O instante $0$ representa o estoque inicial e não é um período de decisão. Subconjuntos e conjuntos específicos de cada etapa são definidos antes das respectivas formulações.
+
+\subsection{Parâmetros}
+
+Os parâmetros de produção, estoque e transporte são:
+\begin{itemize}
+    \item $a_{ij}$: custo de deslocamento do nó $i$ ao nó $j$, com $i,j\in\N$ e $i\ne j$;
+    \item $f$: custo fixo por saída de veículo da planta;
+    \item $d_{pit}$: demanda do produto $p$ no cliente $i\in\N_c$ no período $t$;
+    \item $B$: capacidade de produção por período;
+    \item $b_p$: capacidade de produção consumida por unidade do produto $p$;
+    \item $M$: limite superior válido para a quantidade produzida de um produto em um período, usado na ligação entre produção e setup;
+    \item $C$: capacidade de carga de cada veículo;
+    \item $c_p$: custo unitário de produção do produto $p$;
+    \item $s_p$: custo de setup do produto $p$;
+    \item $h_{pi}$: custo unitário de estoque do produto $p$ no nó $i\in\N$;
+    \item $U_{pi}$: limite de estoque do produto $p$ no nó $i\in\N$;
+    \item $I^0_{pi}$: estoque inicial do produto $p$ no nó $i\in\N$.
+\end{itemize}
+No modo multiobjetivo, $\alpha\in[0,1]$ pondera a penalização máxima e a soma dos desvios normalizados; os demais parâmetros adicionais são $w_j\ge0$ (peso do componente $j$), $\tau_{jt}$ (meta original do componente $j$ no período $t$) e $\widetilde\tau_{jt}$ (meta ajustada usada na normalização). O ajuste é detalhado na formulação completa do problema restrito. A configuração da execução determina qual função objetivo e quais parâmetros multiobjetivo são utilizados.
+
+\subsection{Variáveis de decisão}
+
+Nas formulações propostas neste documento, as quantidades são contínuas não negativas:
+\begin{itemize}
+    \item $X_{pt}\in\mathbb R_{\ge0}$: quantidade produzida do produto $p$ no período $t$;
+    \item $Y_{pt}\in\{0,1\}$: setup do produto $p$ no período $t$; vale $1$ quando o setup é ativado;
+    \item $I_{pit}\in\mathbb R_{\ge0}$: estoque ao final do período $t$ do produto $p$ no nó $i\in\N$; por convenção, $I_{pi,0}=I^0_{pi}$ é dado;
+    \item $Q_{pvit}\in\mathbb R_{\ge0}$: quantidade do produto $p$ entregue pelo veículo $v$ ao cliente $i\in\N_c$ no período $t$;
+    \item $R_{pvijt}\in\mathbb R_{\ge0}$: quantidade do produto $p$ transportada pelo veículo $v$ no arco $i\to j$ no período $t$;
+    \item $Z_{vijt}$: uso do arco $i\to j$ pelo veículo $v$ no período $t$. Na etapa restrita, é contínua em $[0,1]$; na etapa de melhoria, é binária. A seleção efetiva de um arco corresponde a valor $1$;
+    \item $\eta_{vit}\in\{0,1\}$: visita física do veículo $v$ ao cliente $i\in\N_c$ no período $t$. Para $i=0$, $\eta_{v0t}$ indica a ativação da rota. Valor $1$ significa visita/rota ativa e valor $0$ significa ausência de visita/rota. A visita é comum a todos os produtos e não tem índice de produto.
+\end{itemize}
+Os índices de arco pertencem a $\N\times\N$. Arcos próprios, com $i=j$, não são usados: na etapa restrita, são fixados em zero; na etapa de melhoria, são omitidos. A interpretação detalhada de $\eta$ é retomada na Subseção~\ref{sec:eta-definition}.
+
+No modo multiobjetivo, também são definidas as variáveis contínuas $\Delta^+_{jt}\ge0$ (excesso do custo em relação à meta), $\Delta^-_{jt}\ge0$ (diferença quando o custo fica abaixo da meta) e $\lambda\ge0$ (limite comum dos desvios positivos ponderados e normalizados), para $j\in\mathcal J$ e $t\in\Tset$.
+
+\subsection{Componentes de custo e função objetivo}
+
+Definimos $F_{jt}$ como o valor do componente de custo $j$ no período $t$, e $F_j$ como seu total no horizonte:
+\begin{align*}
+ F_{1t}&=\sum_{p\in\Pset}c_pX_{pt}, &
+ F_{2t}&=\sum_{p\in\Pset}s_pY_{pt},\\
+ F_{3t}&=\sum_{p\in\Pset}\sum_{i\in\N}h_{pi}I_{pit}, &
+ F_{4t}&=f\sum_{v\in\Vset}\sum_{j\in\N_c}Z_{v0jt},\\
+ F_{5t}&=\sum_{v\in\Vset}\sum_{i\in\N}\sum_{j\in\N:j\ne i}a_{ij}Z_{vijt}, &
+ F_j&=\sum_{t\in\Tset}F_{jt}\quad(j\in\mathcal J).
+\end{align*}
+Os cinco componentes correspondem, respectivamente, à produção, setup, estoque, custo fixo de transporte e custo de deslocamento. Denotamos por $\Phi_{\mathrm{cfg}}$ a função objetivo selecionada pela configuração do projeto; o subscrito $\mathrm{cfg}$ indica essa escolha. A notação é genérica: no modo monoobjetivo, usa os custos do modelo; no modo multiobjetivo, também considera os custos por período, as metas, os desvios e $\lambda$. A formulação preserva essa escolha sem impor uma nova expressão de objetivo.
+
+\section{Etapa 1: TSP não capacitado}
+
+\subsection{Características do TSP usado no artigo}
+
+Na primeira fase, o artigo resolve um TSP não capacitado sobre a planta e todos os clientes, ignorando demandas e capacidades. Há uma única visita a cada cliente na volta completa à planta; não há índice de veículo, período, produto, carga ou restrição de capacidade. A finalidade é obter uma sequência-base, não uma solução de distribuição factível por período.
+
+No projeto, a matriz de custos de deslocamento é simétrica: $a_{ij}=a_{ji}$. Assim, a primeira etapa também é um TSP simétrico e não capacitado, independente de produtos, veículos e períodos. A formulação em arcos dirigidos abaixo continua válida para essa matriz simétrica; produtos e quantidades entram nas fases seguintes.
+
+\subsection{Formulação}
+
+Seja $\A^{\mathrm{TSP}}=\{(i,j):i,j\in\N,\ i\ne j\}$ o conjunto de arcos do TSP. A variável binária $u_{ij}$ vale $1$ se o arco $(i,j)$ pertence ao ciclo-base. Nas restrições de eliminação de subtours, $S$ representa um subconjunto próprio de nós, $S\subsetneq\N$, com pelo menos dois elementos; $|S|$ é sua cardinalidade:
+\begin{align}
+ \min\quad & \sum_{(i,j)\in\A^{\mathrm{TSP}}} a_{ij}u_{ij} \label{eq:tsp-obj}\\
+ \text{sujeito a}\quad
+ & \sum_{j\in\N\setminus\{i\}} u_{ij}=1 && \forall i\in\N, \label{eq:tsp-out}\\
+ & \sum_{i\in\N\setminus\{j\}} u_{ij}=1 && \forall j\in\N, \label{eq:tsp-in}\\
+ & \sum_{i\in S}\sum_{j\in S:j\ne i}u_{ij}\le |S|-1
+     && \forall S\subsetneq\N,\ 2\le |S|\le |\N|-1, \label{eq:tsp-sec}\\
+ & u_{ij}\in\{0,1\} && \forall (i,j)\in\A^{\mathrm{TSP}}. \label{eq:tsp-dom}
+\end{align}
+
+As restrições \eqref{eq:tsp-out}--\eqref{eq:tsp-in} impõem uma entrada e uma saída por nó; \eqref{eq:tsp-sec} elimina subtours. Na implementação, as restrições de subtour são adicionadas por callback lazy durante a busca, sem enumerar todos os subconjuntos. A inicialização usa vizinho mais próximo e 2-opt determinísticos. O limite de tempo não exige prova de otimalidade: aceita-se a melhor rota válida disponível, usando a rota inicial se não houver incumbente do solver.
+
+\paragraph{Saída desta etapa.} O ciclo válido escolhido define $\pi=(0,\pi_1,\ldots,\pi_n,0)$, em que $(\pi_1,\ldots,\pi_n)$ é uma permutação dos clientes e $\pi_r$ é o cliente na posição $r\in\{1,\ldots,n\}$. A rota não é usada diretamente como plano de entregas; sua ordem é convertida em conjuntos de arcos admissíveis.
+
+\section{Conjuntos de sequência para a etapa restrita}
+
+Para a permutação $\pi$ obtida no TSP, $r$ e $s$ representam posições em $\{1,\ldots,n\}$. Definimos $\alpha_i$ como o conjunto de sucessores admissíveis do nó $i$, e $\sigma_i$ como seu conjunto de predecessores admissíveis. Para cada cliente $i=\pi_r$:
+\begin{align*}
+ \alpha_{\pi_r} &= \{\pi_s:s>r\}\cup\{0\}, &
+ \sigma_{\pi_r} &= \{0\}\cup\{\pi_s:s<r\}.
+\end{align*}
+Para a planta, $\alpha_0=\sigma_0=\N\setminus\{0\}$. O conjunto $\A^\pi$ é o conjunto de \textbf{arcos dirigidos admissíveis} induzido pela ordem $\pi$. Um par $(i,j)$ pertence a $\A^\pi$ se o veículo pode seguir diretamente de $i$ para $j$ sem contrariar a ordem-base. Ele contém:
+\begin{enumerate}
+    \item arcos da planta para qualquer cliente, pois qualquer cliente pode ser o primeiro visitado;
+    \item arcos de um cliente para qualquer cliente que apareça depois dele em $\pi$;
+    \item arcos de qualquer cliente de volta à planta, que encerram a rota.
+\end{enumerate}
+Formalmente, se $\pi=(0,\pi_1,\ldots,\pi_n,0)$, então
+\begin{align}
+ \A^\pi={}&\{(0,\pi_r):1\le r\le n\}\nonumber\\
+ &\cup\{(\pi_r,\pi_s):1\le r<s\le n\}\nonumber\\
+ &\cup\{(\pi_r,0):1\le r\le n\}. \label{eq:ordered-arc-set}
+\end{align}
+Equivalentemente, $\A^\pi=\{(0,j):j\in\N\setminus\{0\}\}\cup\{(i,j):i\in\N\setminus\{0\},\ j\in\alpha_i\}$.
+
+\paragraph{Exemplo.} Considere $\N=\{0,1,2,3,4\}$ e a ordem-base
+\[
+ \pi=(0,3,1,4,2,0).
+\]
+Então
+\begin{align*}
+ \A^\pi=\{\,&(0,3),(0,1),(0,4),(0,2),\\
+ &(3,1),(3,4),(3,2),(1,4),(1,2),(4,2),\\
+ &(3,0),(1,0),(4,0),(2,0)\,\}.
+\end{align*}
+Por exemplo, $(3,4)\in\A^\pi$, pois $4$ aparece depois de $3$; $(4,1)\notin\A^\pi$, pois $1$ aparece antes de $4$. A sequência $0\to3\to4\to2\to0$ é permitida: ela visita os clientes $3,4,2$ na ordem-base e pula o cliente $1$. Já $0\to4\to1\to0$ não é permitida, pois vai de $4$ para o cliente anterior $1$.
+
+O conjunto $\A^\pi$ \textbf{não é uma rota escolhida}. É somente a lista de arcos que podem ser escolhidos na etapa 2. Para cada veículo e período, as variáveis $Z_{vijt}$ selecionam alguns desses arcos; as restrições de rota determinam quais formam os caminhos efetivamente usados. Na formulação restrita, impomos $Z_{vijt}=0$ para todo $(i,j)\notin\A^\pi$, incluindo os arcos próprios $(i,i)$. O mesmo conjunto é utilizado por todos os veículos e períodos; cada rota é uma subsequência da ordem-base.
+
+\section{Etapa 2: MPPRP restrito multiproduto}
+
+Esta fase adapta o problema de produção e roteamento restrito (RPRP) do artigo ao caso determinístico multiproduto. Mantemos as variáveis de produção, estoque, carga e entrega do projeto. Para declarar os arcos $Z$ como contínuos sem perder sua integralidade, são necessárias duas alterações: restringir os arcos a $\A^\pi$ e vincular os graus de entrada e saída às novas visitas binárias $\eta$. O contraexemplo e a prova apresentados abaixo distinguem essa reformulação da simples relaxação de $Z$ no modelo atual. O construtor do solver cria este perfil de roteamento quando a matheurística está habilitada; o modelo irrestrito continua usando $Z$ binária.
+
+\subsection{Função objetivo}
+
+\begin{equation}
+ \min\quad \Phi_{\mathrm{cfg}}.
+ \label{eq:rprp-obj}
+\end{equation}
+
+A expressão $\Phi_{\mathrm{cfg}}$ representa tanto o problema monoobjetivo quanto o multiobjetivo configurado no projeto. As restrições de metas são acrescentadas apenas no modo multiobjetivo. A ordem-base restringe a região factível; ela não altera a escolha da função objetivo.
+
+\subsection{Produção e estoques}
+
+\begin{align}
+ \sum_{p\in\Pset} b_p X_{pt} &\le B && \forall t\in\Tset, \label{eq:prod-cap}\\
+ X_{pt} &\le M Y_{pt} && \forall p\in\Pset,\ t\in\Tset, \label{eq:setup-link}\\
+ I_{p0t} &= I_{p0,t-1}+X_{pt}-\sum_{v\in\Vset}\sum_{i\in\N\setminus\{0\}}Q_{pvit}
+ && \forall p,t, \label{eq:plant-balance}\\
+ I_{pit} &= I_{pi,t-1}+\sum_{v\in\Vset}Q_{pvit}-d_{pit}
+ && \forall p,t,\ i\in\N\setminus\{0\}, \label{eq:customer-balance}\\
+ 0\le I_{pit} &\le U_{pi} && \forall p\in\Pset,\ i\in\N,\ t\in\Tset. \label{eq:inventory-bounds}
+\end{align}
+Nos balanços, $I_{pi0}$ é o estoque inicial; para $t>1$, $I_{pi,t-1}$ é a variável de estoque do período anterior. Em \eqref{eq:customer-balance}, $Q$ representa entregas do período atual; os produtos enviados em períodos anteriores e ainda disponíveis são representados por $I_{pi,t-1}$.
+
+\subsection{Fluxo multiproduto e capacidade dos veículos}
+
+Para cada cliente, produto, veículo e período, a quantidade que entra menos a quantidade que sai deve corresponder à entrega:
+\begin{align}
+ \sum_{i\in\N:i\ne k}R_{pvikt}-\sum_{j\in\N:j\ne k}R_{pvkjt}
+ &= Q_{pvkt}
+ && \forall p,v,t,\ k\in\N\setminus\{0\}. \label{eq:commodity-balance}
+\end{align}
+O fluxo agregado que sai da planta deve abastecer as entregas:
+\begin{align}
+ \sum_{v\in\Vset}\sum_{j\in\N\setminus\{0\}}R_{pv0jt}
+ -\sum_{v\in\Vset}\sum_{i\in\N\setminus\{0\}}R_{pvi0t}
+ &=\sum_{v\in\Vset}\sum_{i\in\N\setminus\{0\}}Q_{pvit}
+ && \forall p,t. \label{eq:plant-flow}
+\end{align}
+As capacidades e a ligação entre carga e arco são:
+\begin{align}
+ \sum_{p\in\Pset}R_{pvijt} &\le C Z_{vijt}
+ && \forall v,t,\ i,j\in\N,\ i\ne j, \label{eq:vehicle-cap}\\
+ \sum_{j\in\N\setminus\{0\}}Z_{v0jt} &\le 1
+ && \forall v,t, \label{eq:one-departure}\\
+ \sum_{i\in\N:i\ne k}Z_{vikt}-\sum_{j\in\N:j\ne k}Z_{vkjt} &=0
+ && \forall v,t,\ k\in\N, \label{eq:route-balance}\\
+ \sum_{v\in\Vset}\sum_{i\in\N:i\ne k}Z_{vikt} &\le 1
+ && \forall t,\ k\in\N\setminus\{0\}. \label{eq:one-visit}
+\end{align}
+Essas famílias de restrições são herdadas do modelo atual. A ordem de $\A^\pi$ impede ciclos formados somente por clientes, mas as restrições acima, sozinhas, não garantem $Z$ integral se retirarmos seu domínio binário.
+
+\subsection{Contraexemplo à relaxação direta de $Z$}
+
+Considere um período, um veículo, um cliente e dois produtos: $\N=\{0,1\}$, $\Pset=\{1,2\}$, $d_{p11}=1$, estoques iniciais nulos, $b_p=1$, $B=2$, $M\ge1$ e capacidade do veículo $C=4$. A ordem-base é $(0,1,0)$. Suprimindo os índices de veículo e período, fixe
+\[
+ X_p=Y_p=Q_{p1}=1,\qquad I_{pi}=0,\qquad
+ R_{p01}=1,\qquad R_{p10}=0 \quad(p=1,2).
+\]
+Embora $X,I,R,Q$ sejam contínuas no modelo, os valores fixados neste ponto factível são inteiros; os setups $Y_p=1$ são binários. Ainda assim, a escolha
+\[
+ Z_{01}=Z_{10}=\tfrac12
+\]
+atende aos balanços de rota e às desigualdades de saída e visita. A capacidade de ida é satisfeita com igualdade:
+\[
+ R_{101}+R_{201}=2=CZ_{01}=4\cdot\tfrac12.
+\]
+Na volta, a carga é zero. Os balanços de produto, produção e estoque também são satisfeitos. Portanto, a ordem-base não impede uma rota fracionária, mesmo quando as variáveis contínuas assumem valores inteiros nesse ponto. Se $f=2$ e $a_{01}=a_{10}=1$, seu custo de transporte é $2$, enquanto qualquer rota binária que entrega os dois produtos custa $4$. A relaxação direta pode alterar tanto a solução quanto o ótimo. Esse obstáculo já ocorre com um único produto quando sua entrega é menor que a capacidade do veículo.
+
+\subsection{Definição da variável binária $\eta$}
+\label{sec:eta-definition}
+
+Para cada veículo $v\in\Vset$, nó $i\in\N$ e período $t\in\Tset$, definimos $\eta_{vit}\in\{0,1\}$. Seus três índices identificam, respectivamente, \textbf{o veículo, o nó e o período}. Para um cliente $i\ne0$, seu significado é
+\[
+ \eta_{vit}=\begin{cases}
+ 1, & \text{se o veículo $v$ visita o cliente $i$ no período $t$},\\
+ 0, & \text{se o veículo $v$ não visita esse cliente nesse período}.
+ \end{cases}
+\]
+Para o nó $0$, que representa a planta/depósito, a mesma família de variáveis indica a ativação da rota:
+\[
+ \eta_{v0t}=\begin{cases}
+ 1, & \text{se o veículo $v$ realiza uma rota no período $t$},\\
+ 0, & \text{se o veículo $v$ não realiza uma rota nesse período}.
+ \end{cases}
+\]
+Uma rota ativa sai da planta, visita pelo menos um cliente e retorna à planta; $\eta_{v0t}=0$ corresponde à ausência de rota. A variável é uma decisão da etapa restrita, não um parâmetro fixado pelo TSP. Não há índice de produto em $\eta$: uma visita física pode atender vários produtos, cujas quantidades são representadas por $Q_{pvit}$. As restrições apresentadas não exigem uma entrega positiva em toda visita.
+
+\paragraph{Exemplo.} Para a ordem $\pi=(0,3,1,4,2,0)$, se o veículo $v$ realiza a rota $0\to3\to4\to2\to0$ no período $t$, então
+\[
+ \eta_{v0t}=\eta_{v3t}=\eta_{v4t}=\eta_{v2t}=1,
+ \qquad \eta_{v1t}=0.
+\]
+Se esse veículo não realiza nenhuma rota no período, todas as suas variáveis $\eta_{vit}$ são zero, inclusive a do depósito.
+
+\subsection{Restrição de sequência, visitas binárias e domínios}
+
+Para cada nó, veículo e período, acrescentamos as igualdades de grau usadas na estrutura do artigo, com a variável de visita renomeada para $\eta$ a fim de distingui-la do nosso arco $Z$:
+\begin{align}
+ \sum_{j\in\alpha_i} Z_{vijt} &=\eta_{vit}
+ && \forall i\in\N,\ v\in\Vset,\ t\in\Tset, \label{eq:visit-out}\\
+ \sum_{j\in\sigma_i} Z_{vjit} &=\eta_{vit}
+ && \forall i\in\N,\ v\in\Vset,\ t\in\Tset, \label{eq:visit-in}\\
+ \sum_{v\in\Vset}\eta_{vit} &\le1
+ && \forall i\in\N\setminus\{0\},\ t\in\Tset. \label{eq:visit-assignment}
+\end{align}
+Se $\eta_{vit}=0$, todos os arcos incidentes ao nó devem ser zero. Se $\eta_{vit}=1$, seus graus de entrada e saída são exatamente um. No depósito, $\eta_{v0t}\in\{0,1\}$ permite uma única saída e um único retorno, ou uma rota vazia. As desigualdades e o balanço de rota \eqref{eq:one-departure}--\eqref{eq:one-visit} são consequências dessas igualdades. A implementação substitui essas famílias para evitar redundâncias.
+
+A estrutura dessas igualdades de grau segue as equações (52)--(53) do artigo; nele, a variável de visita é binária pela equação (59), na Seção 4.3.2. Aqui, $\eta$ indica visita física ao cliente ou ativação da rota no depósito, conforme definido acima.
+
+\begin{align}
+ Z_{vijt} &=0 && \forall v,t,\ (i,j)\notin\A^\pi, \label{eq:sequence-fix}\\
+ R_{pvijt} &=0 && \forall p,v,t,\ (i,j)\notin\A^\pi, \label{eq:forbidden-load}\\
+ 0\le Z_{vijt} &\le1 && \forall v,t,\ (i,j)\in\A^\pi, \label{eq:continuous-arcs}\\
+ X_{pt},I_{pit},R_{pvijt},Q_{pvit} &\in\mathbb{R}_{\ge0}
+ && \text{para todos os índices válidos}, \label{eq:continuous-quantities}\\
+ Y_{pt},\eta_{vit} &\in\{0,1\}
+ && \text{para todos os índices válidos}. \label{eq:binary-dom}
+\end{align}
+
+\subsection{Formulação completa do problema restrito}
+\label{sec:restricted-complete}
+
+A formulação consolidada usa as igualdades de grau em $\eta$ para substituir as restrições redundantes de balanço de rota, saída máxima e visita expressa em $Z$. Os conjuntos $\N_c$, $\mathcal J$, os custos $F_{jt},F_j$, os parâmetros de metas/pesos e as variáveis de desvios/$\lambda$ foram definidos na Seção~\ref{sec:notation}. Os custos são expressões das variáveis físicas, e as metas e pesos são dados fixos da execução.
+
+A meta original aparece no balanço de desvios; a ajustada aparece no limite por $\lambda$, conforme os métodos \texttt{createGoalProgrammingRestrictions} e \texttt{createEpsilonRestricted} do solver. O ajuste de metas nulas usa a média das metas daquele componente no horizonte, incluindo os valores nulos, conforme \texttt{\_adjust\_targets}. Quando a função configurada divide por $\widetilde\tau_{jt}$, esse denominador deve ser positivo.
+
+Usando a mesma função objetivo de \eqref{eq:rprp-obj}, o problema completo é:
+\begingroup
+\allowdisplaybreaks[1]
+\begin{align}
+ \min\quad &\Phi_{\mathrm{cfg}} \label{eq:restricted-complete-obj}\\
+ \text{sujeito a}\quad
+ &\sum_{p\in\Pset}b_pX_{pt}\le B &&\forall t,
+ \label{eq:restricted-complete-production}\\
+ &X_{pt}\le MY_{pt} &&\forall p,t,
+ \label{eq:restricted-complete-setup}\\
+ &I_{p0t}=I_{p0,t-1}+X_{pt}-\sum_{v\in\Vset}\sum_{i\in\N_c}Q_{pvit}
+ &&\forall p,t,
+ \label{eq:restricted-complete-plant-stock}\\
+ &I_{pit}=I_{pi,t-1}+\sum_{v\in\Vset}Q_{pvit}-d_{pit}
+ &&\forall p,t,\ i\in\N_c,
+ \label{eq:restricted-complete-customer-stock}\\
+ &I_{pi,0}=I^0_{pi} &&\forall p,\ i\in\N,
+ \label{eq:restricted-complete-initial-stock}\\
+ &0\le I_{pit}\le U_{pi} &&\forall p,t,\ i\in\N,
+ \label{eq:restricted-complete-stock-capacity}\\
+ &\sum_{i\in\N:i\ne k}R_{pvikt}-\sum_{j\in\N:j\ne k}R_{pvkjt}=Q_{pvkt}
+ &&\forall p,v,t,\ k\in\N_c,
+ \label{eq:restricted-complete-customer-flow}\\
+ &\sum_{v\in\Vset}\sum_{j\in\N_c}R_{pv0jt}
+ -\sum_{v\in\Vset}\sum_{i\in\N_c}R_{pvi0t}
+ =\sum_{v\in\Vset}\sum_{i\in\N_c}Q_{pvit}
+ &&\forall p,t,
+ \label{eq:restricted-complete-plant-flow}\\
+ &\sum_{p\in\Pset}R_{pvijt}\le CZ_{vijt}
+ &&\forall v,t,\ i\ne j,
+ \label{eq:restricted-complete-load-capacity}\\
+ &\sum_{p\in\Pset}Q_{pvit}\le C\eta_{vit}
+ &&\forall v,t,\ i\in\N_c,
+ \label{eq:restricted-complete-delivery-capacity}\\
+ &Q_{pvit}\le \min\{C,U_{pi}+d_{pit}\}\eta_{vit}
+ &&\forall p,v,t,\ i\in\N_c,
+ \label{eq:restricted-complete-delivery-bound}\\
+ &\sum_{j\in\alpha_i}Z_{vijt}=\eta_{vit}
+ &&\forall v,t,\ i\in\N,
+ \label{eq:restricted-complete-out-degree}\\
+ &\sum_{j\in\sigma_i}Z_{vjit}=\eta_{vit}
+ &&\forall v,t,\ i\in\N,
+ \label{eq:restricted-complete-in-degree}\\
+ &\sum_{v\in\Vset}\eta_{vit}\le1
+ &&\forall t,\ i\in\N_c,
+ \label{eq:restricted-complete-assignment}\\
+ &Z_{vijt}=0 &&\forall v,t,\ (i,j)\notin\A^\pi,
+ \label{eq:restricted-complete-forbidden-arc}\\
+ &R_{pvijt}=0 &&\forall p,v,t,\ (i,j)\notin\A^\pi,
+ \label{eq:restricted-complete-forbidden-load}\\
+ &0\le Z_{vijt}\le1 &&\forall v,t,\ (i,j)\in\A^\pi,
+ \label{eq:restricted-complete-arc-domain}\\
+ &X_{pt},I_{pit},R_{pvijt},Q_{pvit}\in\mathbb{R}_{\ge0}
+ &&\text{para os índices válidos},
+ \label{eq:restricted-complete-continuous-domain}\\
+ &Y_{pt},\eta_{vit}\in\{0,1\}
+ &&\text{para os índices válidos}.
+ \label{eq:restricted-complete-binary-domain}
+\end{align}
+\endgroup
+
+\noindent No modo multiobjetivo, acrescentam-se ao mesmo modelo as restrições:
+\begin{align}
+ F_{jt}+\Delta^-_{jt}-\Delta^+_{jt}&=\tau_{jt}
+ &&\forall j\in\mathcal J,\ t\in\Tset,
+ \label{eq:restricted-goal-balance}\\
+ w_j\Delta^+_{jt}&\le\lambda\widetilde\tau_{jt}
+ &&\forall j\in\mathcal J,\ t\in\Tset,
+ \label{eq:restricted-goal-bound}\\
+ \Delta^+_{jt},\Delta^-_{jt}&\in\mathbb{R}_{\ge0}
+ &&\forall j\in\mathcal J,\ t\in\Tset,
+ \label{eq:restricted-goal-domain}\\
+ \lambda&\in\mathbb{R}_{\ge0}.
+ \label{eq:restricted-lambda-domain}
+\end{align}
+A variante configurada por \texttt{positive\_only\_deviations=true} substitui \eqref{eq:restricted-goal-balance} por $\Delta^+_{jt}\ge F_{jt}-\tau_{jt}$ e omite $\Delta^-$. A avaliação numérica usa os menores desvios positivos e o menor $\lambda$ compatíveis com os custos, tanto para comparar etapas quanto para inicializar outros métodos. No modo monoobjetivo, esse último bloco de restrições não é aplicado. $\Phi_{\mathrm{cfg}}$ permanece genérica nos dois casos. Não há uma restrição adicional de subtour na etapa restrita: os arcos entre clientes em $\A^\pi$ seguem uma ordem total e não podem formar um ciclo, mesmo quando uma visita não tem entrega positiva. A prova seguinte garante, adicionalmente, a integralidade dos arcos contínuos a partir das visitas binárias.
+
+\subsection{Demonstração de integralidade dos arcos}
+
+\begin{proposition}[Rota única para visitas binárias em uma ordem total]
+Fixe um veículo $v$, um período $t$ e uma ordem total $\pi$. Se os únicos arcos permitidos pertencem a $\A^\pi$, $Z\ge0$, $\eta\in\{0,1\}$ e as igualdades \eqref{eq:visit-out}--\eqref{eq:visit-in} são satisfeitas para todos os clientes e para a planta, então todo valor de $Z$ é $0$ ou $1$. Para um vetor de visitas factível, a rota é única: sai da planta, percorre os clientes selecionados na ordem $\pi$ e volta à planta. A afirmação vale para toda solução factível, não apenas para pontos extremos ou soluções ótimas.
+\label{prop:integral-arcs}
+\end{proposition}
+
+\begin{proof}
+Suprimimos $v,t$. Primeiro, se $\eta_i=0$, a não negatividade e as duas somas iguais a zero forçam todos os arcos incidentes a $i$ a zero. Elimine esses clientes do grafo.
+
+Se nenhum cliente permanece, todos os arcos são zero, e as igualdades da planta impõem $\eta_0=0$. Caso contrário, denote por $m$ o número de clientes selecionados, e sejam $i_1,\ldots,i_m$ esses clientes com $\eta_i=1$, listados na ordem $\pi$.
+
+O primeiro cliente $i_1$ só pode receber um arco positivo da planta: clientes posteriores não podem precedê-lo, e os anteriores não selecionados têm todos os arcos iguais a zero. Como sua soma de entrada é um, $Z_{0i_1}=1$. A soma de saída da planta é $\eta_0\le1$; logo $\eta_0=1$ e todas as demais saídas da planta são zero.
+
+Se $m\ge2$, o segundo cliente $i_2$ só pode receber fluxo positivo de $i_1$: as demais entradas admissíveis vêm da planta, cuja saída já foi inteiramente usada, ou de clientes não selecionados. Portanto $Z_{i_1i_2}=1$, e a soma de saída de $i_1$ força seus demais arcos a zero.
+
+Repita o argumento por indução. Quando $i_r$ é considerado, todas as saídas da planta e dos clientes $i_1,\ldots,i_{r-2}$ já estão consumidas pelos arcos anteriores do caminho. Clientes não selecionados têm grau zero, e os clientes posteriores não podem entrar em $i_r$. A única entrada possível é $Z_{i_{r-1}i_r}=1$, e todos os outros arcos de saída de $i_{r-1}$ são zero.
+
+Finalmente, $i_m$ não tem sucessor selecionado. Sua saída de valor um deve retornar à planta: $Z_{i_m0}=1$. Isso cobre também $m=1$, quando a rota é $0\to i_1\to0$. Assim, os únicos arcos não nulos são
+\[
+ (0,i_1),(i_1,i_2),\ldots,(i_{m-1},i_m),(i_m,0),
+\]
+todos com valor um.
+\end{proof}
+
+\paragraph{Leitura por decomposição de fluxo.} Outra forma de interpretar a prova é dividir a planta em uma origem e um destino. O grafo resultante é acíclico, e $Z$ descreve um fluxo de valor zero ou um. Pelo teorema de decomposição de fluxos, esse fluxo pode ser decomposto em caminhos; não há ciclos. Cada visita binária igual a um exige que todos os caminhos com peso positivo passem por aquele cliente. Como todos seguem a mesma ordem total, esses caminhos coincidem. A demonstração por indução acima torna esse argumento explícito sem depender de uma afirmação de unimodularidade do modelo inteiro. Para o teorema geral de decomposição de fluxos, ver as \href{https://courses.csail.mit.edu/6.854/19/Scribe/s6-maxflow/s6-maxflow.html}{notas de Network Flows do MIT, curso 6.854, Lecture 6}, seção ``Flow Decomposition and Cuts''.
+
+\subsection{Extensão multiproduto e equivalência à formulação binária restrita}
+
+A Proposição~\ref{prop:integral-arcs}, sua demonstração para a ordem total e o contraexemplo à relaxação direta de $Z$ são desenvolvidos aqui para justificar a adaptação ao projeto. A Proposição~\ref{prop:integral-arcs} usa somente $Z$, $\eta$ e a ordem $\pi$. Portanto, ela continua válida ao acrescentar as restrições de produção, estoques, demandas, entregas e capacidade multiproduto. Essas restrições podem tornar uma seleção de visitas inviável, mas não podem criar arcos fracionários entre as seleções viáveis: para cada vetor binário $\eta$, os arcos já estão determinados. Não é necessário afirmar que a matriz completa, que inclui $\sum_pR_{pvijt}\le CZ_{vijt}$, seja totalmente unimodular.
+
+Há também equivalência com o modelo de arcos binários restrito a $\A^\pi$. Em qualquer solução daquele modelo, o limite de visita por cliente e o balanço de rota tornam os graus de cada cliente, por veículo, iguais a zero ou um. A saída da planta é zero ou um, e seu retorno tem o mesmo valor. Basta definir $\eta_{vit}$ como o grau para satisfazer \eqref{eq:visit-out}--\eqref{eq:visit-in}. No sentido inverso, a proposição garante que qualquer solução da nova formulação contínua já possui $Z$ binário e satisfaz as restrições herdadas. Assim, ao projetar para as variáveis originais, as duas formulações restritas têm o mesmo conjunto factível e o mesmo ótimo para qualquer função objetivo preservada, incluindo a função de metas do projeto.
+
+Por exemplo, para $\pi=(0,3,1,4,2,0)$ e visitas ao conjunto $\{3,4,2\}$, a única rota é $0\to3\to4\to2\to0$. Seus quatro arcos são um, e todos os demais são zero, independentemente de quantos produtos são entregues em cada cliente.
+
+\paragraph{Alcance da garantia.} O problema completo ainda é inteiro misto porque $Y$ e $\eta$ permanecem binárias; $X,I,R,Q$ são contínuas não negativas. A garantia de $Z$ vale quando $\eta$ respeita seu domínio binário; as relaxações internas do branch-and-bound podem ter visitas e arcos fracionários. A demonstração pressupõe uma única ordem total, uma única rota por veículo/período e ausência de arcos próprios. Ela não pode ser aplicada à etapa de melhoria quando a ordem-base é removida.
+
+\subsection{Quantidade de variáveis binárias e restrições}
+
+As contagens a seguir comparam duas formulações da \textbf{mesma etapa restrita}, com a mesma ordem $\pi$: arcos $Z$ binários sem $\eta$ e arcos $Z$ contínuos com $\eta$ binária. Consideramos $n$ clientes, $V$ veículos, $T$ períodos e $P$ produtos. Os arcos proibidos são omitidos ou fixados em zero e não entram na contagem de binárias de roteamento livres. Não contamos limites de variável como linhas de restrição; a imposição de $\A^\pi$ é comum às duas alternativas.
+
+Como $\A^\pi$ contém $2n+n(n-1)/2=n(n+3)/2$ arcos, temos:
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Família de binárias & Sem $\eta$ & Com $\eta$ \\
+\midrule
+Setup $Y$ & $PT$ & $PT$ \\
+Arcos $Z$ & $\dfrac{n(n+3)}{2}VT$ & $0$ \\
+Visitas/ativação $\eta$ & $0$ & $(n+1)VT$ \\
+\midrule
+Total & $PT+\dfrac{n(n+3)}{2}VT$ & $PT+(n+1)VT$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+Os arcos continuam existindo como variáveis contínuas na segunda alternativa. As quantidades $X,I,R,Q$ também são contínuas não negativas e não são incluídas nessa contagem de variáveis \emph{binárias}. A redução de binárias é
+\[
+ \left[\frac{n(n+3)}{2}-(n+1)\right]VT
+ =\frac{(n-1)(n+2)}{2}VT.
+\]
+Por exemplo, com $n=20$, $V=5$ e $T=12$, as binárias de roteamento passam de $13\,800$ para $1\,260$; os $PT$ setups permanecem. No solver irrestrito da base atual, os arcos próprios são omitidos: são criadas $n(n+1)VT$ variáveis binárias $Z$. Na etapa restrita, somente os arcos de $\A^\pi$ criam variáveis $R/Z$; os demais são zeros estruturais.
+
+\paragraph{Restrições acrescentadas mantendo as antigas.} As igualdades de saída \eqref{eq:visit-out} acrescentam $(n+1)VT$ linhas, as de entrada \eqref{eq:visit-in} acrescentam outras $(n+1)VT$, e a atribuição \eqref{eq:visit-assignment} acrescenta $nT$ desigualdades. Portanto, se todas as restrições herdadas forem mantidas como no texto acima, denotamos por $\Delta m_{\mathrm{mantendo}}$ o número de linhas acrescentadas:
+\[
+ \Delta m_{\mathrm{mantendo}}=2(n+1)VT+nT.
+\]
+
+\paragraph{Aumento líquido substituindo as restrições redundantes.} As novas famílias permitem retirar a saída máxima \eqref{eq:one-departure}, o balanço de rota \eqref{eq:route-balance} e o limite de visita em $Z$ \eqref{eq:one-visit}. A contagem do bloco de rota fica:
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Família de restrições & Sem $\eta$ & Com $\eta$, sem redundâncias \\
+\midrule
+Uma saída por veículo & $VT$ & $0$ \\
+Balanço de rota por nó & $(n+1)VT$ & $0$ \\
+Uma visita por cliente via $Z$ & $nT$ & $0$ \\
+Grau de saída igual a $\eta$ & $0$ & $(n+1)VT$ \\
+Grau de entrada igual a $\eta$ & $0$ & $(n+1)VT$ \\
+Uma visita por cliente via $\eta$ & $0$ & $nT$ \\
+\midrule
+Total do bloco & $(n+2)VT+nT$ & $2(n+1)VT+nT$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+Denotamos por $\Delta m_{\mathrm{substituindo}}$ o aumento líquido do número de linhas nessa substituição:
+\[
+ \Delta m_{\mathrm{substituindo}}
+ =\bigl[2(n+1)VT+nT\bigr]-\bigl[(n+2)VT+nT\bigr]
+ =nVT.
+\]
+Todas as demais famílias de produção, estoque, fluxo e capacidade são preservadas. No exemplo $n=20$, $V=5$, $T=12$, acrescentar todas as novas famílias gera $2\,760$ linhas adicionais; substituir as antigas aumenta o bloco de rota de $1\,560$ para $2\,760$ linhas, um acréscimo líquido de $1\,200$.
+
+\subsection{Eliminação conjunta de arcos por uma visita binária}
+
+Fixar $\eta_{vit}=0$ força a zero \textbf{todos os arcos admissíveis que entram e saem} do cliente $i$ para aquele veículo e período, pelas igualdades \eqref{eq:visit-out}--\eqref{eq:visit-in} e pela não negatividade de $Z$. Se $i=\pi_r$, há $r$ arcos de entrada e $n-r+1$ arcos de saída, totalizando $n+1$ arcos incidentes. Uma única fixação de visita pode, portanto, eliminar conjuntamente até $n+1$ arcos candidatos; alguns podem já estar fixados por outras decisões. Para o depósito, $\eta_{v0t}=0$ elimina seus $2n$ arcos incidentes.
+
+Por exemplo, em $\pi=(0,3,1,4,2,0)$, fixar $\eta_{v4t}=0$ elimina simultaneamente
+\[
+ Z_{v04t}=Z_{v34t}=Z_{v14t}=Z_{v42t}=Z_{v40t}=0.
+\]
+Já a fixação de um único $Z_{vijt}=0$ proíbe diretamente apenas aquela conexão. A variável $\eta$ oferece ao solver uma decisão agregada sobre a participação do cliente na rota e favorece essa propagação conjunta. Quando todas as visitas são binárias, a Proposição~\ref{prop:integral-arcs} determina a rota inteira. Essa lógica justifica investigar o desempenho da reformulação; o tempo de solução depende também do presolve, dos cortes, das heurísticas e da ramificação utilizados pelo solver.
+
+\section{Etapa 3: melhoria de rotas}
+
+\subsection{O que fica fixo e o que é reotimizado}
+
+Nesta seção, a barra sobre uma variável indica seu valor em uma solução factível obtida na etapa 2. Em particular, $\bar Q_{pvit}$ é a entrega daquele plano por produto, veículo, cliente e período. As rotas \textbf{não ficam fixas}. A etapa recebe da etapa 2 a produção e o setup $\bar X_{pt},\bar Y_{pt}$, além do total entregue $\bar Q_{pit}=\sum_{v\in\Vset}\bar Q_{pvit}$ para cada produto, cliente e período. Esses valores agregados ficam fixos, mas a alocação das entregas entre veículos e as rotas $Z_{vijt}$ são decisões novas. A ordem $\pi$ da etapa 1 também é liberada: a etapa 3 pode escolher qualquer arco dirigido entre nós distintos. O objetivo é reotimizar os custos fixo e variável de transporte.
+
+Usando o conjunto de clientes $\N_c$ definido na Seção~\ref{sec:notation}, definimos $\N_t^+$ como o conjunto de clientes que precisam de entrega no período $t$:
+\[
+ \N_t^+=\left\{i\in\N_c:\sum_{p\in\Pset}\bar Q_{pit}>0\right\}.
+\]
+Para cada período, o plano de produção e os totais $\bar Q$ são dados fixos. As variáveis de decisão são $Q_{pvit}\ge0$ (entrega do produto $p$ pelo veículo $v$ ao cliente $i$), $R_{pvijt}\ge0$ (carga do produto $p$ no arco $i\to j$), $Z_{vijt}\in\{0,1\}$ (uso do arco) e $\eta_{vit}\in\{0,1\}$ (visita ao nó, ou ativação no depósito). As variáveis de arco são definidas para $i,j\in\N$, $i\ne j$, e para os índices válidos de veículo e período; $Q$ e $R$ também têm índice de produto. A positividade das entregas dos clientes visitados e os fluxos de produto garantem a conexão das rotas à planta, como demonstrado abaixo.
+
+\subsection{Formulação}
+
+\begin{align}
+ \min\quad
+ & f\sum_{t\in\Tset}\sum_{v\in\Vset}\sum_{j\in\N_c} Z_{v0jt}
+ +\sum_{t\in\Tset}\sum_{v\in\Vset}\sum_{i\in\N}\sum_{j\in\N:j\ne i} a_{ij}Z_{vijt}
+ \label{eq:route3-obj}\\
+ \text{sujeito a}\quad
+ & \sum_{v\in\Vset}Q_{pvit}=\bar Q_{pit}
+ && \forall p\in\Pset,\ i\in\N_c,\ t\in\Tset,
+ \label{eq:route3-fix-delivery}\\
+ & \sum_{i\in\N:i\ne k}R_{pvikt}-\sum_{j\in\N:j\ne k}R_{pvkjt}=Q_{pvkt}
+ && \forall p,v,t,\ k\in\N_c,
+ \label{eq:route3-flow-customer}\\
+ & \sum_{j\in\N_c}R_{pv0jt}-\sum_{i\in\N_c}R_{pvi0t}
+ =\sum_{k\in\N_c}Q_{pvkt}
+ && \forall p,v,t,
+ \label{eq:route3-flow-depot}\\
+ & \sum_{p\in\Pset}R_{pvijt}\le C Z_{vijt}
+ && \forall v,t,\ i,j\in\N,\ i\ne j,
+ \label{eq:route3-capacity}\\
+ & \sum_{j\in\N:j\ne i}Z_{vijt}=\eta_{vit}
+ && \forall v,t,\ i\in\N,
+ \label{eq:route3-out-degree}\\
+ & \sum_{j\in\N:j\ne i}Z_{vjit}=\eta_{vit}
+ && \forall v,t,\ i\in\N,
+ \label{eq:route3-in-degree}\\
+ & \sum_{v\in\Vset}\eta_{vit}=1
+ && \forall t,\ i\in\N_t^+,
+ \label{eq:route3-visit-required}\\
+ & \sum_{v\in\Vset}\eta_{vit}=0
+ && \forall t,\ i\in\N_c\setminus\N_t^+,
+ \label{eq:route3-no-unneeded-visit}\\
+ & \sum_{i\in\N_c}\eta_{vit}\le n\eta_{v0t}
+ && \forall v,t,
+ \label{eq:route3-route-active-upper}\\
+ & \eta_{v0t}\le\sum_{i\in\N_c}\eta_{vit}
+ && \forall v,t,
+ \label{eq:route3-route-active-lower}\\
+ & Q_{pvit},R_{pvijt}\ge0
+ && \text{para todos os índices válidos},
+ \label{eq:route3-continuous-dom}\\
+ & Z_{vijt},\eta_{vit}\in\{0,1\}
+ && \text{para todos os índices válidos}.
+ \label{eq:route3-binary-dom}
+\end{align}
+
+As equações \eqref{eq:route3-fix-delivery} preservam o total entregue a cada cliente/produto/período. A escolha do veículo é livre, mas \eqref{eq:route3-visit-required} permite um único veículo por cliente atendido: as entregas positivas desse cliente não são divididas entre veículos. Os balanços \eqref{eq:route3-flow-customer}--\eqref{eq:route3-flow-depot} e a capacidade \eqref{eq:route3-capacity} garantem que as cargas abasteçam as entregas e caibam nas rotas. Produção e totais entregues fixos preservam os estoques derivados dos balanços da etapa 2.
+
+\subsection{Eliminação de subtours pelos fluxos de produto}
+
+As restrições de fluxo mantêm o papel de impedir ciclos desconectados \emph{com entregas positivas}, em conjunto com $R\ge0$, $Q\ge0$ e $\sum_pR_{pvijt}\le CZ_{vijt}$. Para demonstrar, fixe $v,t$ e suponha que exista um conjunto não vazio $S\subseteq\N_c$ constituído pelos clientes visitados de um componente de rota desconectado da planta. Nenhum arco selecionado cruza a fronteira de $S$; pela restrição de capacidade, os fluxos de produto que cruzam essa fronteira são zero. Somando \eqref{eq:route3-flow-customer} para $k\in S$, os fluxos internos se cancelam e obtemos, para cada produto $p$:
+\begin{equation}
+ \sum_{k\in S}Q_{pvkt}
+ =\sum_{i\in\N\setminus S}\sum_{k\in S}R_{pvikt}
+ -\sum_{k\in S}\sum_{j\in\N\setminus S}R_{pvkjt}
+ =0.
+ \label{eq:route3-subtour-flow-proof}
+\end{equation}
+Logo nenhum cliente desse componente pode receber quantidade positiva de nenhum produto. Na etapa 3, porém, todo cliente visitado pertence a $\N_t^+$, pois \eqref{eq:route3-no-unneeded-visit} proíbe as demais visitas. Como cada cliente é visitado por apenas um veículo, os balanços de fluxo e as capacidades anulam sua entrega pelos outros veículos; o veículo que o visita deve entregar todo o seu $\bar Q_{pit}$. Portanto,
+\[
+ \sum_{p\in\Pset}\sum_{k\in S}Q_{pvkt}
+ =\sum_{p\in\Pset}\sum_{k\in S}\bar Q_{pkt}>0,
+\]
+o que contradiz \eqref{eq:route3-subtour-flow-proof}. Assim, toda solução inteira da formulação da etapa 3 tem suas rotas conectadas à planta sem restrições adicionais de subtour.
+
+\paragraph{O que pode ocorrer no modelo original.} Um subtour desconectado só pode ser formado por clientes cuja entrega é zero para \emph{todos} os produtos naquele veículo e período. Se qualquer cliente desse subtour recebe uma quantidade positiva de qualquer produto, a soma dos balanços de fluxo contradiz essa entrega, conforme \eqref{eq:route3-subtour-flow-proof}. A afirmação depende dos balanços de produto, da não negatividade e da ligação de capacidade entre $R$ e $Z$; vale com quantidades contínuas ou inteiras. Um cliente com entrega zero pode fazer parte de uma rota válida conectada à planta, junto de outros clientes que recebem produtos. O caso admitido pelos balanços é especificamente um ciclo \emph{desconectado} em que todas as entregas são zero.
+
+\paragraph{Exemplo factível para as restrições originais.} Considere um produto, um veículo, um período e dois clientes, $\N=\{0,1,2\}$. Suprima os índices de produto, veículo e período neste exemplo. Cada cliente tem demanda $d_i=1$ e estoque inicial $I^0_i=1$; o estoque inicial da planta é $I^0_0=0$, e os limites de estoque comportam esses valores. Escolha
+\[
+ X=Y=0,\qquad Q_1=Q_2=0,\qquad I_0=I_1=I_2=0,
+ \qquad R_{ij}=0\text{ para todos os arcos},
+\]
+com $Z_{12}=Z_{21}=1$ e todos os demais arcos $Z$ iguais a zero. A demanda é atendida pelo estoque inicial, os balanços de produto e da planta são zero, a capacidade é respeitada, cada cliente tem uma entrada e uma saída, há no máximo uma visita por cliente e nenhuma saída da planta. Portanto, o ciclo $1\to2\to1$ satisfaz as restrições originais mesmo sendo desconectado da planta. A demanda positiva não força uma entrega positiva em cada período, pois o estoque anterior pode atendê-la.
+
+\paragraph{Papel da função objetivo.} Se a função monoobjetivo penaliza estritamente o custo de cada arco desse ciclo, eliminá-lo reduz o objetivo sem alterar produção, estoque ou entregas; por isso, uma solução globalmente ótima não o mantém. Essa propriedade do objetivo não elimina o ciclo do conjunto factível. No modo multiobjetivo atual, são penalizados os desvios positivos das metas e $\lambda$, enquanto os desvios negativos não são penalizados. Se o custo de deslocamento $F_{5t}$, com e sem o ciclo, fica abaixo da meta $\tau_{5t}$, o desvio $\Delta^+_{5t}$ pode ser zero nos dois casos, e o ciclo pode permanecer em uma solução de mesmo valor objetivo. Essa é uma possibilidade permitida pela formulação; sua ocorrência em experimentos depende das soluções efetivamente obtidas.
+
+Na etapa 3, a definição de $\N_t^+$ e a proibição de visitas aos demais clientes eliminam o caso de subtour com entrega zero. Na etapa 2, a ordem de $\A^\pi$ impede qualquer ciclo formado apenas por clientes. A conectividade da etapa 3 independe do sinal dos custos de transporte sob as hipóteses de atendimento especificadas.
+
+A etapa 3 pode mudar a sequência, os arcos percorridos e o veículo responsável pelo atendimento do cliente. O total de cada produto entregue a cada cliente em cada período e o plano de produção/setup são mantidos. Nesta etapa $Z$ permanece binária: a prova de integralidade para $Z$ contínua depende da ordem $\pi$ fixa da etapa 2, que aqui é liberada.
+
+\section{O que é herdado e o que muda}
+
+\begin{center}
+\begin{tabular}{p{0.27\linewidth}p{0.62\linewidth}}
+\toprule
+Etapa & Papel no método determinístico proposto \\
+\midrule
+TSP & Uma rota fechada, não capacitada, que visita todos os clientes uma vez; gera somente a ordem-base. \\
+MPPRP restrito & Mantém as decisões multiproduto e a ordem-base; arcos contínuos têm valores binários garantidos pelas visitas binárias e pelas igualdades de grau. \\
+Melhoria de rotas & Mantém produção e entrega total ao cliente; reotimiza distribuição por veículo e sequência de arcos para reduzir custo de transporte. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O TSP inicial do artigo não verifica capacidade de veículo, capacidade de produção, produtos ou períodos. As capacidades e a compatibilidade multiproduto entram no MPPRP restrito. A ordem-base é comum aos produtos porque os custos de deslocamento são por arco e os veículos carregam a combinação de produtos.
+
+
+
+O contrato final preserva $Z[t][v][i][j]$ e as quantidades contínuas nos formatos Excel/Parquet existentes. As posições proibidas de $R/Z$ são preenchidas com zero na materialização da saída. As visitas $\eta$ e os arcos $u$ do TSP são registrados em Parquets complementares identificados por execução e etapa.
+
+\section{Configuração, destinos e rastreabilidade}
+
+\subsection{Limites e escolha da solução}
+
+O bloco \texttt{solver.matheuristic} tem \texttt{enabled=false} por padrão. Os limites padrão são 10 segundos para o TSP, 60 para o MPPRP restrito e 30 para a melhoria, que é habilitada por padrão. Cada limite pertence à respectiva etapa. A chave \texttt{use\_as} aceita \texttt{final}, \texttt{exact\_start} e \texttt{pso\_start}. Nos dois modos de inicialização, o método configurado deve corresponder ao destino: \texttt{GUROBY} (nome histórico do CPLEX) ou \texttt{PSO}.
+
+A etapa 3 minimiza $F_4+F_5$, mas a seleção entre as etapas 2 e 3 compara $\Phi_{\mathrm{cfg}}$. Em empate numérico de $10^{-8}$, prefere-se menor custo de transporte. No modo multiobjetivo, o critério numérico é
+\[
+ \Phi_{\mathrm{cfg}}=\alpha\max_{j,t}
+ \frac{w_j\max\{F_{jt}-\tau_{jt},0\}}{\widetilde\tau_{jt}}
+ +(1-\alpha)\sum_{j,t}
+ \frac{w_j\max\{F_{jt}-\tau_{jt},0\}}{\widetilde\tau_{jt}}.
+\]
+Uma redução do transporte pode piorar esse critério; nesse caso a etapa 2 é mantida. Sem solução factível na etapa 2, os destinos executam sem semente, e \texttt{final} registra ausência de solução. Uma etapa 3 sem candidato válido conserva a etapa 2. O resultado do destino também passa por auditoria antes de substituir a melhor solução anterior.
+
+O MIP start transmite $X,Y,I,Q,R,Z$ e os auxiliares de metas necessários, preservando quantidades fracionárias. O PSO recebe uma partícula completa com produção, estoques, entregas, atribuições e rotas da semente; as demais partículas usam a construção normal. Os intervalos dos genes são ampliados para acomodar essa semente dentro dos limites físicos. Os controles existentes que permitem ao PSO chamar o exato posteriormente permanecem ativos. \texttt{solver.pso.time\_limit=null} mantém a parada por número de iterações; um limite positivo é verificado entre iterações e conserva a melhor solução.
+
+\subsection{Recursos opcionais, estados e saídas}
+
+Coelho, HC1, cortes cumulativos de capacidade, bounds fortalecidos e a variante de metas mantêm suas chaves. Expressões de visita usam $\eta$ quando disponível; callbacks indexam somente arcos criados, considerando os omitidos como zero. A canonicalização HC1 permuta conjuntamente rotas, entregas, cargas e visitas. As quantidades $X,I,Q,R$ usam precisão \texttt{float64} também no PSO e nos reparos. A chave legada \texttt{integer\_variables} do dimensionamento é normalizada para \texttt{false}.
+
+As adjacências são pré-calculadas. Os snapshots entre etapas mantêm dicionários esparsos de arcos e estados físicos sem materializar tensores $R/Z$; estes são materializados para saída, debug ou transmissão que os exige. Cada modelo é liberado após a extração. O PSO mantém kernels Numba e avaliação em arrays compactos, sem $R/Z$ por partícula. Cada processo guarda até 64 TSPs em cache, pela matriz de custos e pelos parâmetros da etapa.
+
+O diretório \texttt{matheuristic} recebe variáveis, resumos e metadados identificados por \texttt{run\_id}. Salva $u$ e $\eta$ das etapas com incumbente, incluindo seus zeros. Uma incumbente rejeitada pela auditoria conserva suas variáveis para inspeção, mas não é selecionada como solução factível; as violações ficam no resumo. O debug, desabilitado por padrão, acrescenta estados físicos e auxiliares de metas de forma esparsa, com zeros implícitos documentados. Os resumos registram objetivos, componentes de custo, tempos, limites, tamanhos de modelos, recursos aplicados, bounds, gaps e etapa selecionada. Os gaps do TSP, do restrito e da melhoria descrevem seus respectivos problemas; não certificam o ótimo do MPPRP irrestrito. Quando uma dessas etapas fornece o resultado final, o gap global não é informado como gap exato.
+
+O notebook \texttt{analysis/matheuristic\_debug.ipynb} reconstrói TSP, produção, estoques, entregas, cargas e rotas a partir das saídas, verifica graus, balanços, capacidades, conectividade e custos, e compara etapas e tempos. Ele não é executado automaticamente. A validação autorizada usa testes unitários com mocks e verificações numéricas. Instâncias reais, resoluções CPLEX, benchmarks e avaliação de tempo, memória e qualidade permanecem pendentes de orientação do usuário.
+
+\section*{Referência metodológica}
+
+Kermani, A., Cordeau, J.-F., e Jans, R. (2024). ``A progressive hedging-based matheuristic for the stochastic production routing problem with adaptive routing.'' \emph{Computers \& Operations Research}, 169, 106745. DOI: \href{https://doi.org/10.1016/j.cor.2024.106745}{10.1016/j.cor.2024.106745}. Este esboço usa a ideia de TSP não capacitado e PRP restrito; não incorpora a incerteza nem o PH do artigo.
+
+\end{document}

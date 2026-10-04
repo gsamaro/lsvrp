@@ -1,9 +1,12 @@
 import os
 from hashlib import sha1
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+
 from src.helpers.InstanceMetadata import enrich_with_instance_metadata
+from src.solvers._solver_common import solution_components
 
 
 def _build_hash_rows(file_name_hash, times):
@@ -56,31 +59,25 @@ def getResults(
         weight_payload = str(weight)
     weight_hash = sha1(weight_payload.encode("utf-8")).hexdigest()[:6]
 
-    s_p = np.array(data["s_p"])
-    c_p = np.array(data["c_p"])
-    csetup = [np.sum(s_p * Y[t]) for t in range(len(Y))]
-    cprod = [np.sum(c_p * X[t]) for t in range(len(X))]
-
-    # f1..f5 aligned with model definitions
-    f1 = cprod
-    f2 = csetup
-
-    h_pi = np.array(data["h_pi"])
-    I_aux = np.array(I)
-    f3 = [np.sum(h_pi * I_aux[t].T) for t in range(len(I))]
-
-    f4 = []
-    f5 = []
-    f = data["f"]
-    a_ik = np.array(data["a_ik"])
-    for t in range(len(Z)):
-        sum_f5 = 0
-        sum_f4 = 0
-        for v in range(len(Z[t])):
-            sum_f5 += np.sum(a_ik * Z[t][v])
-            sum_f4 += np.sum(f * Z[t][v][0])
-        f5.append(sum_f5)
-        f4.append(sum_f4)
+    if len(X):
+        cost_data = SimpleNamespace(
+            t=len(X),
+            c_p=data["c_p"],
+            s_p=data["s_p"],
+            h_p_i=data["h_pi"],
+            f=data["f"],
+            a_i_k=data["a_ik"],
+        )
+        variables = {
+            "X": np.asarray(X, dtype=float).T,
+            "Y": np.asarray(Y, dtype=float).T,
+            "I": np.asarray(I, dtype=float).transpose(2, 1, 0),
+            "Z": np.asarray(Z, dtype=float).transpose(1, 2, 3, 0),
+        }
+        f1, f2, f3, f4, f5 = solution_components(cost_data, variables).tolist()
+    else:
+        f1, f2, f3, f4, f5 = [], [], [], [], []
+    cprod, csetup = f1, f2
 
     file_name_hash = sha1(
         (data["file"] + str(weight) + str(data["alpha"])).encode()
@@ -107,7 +104,7 @@ def getResults(
             "hash_file": [file_name_hash] * n,
             "weight_hash": [weight_hash] * n,
             "weight": str(weight),
-            "alpha": [float(data['alpha'])] * n,
+            "alpha": [float(data["alpha"])] * n,
             "FO": [float(FO)] * n,
             "gap": [float(GAP)] * n,
             "solver_time": [float(TIME)] * n,
@@ -267,6 +264,8 @@ def getResults(
             for c in ["t", "p", "v", "i", "k", "j"]
             if c in df_parquet.columns and c not in first_cols
         ]
-        last_cols = [c for c in ["value"] if c in df_parquet.columns and c not in first_cols]
+        last_cols = [
+            c for c in ["value"] if c in df_parquet.columns and c not in first_cols
+        ]
         df_parquet = df_parquet[first_cols + other_cols + last_cols]
     df_parquet.to_parquet(parquet_path, index=False)
