@@ -12,6 +12,7 @@
 
 - Standardized production, inventory, delivery, and load quantities as continuous `float64` values across the exact solver and PSO.
 - Added optional PSO iteration time limit and kept matheuristic stage budgets independent.
+- Expanded the debug notebook with run discovery and period-by-period demand service and inventory balance analysis.
 
 ### Fixes
 
