@@ -147,9 +147,9 @@ Não foi possível determinar a partir do código se existe um `poetry.lock`, am
 
 ### Configuração
 
-Edite `config/config.json`. Os blocos observados são:
+Edite `config/config.json`. Os principais blocos são:
 
-- `solver`: `threadsLimit`, `timeLimit`, `method`, `multiobjective`.
+- `solver`: seleção do método, limites, formulação e features do solver; inclui os subblocos `pso`, `matheuristic` e `telemetry`.
 - `workers`: `num`.
 - `logging`: `level`, com valores `INFO` (padrão), `DEBUG` e `OFF`.
 - `instance`: `dir`, `output`, `files`.
@@ -178,6 +178,60 @@ Exemplo observado:
 ```
 
 Observação: apesar do nome `GUROBY`, o solver implementado usa DOcplex/CPLEX. Não há import de Gurobi no código empacotado.
+
+### Seleção do solver, PSO e matheurística
+
+`solver.method` aceita `GUROBY` ou `PSO` (a validação converte o valor para maiúsculas). `GUROBY` é o nome histórico do solver exato DOcplex/CPLEX. A seleção efetiva também depende de `solver.matheuristic.enabled` e `solver.matheuristic.use_as`:
+
+| `matheuristic.enabled` | `method` | `matheuristic.use_as` | Fluxo executado |
+|---|---|---|---|
+| `false` | `GUROBY` | qualquer valor aceito | Executa diretamente o solver exato. As opções de PSO não têm efeito. |
+| `false` | `PSO` | qualquer valor aceito | Executa o PSO. As opções `pso.use_as_mip_start` e `pso.return_heuristic_result_without_cplex` controlam se haverá solver exato depois. |
+| `true` | `GUROBY` ou `PSO` | `final` | Executa TSP para obter uma ordem, o modelo restrito e, se habilitada, a melhoria de rota. Retorna a melhor solução viável entre o modelo restrito e a melhoria; `method` não seleciona outro solver nesse modo. |
+| `true` | `GUROBY` | `exact_start` | Executa as etapas da matheurística e passa a melhor solução ao solver exato como MIP start. Se não houver solução inicial viável, o exato ainda pode rodar sem ela. |
+| `true` | `PSO` | `pso_start` | Executa as etapas da matheurística e usa a solução como inicialização do PSO. As opções do PSO controlam se haverá depois uma chamada ao solver exato. |
+
+Os valores aceitos de `solver.matheuristic.use_as` são `final`, `exact_start` e `pso_start`. Com a matheurística habilitada, `exact_start` exige `method: "GUROBY"` e `pso_start` exige `method: "PSO"`; as combinações incompatíveis são rejeitadas pela validação. Quando `matheuristic.enabled` é `false`, `use_as` não altera o fluxo.
+
+#### Handoff do PSO para o solver exato
+
+Esta tabela se aplica quando o PSO está rodando diretamente (`method: "PSO"` com matheurística desligada) ou como destino de `pso_start`:
+
+| `pso.use_as_mip_start` | `pso.return_heuristic_result_without_cplex` | Comportamento |
+|---|---|---|
+| `true` | `false` | Depois do PSO, chama o solver exato usando a melhor solução do PSO como MIP start. O resultado exato é selecionado se for viável e não pior que a solução do PSO; caso contrário, conserva a solução do PSO. |
+| `true` | `true` | Retorna a solução do PSO sem chamar o solver exato. |
+| `false` | `false` | Retorna a solução do PSO sem chamar o solver exato. |
+| `false` | `true` | Retorna a solução do PSO sem chamar o solver exato. |
+
+Se o PSO não tiver uma solução para usar como MIP start, a chamada ao solver exato ainda pode ocorrer sem uma solução inicial. Essas duas opções não mudam o fluxo de `method: "GUROBY"` direto.
+
+#### Features comuns do solver
+
+| Configuração | Efeito |
+|---|---|
+| `solver.timeLimit` | Limite em segundos do solver exato. Também é usado na etapa exata posterior ao PSO, quando ela ocorre. |
+| `solver.threadsLimit` | Número de threads passado ao solver; aceita inteiro positivo ou `null`. |
+| `solver.multiobjective` | `true` usa goal programming com targets, desvios e `alpha`; `false` usa a soma ponderada dos custos. |
+| `solver.strengthened_bounds` | Ativa bounds fortalecidos da formulação; também pode fornecer bounds à heurística do PSO. |
+| `solver.goal_programming.positive_only_deviations` | Escolhe a variante de desvios da formulação exata. Só afeta o modelo quando `multiobjective` está ativo. |
+| `solver.symmetry_breaking.hc1` | Ativa a quebra de simetria HC1 no modelo exato e é considerada ao preparar soluções para handoff. |
+| `solver.coelho_inequalities` | Adiciona as desigualdades lógicas de Coelho ao modelo exato; não altera as iterações do enxame PSO. |
+| `solver.rounded_capacity_inequalities.enabled` | Ativa cortes de capacidade arredondada por callback no solver exato. `node_frequency`, `max_non_root_node`, `max_cuts_per_callback`, `max_cuts_per_non_root_callback` e `min_violation` controlam quando e quantos cortes são separados. |
+| `solver.telemetry.enabled` | Habilita gravação de métricas da execução. `save_pso_iterations` controla a gravação das iterações do PSO; os outros campos identificam o experimento e regulam o acompanhamento de gap e bounds. |
+
+#### Opções do PSO e da matheurística
+
+- `solver.pso.swarm_size` e `max_iterations` dimensionam a busca. `inertia`, `cognitive` e `social` (ou seus valores `*_initial` e `*_final`) ajustam o movimento das partículas; `velocity_limit` limita a velocidade.
+- `mutation_particle_rate`, `mutation_x_gene_rate`, `mutation_q_gene_rate` e `mutation_sigma_initial`/`mutation_sigma_final` regulam mutação. `stagnation_patience`, `reinitialize_fraction` e `elite_fraction` controlam a resposta à estagnação e a preservação das melhores partículas. `audit_fraction` e `audit_interval` controlam auditorias da população.
+- `execution_backend` seleciona `python` ou `numba`; `parallel_workers` controla paralelismo, `jit_warmup` controla o aquecimento JIT e `seed` define a semente aleatória. `max_initial_resample_attempts` limita tentativas de reamostragem na inicialização.
+- `pso.time_limit` limita o tempo de busca do PSO; `null` deixa o limite de busca depender de `max_iterations`. `lot_sizing_bounds.enabled` ativa uma relaxação auxiliar para bounds; `use_base_solution` inclui uma solução base e `time_limit` limita essa relaxação (se `null`, usa `solver.timeLimit`). O código força `lot_sizing_bounds.integer_variables` para `false`.
+- `solver.matheuristic.tsp.time_limit` e `restricted.time_limit` limitam as etapas TSP e do modelo restrito. `route_improvement.enabled` ativa ou pula a melhoria de rota, limitada por `route_improvement.time_limit`. `debug.enabled` solicita dados intermediários adicionais.
+- `solver.pso.initialization_mix` e `repair_on_update` aparecem na configuração, mas não são consultados pelo fluxo atual do código.
+
+Com a matheurística habilitada, `postprocessing.build_target: true` e `relaxed_solution.use: true` são incompatíveis. Além disso, `postprocessing.build_target: true` com `solver.multiobjective: true` é rejeitado durante a preparação da execução.
+
+Na configuração presente em `config/config.json`, `method` é `PSO`, mas `matheuristic.enabled` está `true` e `use_as` está `final`. Portanto, executam-se as etapas da matheurística até a solução final; o PSO não é chamado e `pso.use_as_mip_start` não entra em ação.
 
 ### Execução local
 
