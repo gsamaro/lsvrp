@@ -570,30 +570,23 @@ Callback & \texttt{\_install\_rounded\_capacity\_callback} \\
 \end{tabular}
 \end{center}
 
-\section{Experimento de ablação}
+\section{Experimento com reforços da formulação}
 
 Foi executado um experimento fatorial $2^3$ na instância
 \texttt{PRP13\_C20\_P8\_V5\_T12\_S4.dat}, mantendo o PSO habilitado em todos
-os cenários. O peso utilizado foi
-$[0.2,0.2,0.2,0.2,0.2]$ e $\alpha=0.99$. Os fatores foram:
+os cenários. O peso foi $[0.2,0.2,0.2,0.2,0.2]$ e $\alpha=0.99$. Os fatores
+foram bounds fortalecidos de produção e estoque, desigualdades de Coelho
+(15)--(17) e separação das desigualdades cumulativas de capacidade arredondada,
+cada um ligado ou desligado.
 
-\begin{itemize}
-  \item bounds: bounds fortalecidos de produção e estoque ligados/desligados;
-  \item Coelho: desigualdades (15)--(17) ligadas/desligadas;
-  \item cortes: separação das desigualdades cumulativas de capacidade arredondada
-  ligada/desligada.
-\end{itemize}
-
-O PSO usou 100 iterações e a solução encontrada foi enviada como MIP start. O
-tempo máximo de parede por cenário foi de 180 segundos, com 150 segundos
-reservados ao MIP. Para manter a execução comparável às execuções anteriores,
-o número de threads internas do CPLEX não foi forçado pelo runner; os cenários
-foram executados em paralelo apenas quando isso não causou perda da telemetria.
+O PSO usou 100 iterações e sua solução foi enviada como MIP start. O limite de
+parede foi 180 segundos por cenário, com 150 segundos reservados ao MIP. O
+runner não forçou o número de threads internas do CPLEX; os cenários foram
+executados em paralelo apenas quando isso não causou perda da telemetria.
 
 \begin{center}
 \small
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{lccccrrrrrr}
+\begin{tabular}{lccccccrrr}
 \toprule
 Cenário & Bounds & Coelho & Cortes & FO & Gap & Bound & Nós (proc./rest.) & Callback & Cortes adicionados \\
 \midrule
@@ -607,21 +600,117 @@ S7 & não & sim & sim & 0,760157 & 94,4185\% & 0,042429 & 0/1 & sim & 17 \\
 S8 & sim & sim & sim & 0,763617 & 84,7858\% & 0,116178 & 0/1 & sim & 11 \\
 \bottomrule
 \end{tabular}
-}%
 \end{center}
 
 Todos os cenários terminaram por limite de tempo. O CPLEX permaneceu no nó
 raiz, com zero nós processados e um nó restante. O gap reportado é o gap MIP
-relativo do CPLEX, calculado a partir da FO incumbente e do melhor bound; por
-isso os cenários com bounds fortalecidos ficam em torno de 84--85\%, enquanto
-os cenários sem esse fortalecimento ficam em torno de 94\%. A coluna
-``Callback'' indica se o callback foi chamado ao menos uma vez. Nos cenários
-com cortes, foram encontrados e adicionados 16, 16, 17 e 11 cortes,
-respectivamente; nos cenários sem cortes, o callback não foi instalado.
-
-O modelo de dimensionamento usado pelo PSO encontrou, em todos os cenários,
-bound inferior agregado $89608$ e bound superior agregado $119993$, ambos com
-gap zero. Os resumos completos estão em
+relativo do CPLEX, calculado a partir da FO incumbente e do melhor bound. Nos
+cenários com bounds fortalecidos, ficou em torno de 84--85\%; sem esse
+fortalecimento, em torno de 94\%. Nos cenários com cortes, foram encontrados
+e adicionados 16, 16, 17 e 11 cortes; nos cenários sem cortes, o callback não
+foi instalado. O modelo de dimensionamento usado pelo PSO encontrou, em todos
+os cenários, bound inferior agregado $89608$ e bound superior agregado
+$119993$, ambos com gap zero. Os resumos completos estão em
 \texttt{out/ablation\_prp13\_2026-09-19\_final/summary.csv}.
+
+\section{Resultados comparativos em DATA\_PRP\_20C}
+
+Esta seção compara três configurações do PSO em instâncias com 20 clientes:
+Baseline (modelo inicial do artigo, sem bounds apertados nem as demais
+features), bounds apertados de produção e estoque sem as outras features, e
+todas as features com bounds apertados. A análise agrega todas as instâncias
+DATA\_PRP\_20C, os pesos e os valores de $\alpha$ disponíveis nos resultados.
+Compara-se o \texttt{mip\_relative\_gap} reportado pelo CPLEX para cada
+execução; GAP de 100\% refere-se à execução daquela instância.
+
+\subsection{Distribuições agregadas}
+
+Os gráficos do PDF sobrepõem frequências por faixas de GAP e a CDF empírica.
+Todos usam eixo $x$ de 35\% a 101\% (incluindo GAP de 100\%), eixo $y$ de 0\%
+a 100\% e barras em intervalos de 2 pontos percentuais. A CDF mostra a
+proporção de observações com GAP menor ou igual ao valor no eixo horizontal;
+um deslocamento para a esquerda indica valores menores. Os três painéis são
+identificados como Baseline, bounds apertados sem outras features e todas as
+features com bounds apertados.
+
+\subsection{Resumo agregado}
+
+As estatísticas abrangem as classes, seis vetores de pesos e dois valores de
+$\alpha$ do protocolo; cada configuração contém 1.800 observações.
+
+\begin{center}\small
+\begin{tabular}{lrrrrrrrr}
+\toprule
+Configuração & $n$ & Média & Q25 & Mediana & Q75 & Q90 & Mín. & Máx. \\
+\midrule
+Baseline; modelo inicial, sem alterações & 1.800 & 96,81\% & 100,00\% & 100,00\% & 100,00\% & 100,00\% & 74,46\% & 100,00\% \\
+Bounds apertados; sem outras features & 1.800 & 85,13\% & 82,18\% & 85,17\% & 87,96\% & 90,69\% & 72,63\% & 96,56\% \\
+Todas as features + bounds apertados & 1.800 & 85,04\% & 82,23\% & 85,18\% & 87,96\% & 90,79\% & 37,90\% & 96,61\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A mediana do Baseline é 100\%; nos dois cenários com bounds apertados fica
+próxima de 85\%. As médias destes dois cenários diferem em 0,09 ponto
+percentual. O mínimo de 37,90\% no cenário com todas as features é um extremo
+e não desloca materialmente sua mediana.
+
+\subsection{Abertura por vetor de pesos}
+
+Cada vetor reúne 300 observações agregadas entre as classes. As linhas seguem
+a ordem de $w_1,\ldots,w_6$ em \texttt{WEIGHTS\_OPTIMIZE}.
+
+\begin{center}\small
+\begin{tabular}{llrrrrrrrr}
+\toprule
+Configuração & Peso & $n$ & Média & Q25 & Q50 & Q75 & Q90 & Mín. & Máx. \\
+\midrule
+Baseline & $w_1$ & 300 & 98,76\% & 100,00\% & 100,00\% & 100,00\% & 100,00\% & 78,45\% & 100,00\% \\
+ & $w_2$ & 300 & 94,99\% & 86,91\% & 100,00\% & 100,00\% & 100,00\% & 77,75\% & 100,00\% \\
+ & $w_3$ & 300 & 98,23\% & 95,69\% & 100,00\% & 100,00\% & 100,00\% & 86,21\% & 100,00\% \\
+ & $w_4$ & 300 & 96,35\% & 100,00\% & 100,00\% & 100,00\% & 100,00\% & 75,29\% & 100,00\% \\
+ & $w_5$ & 300 & 95,48\% & 88,11\% & 100,00\% & 100,00\% & 100,00\% & 74,46\% & 100,00\% \\
+ & $w_6$ & 300 & 97,04\% & 100,00\% & 100,00\% & 100,00\% & 100,00\% & 75,51\% & 100,00\% \\
+\midrule
+Bounds apertados & $w_1$ & 300 & 86,03\% & 84,26\% & 86,35\% & 88,15\% & 89,23\% & 75,87\% & 91,95\% \\
+ & $w_2$ & 300 & 82,75\% & 80,47\% & 82,87\% & 85,56\% & 87,46\% & 72,63\% & 91,06\% \\
+ & $w_3$ & 300 & 90,76\% & 88,55\% & 90,96\% & 93,21\% & 94,47\% & 82,81\% & 96,56\% \\
+ & $w_4$ & 300 & 83,20\% & 81,13\% & 83,50\% & 85,46\% & 87,21\% & 73,68\% & 90,57\% \\
+ & $w_5$ & 300 & 82,89\% & 80,76\% & 82,85\% & 85,29\% & 87,48\% & 73,25\% & 90,91\% \\
+ & $w_6$ & 300 & 85,15\% & 83,13\% & 85,55\% & 87,44\% & 88,84\% & 75,13\% & 92,13\% \\
+\midrule
+Todas as features + bounds & $w_1$ & 300 & 85,37\% & 84,13\% & 86,19\% & 88,02\% & 89,27\% & 37,90\% & 91,95\% \\
+ & $w_2$ & 300 & 82,97\% & 80,61\% & 82,95\% & 85,63\% & 87,69\% & 71,04\% & 91,87\% \\
+ & $w_3$ & 300 & 90,83\% & 88,40\% & 91,20\% & 93,41\% & 94,56\% & 81,14\% & 96,61\% \\
+ & $w_4$ & 300 & 83,09\% & 81,21\% & 83,48\% & 85,46\% & 87,12\% & 63,32\% & 90,55\% \\
+ & $w_5$ & 300 & 82,71\% & 80,64\% & 82,97\% & 85,63\% & 87,75\% & 52,04\% & 91,82\% \\
+ & $w_6$ & 300 & 85,26\% & 83,41\% & 85,59\% & 87,43\% & 88,88\% & 75,67\% & 92,15\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Comparações pareadas e protocolo}
+
+Comparando as mesmas combinações de instância, classe, peso, $\alpha$ e seed,
+do Baseline para bounds apertados o GAP diminuiu em 1.696 de 1.800 casos
+(94,2\%), com diferença média de $-11,68$ pontos percentuais. Do Baseline
+para todas as features com bounds apertados, diminuiu em 1.576 casos (87,6\%),
+com diferença média de $-11,77$ pontos percentuais. Entre os dois cenários
+com bounds apertados, todas as features tiveram média 0,09 ponto percentual
+menor, mas GAP menor em somente 37,5\% dos pares. Como várias features mudam
+simultaneamente, os resultados não isolam o efeito de HC1, Coelho ou de outro
+reforço individual.
+
+O protocolo filtra instâncias com 20 clientes, remove os cinco pesos unitários
+indicados por \texttt{EXCLUDED\_WEIGHTS}, mantém os seis vetores multiobjetivo e
+os dois valores de $\alpha$, trunca gaps negativos em zero e converte a fração
+para percentual. As 12 linhas de períodos com GAP repetido são consolidadas em
+uma observação por instância, classe, peso, $\alpha$ e seed. Cada planilha
+fornece 1.800 observações; a CDF é avaliada em passos de 0,5 ponto percentual.
+Os arquivos analisados foram, na ordem dos cenários: Baseline
+\texttt{2026-09-21-40da15-92914b-union\_results.xlsx}; bounds apertados sem as
+demais features \texttt{2026-09-19-898e7a-e7a9b4-union\_results.xlsx}; todas as
+features com bounds apertados \texttt{2026-09-16-898e7a-200533-union\_results.xlsx}.
+Filtros e agregações seguem \texttt{analysis/gap analysis.ipynb}.
 
 \end{document}

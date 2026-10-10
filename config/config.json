@@ -1,7 +1,7 @@
 {
   "solver": {
     "threadsLimit": 1,
-    "timeLimit": 30,
+    "timeLimit": 180,
     "method": "PSO",
     "multiobjective": true,
     "strengthened_bounds": false,
@@ -74,10 +74,10 @@
         "time_limit": 10
       },
       "restricted": {
-        "time_limit": 60
+        "time_limit": 180
       },
       "route_improvement": {
-        "enabled": true,
+        "enabled": false,
         "time_limit": 30
       },
       "debug": {
