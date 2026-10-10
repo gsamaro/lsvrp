@@ -1,0 +1,7 @@
+comparison,left_scenario,right_scenario,n_paired,gap_lower_count,gap_lower_pct,mean_difference_pp
+"Baseline; modelo inicial do artigo, sem alterações → Bounds apertados; sem outras features",baseline,tight_bounds,1800,1696,94.22222222222221,-11.677057541163311
+"Baseline; modelo inicial do artigo, sem alterações → Todas as features + bounds apertados",baseline,all_features,1800,1576,87.55555555555556,-11.769504882792205
+"Baseline; modelo inicial do artigo, sem alterações → Monoobjetivo; execução de 05/10/2026",baseline,october_run,1800,1799,99.94444444444444,-88.56522554706763
+Bounds apertados; sem outras features → Todas as features + bounds apertados,tight_bounds,all_features,1800,675,37.5,-0.09244734162889526
+Bounds apertados; sem outras features → Monoobjetivo; execução de 05/10/2026,tight_bounds,october_run,1800,1790,99.44444444444444,-76.88816800590433
+Todas as features + bounds apertados → Monoobjetivo; execução de 05/10/2026,all_features,october_run,1800,1790,99.44444444444444,-76.79572066427544
