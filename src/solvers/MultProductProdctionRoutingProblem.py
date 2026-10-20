@@ -21,7 +21,12 @@ from docplex.mp.relax_linear import LinearRelaxer
 from config import Config
 from src.helpers.SolverTelemetry import get_config
 from src.log.Logger import Logger
-from src.solvers._routing_common import ZeroArcDict, ordered_arcs
+from src.solvers._routing_common import (
+    ZeroArcDict,
+    aggregate_vehicle_axis,
+    expand_aggregated_vehicles,
+    ordered_arcs,
+)
 from src.solvers._solver_common import (
     ProblemData,
     adjusted_targets,
@@ -51,6 +56,7 @@ class MultProductProdctionRoutingProblem:
         routing_profile=None,
         fixed_plan=None,
         transport_objective=False,
+        arc_order=None,
     ):
         self.data = map
         self.log: Logger = log
@@ -96,19 +102,30 @@ class MultProductProdctionRoutingProblem:
         self.solCount = 0
         self.relaxedModelObjVal = 0
         self.objBound = 0
+        # Factor applied to the goal programming objective inside CPLEX only;
+        # every objective value or bound read back is divided by it.
+        self.objective_scale = 1.0
         self.nodeCount = 0
         self.nodesRemaining = 0
         self.start = start
         self.routing_profile = routing_profile
         self.fixed_plan = fixed_plan
         self.transport_objective = transport_objective
+        # Binary routing restricted to the forward arcs of a common customer order.
+        self.arc_order = arc_order
         self._relaxation_replaced = False
+        self.aggregate_vehicles = self._resolve_aggregate_vehicles(map)
+        # Vehicle slots in the model: one fleet-wide slot when aggregated, in
+        # which case the plant may be left up to ``self.v`` times per period.
+        self.v_model = 1 if self.aggregate_vehicles else self.v
+        self.departure_limit = self.v if self.aggregate_vehicles else 1
         all_arcs = tuple((i, k) for i in range(self.i) for k in range(self.k) if i != k)
-        base_arcs = (
-            ordered_arcs(routing_profile["order"])
-            if routing_profile and routing_profile["mode"] == "ordered"
-            else all_arcs
-        )
+        if routing_profile and routing_profile["mode"] == "ordered":
+            base_arcs = ordered_arcs(routing_profile["order"])
+        elif arc_order is not None:
+            base_arcs = ordered_arcs(arc_order)
+        else:
+            base_arcs = all_arcs
         self.arcs_by_period = {}
         for t in range(self.t):
             active = set(range(self.i))
@@ -190,6 +207,39 @@ class MultProductProdctionRoutingProblem:
         self._rounded_capacity_callback_registered = False
         self.log.debug(">> Finalizado MultProductProdctionRoutingProblem.")
 
+    def _resolve_aggregate_vehicles(self, map):
+        """Decide whether the vehicle index is dropped from Z, R and Q.
+
+        Valid because vehicles are identical and each customer is visited at
+        most once per period. The explicit value in the data map takes
+        precedence over ``solver.aggregate_vehicles``. The routing profiles keep
+        per-vehicle assignment (their integrality argument is per vehicle), and
+        target construction from the linear relaxation exports fractional arcs
+        that cannot be split into routes. A fixed plan or an arc order with
+        binary arcs can be aggregated.
+        """
+        requested = map.get("aggregate_vehicles")
+        if requested is None:
+            requested = Config.get_nested("solver", "aggregate_vehicles", default=False)
+        if not requested:
+            return False
+        if self.routing_profile:
+            self.log.debug(
+                ">> aggregate_vehicles ignorado nas etapas da matheurística."
+            )
+            return False
+        relaxed_targets = Config.get_nested(
+            "postprocessing", "build_target", default=False
+        ) and Config.get_nested(
+            "relaxed_solution", "target_use_relaxation", default=True
+        )
+        if relaxed_targets:
+            self.log.debug(
+                ">> aggregate_vehicles ignorado na construção relaxada de targets."
+            )
+            return False
+        return True
+
     def createDecisionVariables(self):
         self.model.X_p_t = self.model.continuous_var_dict(
             ((p, t) for p in range(self.p) for t in range(self.t)), lb=0, name="X"
@@ -212,7 +262,7 @@ class MultProductProdctionRoutingProblem:
                 (
                     (p, v, i, t)
                     for p in range(self.p)
-                    for v in range(self.v)
+                    for v in range(self.v_model)
                     for i in range(1, self.i)
                     for t in range(self.t)
                 ),
@@ -225,7 +275,7 @@ class MultProductProdctionRoutingProblem:
                 (
                     (p, v, i, k, t)
                     for p in range(self.p)
-                    for v in range(self.v)
+                    for v in range(self.v_model)
                     for t in range(self.t)
                     for i, k in self.arcs_by_period[t]
                 ),
@@ -235,7 +285,7 @@ class MultProductProdctionRoutingProblem:
         )
         keys = [
             (v, i, k, t)
-            for v in range(self.v)
+            for v in range(self.v_model)
             for t in range(self.t)
             for i, k in self.arcs_by_period[t]
         ]
@@ -288,7 +338,15 @@ class MultProductProdctionRoutingProblem:
                 if isinstance(values[name], dict)
                 else np.asarray(values[name])
             )
+            # A vehicle-indexed start is summed into the fleet-wide slot: each
+            # arc and customer belongs to a single vehicle, so the sum is exact.
+            vehicle_axis = None
+            if self.aggregate_vehicles and name in ("Q", "R", "Z"):
+                vehicle_axis = 0 if name == "Z" else 1
+                source = aggregate_vehicle_axis(name, source)
             for key, variable in mapping.items():
+                if vehicle_axis is not None:
+                    key = (*key[:vehicle_axis], *key[vehicle_axis + 1 :])
                 warm_start.add_var_value(
                     variable,
                     float(
@@ -331,6 +389,12 @@ class MultProductProdctionRoutingProblem:
                         )
                         self.new_targets[t][k] = mean_val
 
+    def _unscale(self, value):
+        """Convert a CPLEX objective value or bound back to the reported unit."""
+        if value is None or self.objective_scale == 1.0:
+            return value
+        return value / self.objective_scale
+
     def crateObjectiveFunction(self):
         objExpr_1 = [
             self.model.sum(self.c_p[p] * self.model.X_p_t[p, t] for p in range(self.p))
@@ -357,7 +421,7 @@ class MultProductProdctionRoutingProblem:
         objExpr_4 = [
             self.model.sum(
                 self.f * self.model.Z_v_i_k_t[v, 0, k, t]
-                for v in range(self.v)
+                for v in range(self.v_model)
                 for k in self.outgoing[t][0]
             )
             for t in range(self.t)
@@ -367,7 +431,7 @@ class MultProductProdctionRoutingProblem:
         objExpr_5 = [
             self.model.sum(
                 self.a_i_k[i][k] * self.model.Z_v_i_k_t[v, i, k, t]
-                for v in range(self.v)
+                for v in range(self.v_model)
                 for i, k in self.arcs_by_period[t]
             )
             for t in range(self.t)
@@ -392,25 +456,34 @@ class MultProductProdctionRoutingProblem:
             if Config.get_nested("solver", "multiobjective"):
                 self._adjust_targets()
                 self.log.debug(">> FO multiobjective.")
+                # The marginal cost of a decision variable here is about
+                # (1 - alpha) * w * c / target, below the CPLEX optimality
+                # tolerance, so the simplex stops before the LP optimum.
+                self.objective_scale = float(
+                    Config.get_nested("solver", "objective_scale", default=1.0)
+                )
                 self.model.minimize(
-                    self.alpha * self.lambda_
-                    + self.model.sum(
-                        +(1 - self.alpha)
-                        * (self.weight[0] * self.positive[0, t])
-                        / self.new_targets[t]["f1_target"]
-                        + (1 - self.alpha)
-                        * (self.weight[1] * self.positive[1, t])
-                        / self.new_targets[t]["f2_target"]
-                        + (1 - self.alpha)
-                        * (self.weight[2] * self.positive[2, t])
-                        / self.new_targets[t]["f3_target"]
-                        + (1 - self.alpha)
-                        * (self.weight[3] * self.positive[3, t])
-                        / self.new_targets[t]["f4_target"]
-                        + (1 - self.alpha)
-                        * (self.weight[4] * self.positive[4, t])
-                        / self.new_targets[t]["f5_target"]
-                        for t in range(self.t)
+                    self.objective_scale
+                    * (
+                        self.alpha * self.lambda_
+                        + self.model.sum(
+                            +(1 - self.alpha)
+                            * (self.weight[0] * self.positive[0, t])
+                            / self.new_targets[t]["f1_target"]
+                            + (1 - self.alpha)
+                            * (self.weight[1] * self.positive[1, t])
+                            / self.new_targets[t]["f2_target"]
+                            + (1 - self.alpha)
+                            * (self.weight[2] * self.positive[2, t])
+                            / self.new_targets[t]["f3_target"]
+                            + (1 - self.alpha)
+                            * (self.weight[3] * self.positive[3, t])
+                            / self.new_targets[t]["f4_target"]
+                            + (1 - self.alpha)
+                            * (self.weight[4] * self.positive[4, t])
+                            / self.new_targets[t]["f5_target"]
+                            for t in range(self.t)
+                        )
                     )
                 )
             else:
@@ -428,7 +501,7 @@ class MultProductProdctionRoutingProblem:
             for t in range(self.t):
                 r1 = self.model.sum(
                     self.model.Q_p_v_i_t[p, v, i, t]
-                    for v in range(self.v)
+                    for v in range(self.v_model)
                     for i in range(1, self.i)
                 )
                 if t == 0:
@@ -449,7 +522,7 @@ class MultProductProdctionRoutingProblem:
             for i in range(1, self.i):
                 for t in range(self.t):
                     r2 = self.model.sum(
-                        self.model.Q_p_v_i_t[p, v, i, t] for v in range(self.v)
+                        self.model.Q_p_v_i_t[p, v, i, t] for v in range(self.v_model)
                     )
                     if t == 0:
                         self.model.add_constraint(
@@ -494,7 +567,7 @@ class MultProductProdctionRoutingProblem:
 
     def createVehiclePreventTransshipmentIntermediateNodes(self):
         for p in range(self.p):
-            for v in range(self.v):
+            for v in range(self.v_model):
                 for t in range(self.t):
                     for k in range(1, self.i):
                         incoming = self.model.sum(
@@ -515,17 +588,17 @@ class MultProductProdctionRoutingProblem:
             for t in range(self.t):
                 r8_a = self.model.sum(
                     self.model.R_p_v_i_k_t[p, v, 0, k, t]
-                    for v in range(self.v)
+                    for v in range(self.v_model)
                     for k in range(1, self.k)
                 )
                 r8_b = self.model.sum(
                     self.model.R_p_v_i_k_t[p, v, i, 0, t]
-                    for v in range(self.v)
+                    for v in range(self.v_model)
                     for i in range(1, self.i)
                 )
                 r8_c = self.model.sum(
                     self.model.Q_p_v_i_t[p, v, l, t]
-                    for v in range(self.v)
+                    for v in range(self.v_model)
                     for l in range(1, self.i)
                 )
                 self.model.add_constraint(
@@ -533,7 +606,7 @@ class MultProductProdctionRoutingProblem:
                 )
 
     def createVehicleLoadCapacityDelimited(self):
-        for v in range(self.v):
+        for v in range(self.v_model):
             for t in range(self.t):
                 for i, k in self.arcs_by_period[t]:
                     self.model.add_constraint(
@@ -545,13 +618,17 @@ class MultProductProdctionRoutingProblem:
                     )
 
     def createImposeMostOneRouteEachVehicle(self):
-        for v in range(self.v):
+        # Each vehicle leaves the plant at most once; the aggregated model has
+        # one fleet-wide slot, so the plant may be left at most V times.
+        for v in range(self.v_model):
             for t in range(self.t):
                 r10 = self._visit_expression(v, 0, t)
-                self.model.add_constraint(r10 <= 1, ctname=f"EQ_10_v_{v}_t_{t}")
+                self.model.add_constraint(
+                    r10 <= self.departure_limit, ctname=f"EQ_10_v_{v}_t_{t}"
+                )
 
     def createEnsureRoutesOnlyPlant(self):
-        for v in range(self.v):
+        for v in range(self.v_model):
             for k in range(self.k):
                 for t in range(self.t):
                     r11_a = self.model.sum(
@@ -573,14 +650,14 @@ class MultProductProdctionRoutingProblem:
             for t in range(self.t):
                 r12 = self.model.sum(
                     self.model.Z_v_i_k_t[v, i, k, t]
-                    for v in range(self.v)
+                    for v in range(self.v_model)
                     for i in range(self.i)
                     if k != i
                 )
                 self.model.add_constraint(r12 <= 1, ctname=f"EQ_12_k_{k}_t_{t}")
 
     def createVehicleVisitDeliveryBounds(self):
-        for v in range(self.v):
+        for v in range(self.v_model):
             for i in range(1, self.i):
                 for t in range(self.t):
                     visit = self._visit_expression(v, i, t)
@@ -614,7 +691,7 @@ class MultProductProdctionRoutingProblem:
         if not coelho_inequalities:
             return False
 
-        for v in range(self.v):
+        for v in range(self.v_model):
             for t in range(self.t):
                 vehicle_active = self._visit_expression(v, 0, t)
 
@@ -660,6 +737,10 @@ class MultProductProdctionRoutingProblem:
                 "solver", "symmetry_breaking", "hc1", default=False
             )
         if not symmetry_breaking_hc1:
+            return False
+        if self.aggregate_vehicles:
+            # No vehicle labels exist in the aggregated model, hence no symmetry.
+            self.log.debug(">> HC1/VC dispensados: veículos agregados.")
             return False
 
         for v in range(1, self.v):
@@ -743,7 +824,7 @@ class MultProductProdctionRoutingProblem:
             build_results_from_variables(
                 ProblemData.from_map(self.data),
                 values,
-                float(self.model.objective_value),
+                self._unscale(float(self.model.objective_value)),
                 self.time,
                 config=config,
             )
@@ -772,7 +853,7 @@ class MultProductProdctionRoutingProblem:
             "X": np.zeros((self.p, self.t), dtype=float),
             "Y": np.zeros((self.p, self.t), dtype=float),
             "I": np.zeros((self.p, self.i, self.t), dtype=float),
-            "Q": np.zeros((self.p, self.v, self.i, self.t), dtype=float),
+            "Q": np.zeros((self.p, self.v_model, self.i, self.t), dtype=float),
         }
         solution = self.model.solution
         for name, mapping in (
@@ -796,6 +877,9 @@ class MultProductProdctionRoutingProblem:
             values["eta"] = np.zeros((self.v, self.i, self.t), dtype=float)
             for key, variable in self.eta.items():
                 values["eta"][key] = solution.get_value(variable)
+        if self.aggregate_vehicles:
+            # Output keeps one slice per vehicle: split the fleet-wide routes.
+            values = expand_aggregated_vehicles(values, self.v)
         return values
 
     def get_variables(self):
@@ -901,6 +985,45 @@ class MultProductProdctionRoutingProblem:
                             ctname=f"FIX_Q_{p}_{i}_{t}",
                         )
 
+    def createFixedPlanConstraints(self):
+        """Fix production, setups and delivery totals; each loaded customer is visited.
+
+        Used by the route improvement without ``eta``: the routes and, if the
+        model is not aggregated, the vehicle assignment stay free. Customers
+        without delivery have no arcs, so only loaded customers get a constraint.
+        """
+        plan = self.fixed_plan
+        totals = plan["delivery_totals"]
+        for p in range(self.p):
+            for t in range(self.t):
+                self.model.add_constraint(
+                    self.model.X_p_t[p, t] == float(plan["X"][p, t]),
+                    ctname=f"FIX_X_{p}_{t}",
+                )
+                self.model.add_constraint(
+                    self.model.Y_p_t[p, t] == int(plan["Y"][p, t]),
+                    ctname=f"FIX_Y_{p}_{t}",
+                )
+                for i in range(1, self.i):
+                    self.model.add_constraint(
+                        self.model.sum(
+                            self.model.Q_p_v_i_t[p, v, i, t]
+                            for v in range(self.v_model)
+                        )
+                        == float(totals[p, i, t]),
+                        ctname=f"FIX_Q_{p}_{i}_{t}",
+                    )
+        for t in range(self.t):
+            for i in range(1, self.i):
+                if totals[:, i, t].sum() > 0:
+                    self.model.add_constraint(
+                        self.model.sum(
+                            self._visit_expression(v, i, t) for v in range(self.v_model)
+                        )
+                        == 1,
+                        ctname=f"FIX_VISIT_{i}_{t}",
+                    )
+
     def terminate(self):
         model = getattr(self, "model", None)
         if model is not None:
@@ -966,7 +1089,7 @@ class MultProductProdctionRoutingProblem:
         try:
             solution = relaxed.solve()
             if solution:
-                self.relaxedModelObjVal = solution.objective_value
+                self.relaxedModelObjVal = self._unscale(solution.objective_value)
             else:
                 self.relaxedModelObjVal = 0
         finally:
@@ -991,7 +1114,9 @@ class MultProductProdctionRoutingProblem:
         details = getattr(self.model, "solve_details", None)
         if details:
             self.solCount = 1 if self.model.solution else 0
-            self.objBound = details.best_bound if hasattr(details, "best_bound") else 0
+            self.objBound = (
+                self._unscale(details.best_bound) if hasattr(details, "best_bound") else 0
+            )
 
             detail_nodes = getattr(details, "nb_nodes_processed", None)
             progress_nodes = self._get_cplex_progress_value("get_num_nodes_processed")
@@ -1090,14 +1215,14 @@ class MultProductProdctionRoutingProblem:
         objective = None
         if getattr(self, "solution", None) is not None:
             try:
-                objective = float(self.model.objective_value)
+                objective = self._unscale(float(self.model.objective_value))
             except Exception:
                 pass
         gap = getattr(details, "mip_relative_gap", None)
         self._record_mip_telemetry(self.time, objective is not None, gap)
         self._record_bound_progress(
             self.time,
-            getattr(details, "best_bound", None),
+            self._unscale(getattr(details, "best_bound", None)),
             incumbent_objective=objective,
             relative_gap=gap,
             nodes_processed=self.nodeCount,
@@ -1124,13 +1249,14 @@ class MultProductProdctionRoutingProblem:
             "status": status,
             "timed_out": timed_out,
             "objective": objective,
-            "best_bound": getattr(details, "best_bound", None),
+            "best_bound": self._unscale(getattr(details, "best_bound", None)),
             "root_bound": root_bounds[0] if root_bounds else None,
             "relative_gap": gap,
             "node_count": self.nodeCount,
             "solution_count": self.solCount,
             "nodes_remaining": self.nodesRemaining,
             "positive_only_deviations": self.positive_only_deviations,
+            "objective_scale": self.objective_scale,
             "strengthened_bounds": self.strengthened_bounds,
             "first_feasible_seconds": self._first_feasible_seconds,
             "gap_target_seconds": self._gap_target_seconds,
@@ -1292,9 +1418,11 @@ class MultProductProdctionRoutingProblem:
                         elapsed = time.perf_counter() - started_at
                         incumbent = self.has_incumbent()
                         gap = self.get_MIP_relative_gap() if incumbent else None
-                        best_bound = self.get_best_objective_value()
+                        best_bound = owner._unscale(self.get_best_objective_value())
                         incumbent_objective = (
-                            self.get_incumbent_objective_value() if incumbent else None
+                            owner._unscale(self.get_incumbent_objective_value())
+                            if incumbent
+                            else None
                         )
                         owner._record_bound_progress(
                             elapsed,
@@ -1344,9 +1472,13 @@ class MultProductProdctionRoutingProblem:
             self.createImposeMostOneRouteEachVehicle()
             self.createEnsureRoutesOnlyPlant()
             self.createVehicleMostVisitCustomerEachPeriod()
+        if self.fixed_plan is not None and not self.routing_profile:
+            self.createFixedPlanConstraints()
         self.applied_features = {
             "strengthened_bounds": self.strengthened_bounds,
+            "aggregate_vehicles": self.aggregate_vehicles,
             "positive_only_deviations": self.positive_only_deviations,
+            "objective_scale": self.objective_scale,
             "routing_profile": (
                 self.routing_profile["mode"] if self.routing_profile else "full"
             ),

@@ -74,6 +74,24 @@ def test_normalize_adds_positive_only_deviations_default():
     assert normalized["solver"]["goal_programming"]["positive_only_deviations"] is True
 
 
+def test_normalize_adds_objective_scale_default():
+    configured = _valid_config()
+    configured["solver"].pop("objective_scale", None)
+
+    normalized = Config.normalize(configured)
+
+    assert normalized["solver"]["objective_scale"] == 1.0
+
+
+def test_normalize_keeps_objective_scale():
+    configured = _valid_config()
+    configured["solver"]["objective_scale"] = 10000
+
+    normalized = Config.normalize(configured)
+
+    assert normalized["solver"]["objective_scale"] == 10000.0
+
+
 def test_normalize_adds_strengthened_bounds_default():
     configured = _valid_config()
     configured["solver"].pop("strengthened_bounds")
@@ -121,6 +139,11 @@ def test_snapshot_returns_effective_config_as_an_isolated_copy():
         (("workers", "num"), -1, "workers.num"),
         (("logging", "level"), "verbose", "logging.level"),
         (("solver", "multiobjective"), "true", "multiobjective"),
+        (("solver", "objective_scale"), 0, "objective_scale"),
+        (("solver", "objective_scale"), -1, "objective_scale"),
+        (("solver", "objective_scale"), "1e4", "objective_scale"),
+        (("solver", "objective_scale"), True, "objective_scale"),
+        (("solver", "objective_scale"), float("inf"), "objective_scale"),
         (("solver", "strengthened_bounds"), "false", "strengthened_bounds"),
         (("solver", "symmetry_breaking", "hc1"), "false", "symmetry_breaking.hc1"),
         (("solver", "coelho_inequalities"), "false", "coelho_inequalities"),

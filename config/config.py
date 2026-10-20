@@ -13,18 +13,30 @@ class Config:
                 "use_as": "final",
                 "tsp": {"time_limit": 10},
                 "restricted": {"time_limit": 60},
+                "start": "decoder",
                 "route_improvement": {"enabled": True, "time_limit": 30},
                 "debug": {"enabled": False},
             },
             "pso": {
                 "time_limit": None,
                 "lot_sizing_bounds": {"integer_variables": False},
+                "decoder": {
+                    "setup_threshold": 0.5,
+                    "routing": "savings_2opt",
+                    "delivery": "lookahead",
+                    "delivery_threshold": 0.5,
+                    "max_cover": 2,
+                    "fleet_utilization": 0.9,
+                },
+                "initial_bias": {"delivery": 3.0, "production": 1.0},
             },
             "threadsLimit": 1,
             "timeLimit": 3600,
             "method": "PSO",
             "multiobjective": True,
             "strengthened_bounds": True,
+            "aggregate_vehicles": False,
+            "objective_scale": 1.0,
             "goal_programming": {
                 "positive_only_deviations": True,
             },
@@ -119,6 +131,18 @@ class Config:
         cls._validate_bool(
             solver["strengthened_bounds"], "config.solver.strengthened_bounds"
         )
+        cls._validate_bool(
+            solver["aggregate_vehicles"], "config.solver.aggregate_vehicles"
+        )
+        objective_scale = solver["objective_scale"]
+        if (
+            isinstance(objective_scale, bool)
+            or not isinstance(objective_scale, (int, float))
+            or not math.isfinite(objective_scale)
+            or objective_scale <= 0
+        ):
+            raise ValueError("config.solver.objective_scale deve ser um número positivo")
+        solver["objective_scale"] = float(objective_scale)
         goal_programming = solver["goal_programming"]
         cls._validate_bool(
             goal_programming["positive_only_deviations"],
@@ -167,6 +191,10 @@ class Config:
             mat["route_improvement"]["enabled"],
             "config.solver.matheuristic.route_improvement.enabled",
         )
+        if mat["start"] not in {"legacy", "decoder", "pso"}:
+            raise ValueError(
+                "config.solver.matheuristic.start deve ser legacy, decoder ou pso"
+            )
         if not isinstance(mat["use_as"], str) or mat["use_as"] not in {
             "final",
             "exact_start",
@@ -208,6 +236,64 @@ class Config:
         ):
             raise ValueError("config.solver.pso.time_limit deve ser positivo ou null")
         solver["pso"]["lot_sizing_bounds"]["integer_variables"] = False
+        decoder = solver["pso"]["decoder"]
+        threshold = decoder["setup_threshold"]
+        if (
+            isinstance(threshold, bool)
+            or not isinstance(threshold, (int, float))
+            or not 0 <= threshold < 1
+        ):
+            raise ValueError(
+                "config.solver.pso.decoder.setup_threshold deve estar em [0, 1)"
+            )
+        if decoder["routing"] not in {"nearest_neighbor", "savings_2opt"}:
+            raise ValueError(
+                "config.solver.pso.decoder.routing deve ser nearest_neighbor "
+                "ou savings_2opt"
+            )
+        if decoder["delivery"] not in {"just_in_time", "lookahead"}:
+            raise ValueError(
+                "config.solver.pso.decoder.delivery deve ser just_in_time "
+                "ou lookahead"
+            )
+        delivery_threshold = decoder["delivery_threshold"]
+        if (
+            isinstance(delivery_threshold, bool)
+            or not isinstance(delivery_threshold, (int, float))
+            or not 0 <= delivery_threshold < 1
+        ):
+            raise ValueError(
+                "config.solver.pso.decoder.delivery_threshold deve estar em [0, 1)"
+            )
+        max_cover = decoder["max_cover"]
+        if (
+            isinstance(max_cover, bool)
+            or not isinstance(max_cover, int)
+            or max_cover < 1
+        ):
+            raise ValueError(
+                "config.solver.pso.decoder.max_cover deve ser um inteiro positivo"
+            )
+        for key, value in solver["pso"]["initial_bias"].items():
+            if (
+                key not in {"delivery", "production"}
+                or isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or value < 0
+            ):
+                raise ValueError(
+                    "config.solver.pso.initial_bias aceita delivery e production "
+                    "nao negativos"
+                )
+        utilization = decoder["fleet_utilization"]
+        if (
+            isinstance(utilization, bool)
+            or not isinstance(utilization, (int, float))
+            or not 0 < utilization <= 1
+        ):
+            raise ValueError(
+                "config.solver.pso.decoder.fleet_utilization deve estar em (0, 1]"
+            )
         cls._validate_workers(configured["workers"]["num"])
 
         level = configured["logging"]["level"]

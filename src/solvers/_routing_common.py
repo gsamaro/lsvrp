@@ -91,6 +91,82 @@ def routes_from_z(z, tolerance=1e-6, shape=None):
     return result
 
 
+def aggregate_vehicle_axis(name, values):
+    """Sum a vehicle-indexed start value over the vehicle axis.
+
+    Q and R carry the vehicle in axis 1 and Z in axis 0. Dense arrays return
+    an array without that axis; sparse dictionaries return a dictionary whose
+    keys drop the vehicle coordinate.
+    """
+    axis = {"Q": 1, "R": 1, "Z": 0}[name]
+    if isinstance(values, dict):
+        result = {}
+        for key, value in values.items():
+            key = (*key[:axis], *key[axis + 1 :])
+            result[key] = result.get(key, 0.0) + value
+        return result
+    return np.asarray(values, dtype=float).sum(axis=axis)
+
+
+def expand_aggregated_vehicles(variables, num_vehicles, threshold=0.5):
+    """Split a vehicle-free routing solution into one route per vehicle.
+
+    The aggregated model has a single fleet-wide slot (vehicle 0) in ``Q``,
+    ``R`` and ``Z``. Vehicles are identical and each customer is visited at
+    most once per period, so every arc leaving the plant starts one route and
+    the routes are node-disjoint paths. Each path becomes a vehicle, labelled
+    by the smallest customer it serves (the canonical order of VC/HC1), and
+    its deliveries and arc loads move to that vehicle. Arcs that are not on a
+    plant path (cycles with zero deliveries) stay on vehicle 0, where the
+    usual route audit rejects them, as with the vehicle-indexed model.
+    """
+    q = np.asarray(variables["Q"], dtype=float)
+    products, _, nodes, periods = q.shape
+    arcs = [{} for _ in range(periods)]
+    for (_, i, k, t), value in variables["Z"].items():
+        arcs[t][(i, k)] = value
+
+    arc_vehicle = [{} for _ in range(periods)]
+    customer_vehicle = [{} for _ in range(periods)]
+    for t in range(periods):
+        used = {arc for arc, value in arcs[t].items() if value > threshold}
+        successor = {i: k for i, k in used if i != 0}
+        routes = []
+        for start in sorted(k for i, k in used if i == 0):
+            route, node = [], start
+            while node != 0 and node not in route:
+                route.append(node)
+                node = successor.get(node, 0)
+            routes.append(route)
+        if len(routes) > num_vehicles:
+            raise ValueError(
+                f"Período {t}: {len(routes)} rotas excedem {num_vehicles} veículos"
+            )
+        for vehicle, route in enumerate(sorted(routes, key=min)):
+            path = [0, *route, 0]
+            for arc in zip(path, path[1:]):
+                arc_vehicle[t][arc] = vehicle
+            for customer in route:
+                customer_vehicle[t][customer] = vehicle
+
+    expanded_q = np.zeros((products, num_vehicles, nodes, periods), dtype=float)
+    for t in range(periods):
+        for i in range(1, nodes):
+            vehicle = customer_vehicle[t].get(i, 0)
+            expanded_q[:, vehicle, i, t] = q[:, 0, i, t]
+    expanded_r = {
+        (p, arc_vehicle[t].get((i, k), 0), i, k, t): value
+        for (p, _, i, k, t), value in variables["R"].items()
+    }
+    expanded_z = {
+        (arc_vehicle[t].get((i, k), 0), i, k, t): value
+        for (_, i, k, t), value in variables["Z"].items()
+    }
+    result = dict(variables)
+    result.update(Q=expanded_q, R=expanded_r, Z=expanded_z)
+    return result
+
+
 def compact_solution(problem, variables):
     routes = routes_from_z(
         variables["Z"], shape=(problem.v, problem.i, problem.k, problem.t)

@@ -5,6 +5,8 @@
     "method": "PSO",
     "multiobjective": true,
     "strengthened_bounds": false,
+    "aggregate_vehicles": false,
+    "objective_scale": 100000.0,
     "goal_programming": {
       "positive_only_deviations": true
     },
@@ -58,10 +60,22 @@
       "repair_on_update": true,
       "max_initial_resample_attempts": 1,
       "lot_sizing_bounds": {
-        "enabled": true,
+        "enabled": false,
         "use_base_solution": false,
         "time_limit": 1,
         "integer_variables": false
+      },
+      "initial_bias": {
+        "delivery": 3.0,
+        "production": 1.0
+      },
+      "decoder": {
+        "setup_threshold": 0.5,
+        "routing": "savings_2opt",
+        "delivery": "lookahead",
+        "delivery_threshold": 0.5,
+        "max_cover": 2,
+        "fleet_utilization": 0.9
       },
       "use_as_mip_start": true,
       "return_heuristic_result_without_cplex": false,
