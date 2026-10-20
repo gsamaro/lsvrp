@@ -21,6 +21,326 @@ def _next_random(state):
     return state, float(value >> np.uint64(11)) * (1.0 / 9007199254740992.0)
 
 
+@njit(cache=True)
+def _route_distance(nodes, length, distance):
+    total = 0.0
+    previous = 0
+    for index in range(length):
+        total += distance[previous, nodes[index]]
+        previous = nodes[index]
+    return total + distance[previous, 0]
+
+
+@njit(cache=True)
+def _improve_route(nodes, length, distance):
+    """2-opt and single-node relocation (Or-opt) until no move shortens the route."""
+    improved = True
+    while improved:
+        improved = False
+        for first in range(length - 1):
+            for last in range(first + 1, length):
+                before = distance[0 if first == 0 else nodes[first - 1], nodes[first]]
+                after = distance[0 if first == 0 else nodes[first - 1], nodes[last]]
+                before += distance[
+                    nodes[last], 0 if last == length - 1 else nodes[last + 1]
+                ]
+                after += distance[
+                    nodes[first], 0 if last == length - 1 else nodes[last + 1]
+                ]
+                if after < before - 1e-9:
+                    low = first
+                    high = last
+                    while low < high:
+                        swap = nodes[low]
+                        nodes[low] = nodes[high]
+                        nodes[high] = swap
+                        low += 1
+                        high -= 1
+                    improved = True
+        for source in range(length):
+            node = nodes[source]
+            previous = 0 if source == 0 else nodes[source - 1]
+            following = 0 if source == length - 1 else nodes[source + 1]
+            removal = (
+                distance[previous, node]
+                + distance[node, following]
+                - distance[previous, following]
+            )
+            best_gain = 1e-9
+            best_slot = -1
+            for slot in range(length + 1):
+                if slot == source or slot == source + 1:
+                    continue
+                left = 0 if slot == 0 else nodes[slot - 1]
+                right = 0 if slot == length else nodes[slot]
+                insertion = (
+                    distance[left, node] + distance[node, right] - distance[left, right]
+                )
+                if removal - insertion > best_gain:
+                    best_gain = removal - insertion
+                    best_slot = slot
+            if best_slot >= 0:
+                if best_slot > source:
+                    for index in range(source, best_slot - 1):
+                        nodes[index] = nodes[index + 1]
+                    nodes[best_slot - 1] = node
+                else:
+                    for index in range(source, best_slot, -1):
+                        nodes[index] = nodes[index - 1]
+                    nodes[best_slot] = node
+                improved = True
+                break
+
+
+@njit(cache=True)
+def _savings_partition(
+    customers, count, load, distance, capacity, vehicle_count, assignments, remaining
+):
+    """Clarke-Wright partition of ``customers`` (ascending) into capacity routes.
+
+    Fills ``assignments``/``remaining`` and returns True when at most
+    ``vehicle_count`` routes result; otherwise leaves them untouched.
+    """
+    routes = np.zeros((count, count), dtype=np.int64)
+    lengths = np.zeros(count, dtype=np.int64)
+    route_load = np.zeros(count, dtype=np.float64)
+    route_of = np.full(distance.shape[0], -1, dtype=np.int64)
+    for index in range(count):
+        customer = customers[index]
+        routes[index, 0] = customer
+        lengths[index] = 1
+        route_load[index] = load[customer]
+        route_of[customer] = index
+
+    pairs = count * (count - 1) // 2
+    saving = np.zeros(pairs, dtype=np.float64)
+    first_of = np.zeros(pairs, dtype=np.int64)
+    second_of = np.zeros(pairs, dtype=np.int64)
+    slot = 0
+    for left in range(count):
+        for right in range(left + 1, count):
+            i = customers[left]
+            j = customers[right]
+            saving[slot] = -(distance[0, i] + distance[j, 0] - distance[i, j])
+            first_of[slot] = i
+            second_of[slot] = j
+            slot += 1
+    for position in np.argsort(saving[:pairs], kind="mergesort"):
+        i = first_of[position]
+        j = second_of[position]
+        a = route_of[i]
+        b = route_of[j]
+        if a == b or route_load[a] + route_load[b] > capacity + 1e-8:
+            continue
+        a_end = lengths[a] - 1
+        b_end = lengths[b] - 1
+        i_first = routes[a, 0] == i
+        i_last = routes[a, a_end] == i
+        j_first = routes[b, 0] == j
+        j_last = routes[b, b_end] == j
+        if not (i_first or i_last) or not (j_first or j_last):
+            continue
+        if not i_last:
+            for index in range(lengths[a] // 2):
+                swap = routes[a, index]
+                routes[a, index] = routes[a, a_end - index]
+                routes[a, a_end - index] = swap
+        if not j_first:
+            for index in range(lengths[b] // 2):
+                swap = routes[b, index]
+                routes[b, index] = routes[b, b_end - index]
+                routes[b, b_end - index] = swap
+        for index in range(lengths[b]):
+            routes[a, lengths[a] + index] = routes[b, index]
+            route_of[routes[b, index]] = a
+        lengths[a] += lengths[b]
+        route_load[a] += route_load[b]
+        lengths[b] = 0
+        route_load[b] = 0.0
+
+    used = 0
+    for index in range(count):
+        if lengths[index] > 0:
+            used += 1
+    if used > vehicle_count:
+        return False
+    # Vehicle labels follow the smallest customer of each route (deterministic).
+    taken = np.zeros(count, dtype=np.uint8)
+    for vehicle in range(used):
+        chosen = -1
+        chosen_min = 0
+        for index in range(count):
+            if lengths[index] == 0 or taken[index]:
+                continue
+            smallest = routes[index, 0]
+            for member in range(1, lengths[index]):
+                if routes[index, member] < smallest:
+                    smallest = routes[index, member]
+            if chosen < 0 or smallest < chosen_min:
+                chosen = index
+                chosen_min = smallest
+        taken[chosen] = 1
+        for member in range(lengths[chosen]):
+            assignments[routes[chosen, member]] = vehicle
+    # Same subtraction order as the Python reference: ascending customer index.
+    for index in range(count):
+        customer = customers[index]
+        remaining[assignments[customer]] -= load[customer]
+    return True
+
+
+@njit(cache=True)
+def _plan_ahead(
+    row,
+    dim_x,
+    product_count,
+    vehicle_count,
+    location_count,
+    period_count,
+    period,
+    previous_inventory,
+    demand,
+    cumulative,
+    inventory_capacity,
+    deficits,
+    ahead,
+    fleet_cap,
+    vehicle_capacity,
+    guard_active,
+    threshold,
+    max_cover,
+):
+    """Fill ``ahead[p, c]`` with deliveries beyond the period deficit.
+
+    Two sources, both clipped by customer storage, vehicle capacity and the
+    usable fleet capacity ``fleet_cap``, so they never make a particle invalid:
+
+    * load levelling (``guard_active``): the amount that must be shipped now so
+      no later period needs more than ``fleet_cap``, taken from the nearest
+      deadlines first and spread over the customers in proportion to their need;
+    * cover genes: a customer whose gene is above ``threshold`` receives enough
+      to cover the demand of the next ``k <= max_cover`` periods.
+    """
+    stock = np.zeros((product_count, location_count), dtype=np.float64)
+    mandatory = 0.0
+    for product in range(product_count):
+        for customer in range(1, location_count):
+            value = (
+                previous_inventory[product, customer]
+                + deficits[product, customer]
+                - demand[product, customer - 1, period]
+            )
+            stock[product, customer] = value if value > 0 else 0.0
+            mandatory += deficits[product, customer]
+
+    if guard_active and period < period_count - 1:
+        need = np.zeros(period_count - period, dtype=np.float64)
+        for later in range(period + 1, period_count):
+            total = 0.0
+            for product in range(product_count):
+                for customer in range(1, location_count):
+                    value = (
+                        cumulative[product, customer, later]
+                        - cumulative[product, customer, period]
+                        - stock[product, customer]
+                    )
+                    if value > 0:
+                        total += value
+            need[later - period] = total
+        carry = 0.0
+        for later in range(period_count - 1, period, -1):
+            load = need[later - period] - need[later - period - 1] + carry
+            carry = load - fleet_cap if load > fleet_cap else 0.0
+        spare = fleet_cap - mandatory
+        if spare < 0:
+            spare = 0.0
+        remaining = carry if carry < spare else spare
+        for later in range(period + 1, period_count):
+            if remaining <= 1e-9:
+                break
+            wanted = np.zeros((product_count, location_count), dtype=np.float64)
+            wanted_total = 0.0
+            for customer in range(1, location_count):
+                for product in range(product_count):
+                    base = stock[product, customer] + ahead[product, customer]
+                    covered = (
+                        cumulative[product, customer, later]
+                        - cumulative[product, customer, period]
+                    )
+                    before = (
+                        cumulative[product, customer, later - 1]
+                        - cumulative[product, customer, period]
+                    )
+                    value = (covered - base if covered > base else 0.0) - (
+                        before - base if before > base else 0.0
+                    )
+                    room = inventory_capacity[product, customer] - base
+                    if room < value:
+                        value = room
+                    if value > 0:
+                        wanted[product, customer] = value
+                        wanted_total += value
+            if wanted_total <= 1e-9:
+                continue
+            # Spread the shipment over every customer with demand at this deadline,
+            # which keeps the loads even and the routes easier to pack.
+            factor = 1.0 if wanted_total <= remaining else remaining / wanted_total
+            for customer in range(1, location_count):
+                for product in range(product_count):
+                    amount = wanted[product, customer] * factor
+                    if amount > 0:
+                        ahead[product, customer] += amount
+                        remaining -= amount
+
+    loaded = mandatory
+    for product in range(product_count):
+        for customer in range(1, location_count):
+            loaded += ahead[product, customer]
+    for customer in range(1, location_count):
+        gene = row[
+            dim_x
+            + (
+                ((0 * vehicle_count + 0) * location_count + customer) * period_count
+                + period
+            )
+        ]
+        share = _sigmoid(gene)
+        if share <= threshold:
+            continue
+        cover = 1 + int(math.floor((share - threshold) / (1.0 - threshold) * max_cover))
+        if cover > max_cover:
+            cover = max_cover
+        last = period + cover
+        if last > period_count - 1:
+            last = period_count - 1
+        if last <= period:
+            continue
+        customer_total = 0.0
+        for product in range(product_count):
+            customer_total += deficits[product, customer] + ahead[product, customer]
+        for product in range(product_count):
+            target = (
+                cumulative[product, customer, last]
+                - cumulative[product, customer, period]
+            )
+            if target > inventory_capacity[product, customer]:
+                target = inventory_capacity[product, customer]
+            add = target - (stock[product, customer] + ahead[product, customer])
+            if add <= 0:
+                continue
+            room_customer = vehicle_capacity - customer_total
+            if add > room_customer:
+                add = room_customer
+            room_fleet = fleet_cap - loaded
+            if add > room_fleet:
+                add = room_fleet
+            if add <= 1e-6:
+                continue
+            ahead[product, customer] += add
+            customer_total += add
+            loaded += add
+
+
 @njit(cache=True, parallel=True)
 def update_swarm_kernel(
     positions,
@@ -79,6 +399,14 @@ def build_population_kernel(
     upper_q,
     has_x_bounds,
     has_q_bounds,
+    setup_threshold,
+    routing_mode,
+    delivery_mode,
+    delivery_threshold,
+    max_cover,
+    fleet_cap,
+    guard_active,
+    cumulative_demand,
 ):
     population_size = positions.shape[0]
     customer_count = location_count - 1
@@ -125,7 +453,6 @@ def build_population_kernel(
             deliveries = np.zeros((product_count, location_count), dtype=np.float64)
 
             for product in range(product_count):
-                total_deficit = 0
                 for customer in range(1, location_count):
                     value = (
                         demand[product, customer - 1, period]
@@ -135,7 +462,70 @@ def build_population_kernel(
                         value = 0
                     deficits[product, customer] = value
                     deliveries[product, customer] = value
-                    total_deficit += value
+
+            if delivery_mode == 1:
+                ahead = np.zeros((product_count, location_count), dtype=np.float64)
+                _plan_ahead(
+                    positions[particle],
+                    dim_x,
+                    product_count,
+                    vehicle_count,
+                    location_count,
+                    period_count,
+                    period,
+                    previous_inventory,
+                    demand,
+                    cumulative_demand,
+                    inventory_capacity,
+                    deficits,
+                    ahead,
+                    fleet_cap,
+                    vehicle_capacity,
+                    guard_active,
+                    delivery_threshold,
+                    max_cover,
+                )
+                # Deliveries ahead are produced to order, so clip them to the
+                # production time left after the mandatory deliveries.
+                mandatory_time = 0.0
+                total_time = 0.0
+                for product in range(product_count):
+                    mandatory_total = 0
+                    ahead_total = 0
+                    for customer in range(1, location_count):
+                        mandatory_total += deficits[product, customer]
+                        ahead_total += (
+                            deficits[product, customer] + ahead[product, customer]
+                        )
+                    need_mandatory = mandatory_total - previous_inventory[product, 0]
+                    if need_mandatory < 0:
+                        need_mandatory = 0
+                    need_total = ahead_total - previous_inventory[product, 0]
+                    if need_total < 0:
+                        need_total = 0
+                    mandatory_time += production_time[product] * need_mandatory
+                    total_time += production_time[product] * need_total
+                scale = 1.0
+                if (
+                    total_time > production_capacity + 1e-8
+                    and total_time > mandatory_time
+                ):
+                    scale = (production_capacity - mandatory_time) / (
+                        total_time - mandatory_time
+                    )
+                    if scale < 0:
+                        scale = 0.0
+                for product in range(product_count):
+                    for customer in range(1, location_count):
+                        deliveries[product, customer] = (
+                            deficits[product, customer]
+                            + scale * ahead[product, customer]
+                        )
+
+            for product in range(product_count):
+                total_deficit = 0
+                for customer in range(1, location_count):
+                    total_deficit += deliveries[product, customer]
                 required = total_deficit - previous_inventory[product, 0]
                 if required < 0:
                     required = 0
@@ -197,11 +587,18 @@ def build_population_kernel(
                     feasible = False
                     break
                 gene = positions[particle, product * period_count + period]
+                share = _sigmoid(gene)
+                if setup_threshold > 0.0:
+                    # Below the threshold the particle produces only what is needed,
+                    # so a period can end up without a setup.
+                    if share <= setup_threshold:
+                        share = 0.0
+                    else:
+                        share = (share - setup_threshold) / (1.0 - setup_threshold)
                 if has_x_bounds:
                     decoded = float(
                         lower_x[product, period]
-                        + _sigmoid(gene)
-                        * (upper_x[product, period] - lower_x[product, period])
+                        + share * (upper_x[product, period] - lower_x[product, period])
                     )
                     extra = decoded - production[product]
                     if extra < 0:
@@ -215,7 +612,9 @@ def build_population_kernel(
                     if storage_room < 0:
                         storage_room = 0
                     high = min(storage_room, max_extra)
-                    extra = float(_sigmoid(gene) * high)
+                    extra = float(share * high)
+                if setup_threshold > 0.0 and extra < 1e-6:
+                    extra = 0.0
                 production[product] += extra
                 remaining_time -= production_time[product] * extra
 
@@ -262,7 +661,25 @@ def build_population_kernel(
             remaining_vehicle = np.full(
                 vehicle_count, vehicle_capacity, dtype=np.float64
             )
-            for customer_index in range(active_count):
+            partitioned = False
+            if routing_mode == 1 and active_count > 0:
+                ascending = np.zeros(active_count, dtype=np.int64)
+                filled = 0
+                for customer in range(1, location_count):
+                    if customer_load[customer] > 0:
+                        ascending[filled] = customer
+                        filled += 1
+                partitioned = _savings_partition(
+                    ascending,
+                    active_count,
+                    customer_load,
+                    distance,
+                    vehicle_capacity,
+                    vehicle_count,
+                    assignments,
+                    remaining_vehicle,
+                )
+            for customer_index in range(0 if partitioned else active_count):
                 customer = customer_order[customer_index]
                 total = customer_load[customer]
                 selected_vehicle = -1
@@ -553,6 +970,12 @@ def build_population_kernel(
                     route_length += 1
                     visited[selected_customer] = 1
                     current = selected_customer
+                if routing_mode == 1 and route_length > 1:
+                    _improve_route(
+                        route_nodes_all[particle, period, vehicle],
+                        route_length,
+                        distance,
+                    )
                 route_lengths_all[particle, period, vehicle] = route_length
 
             previous_inventory = i_all[particle, :, :, period].copy()

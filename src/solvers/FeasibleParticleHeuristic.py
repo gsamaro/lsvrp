@@ -53,6 +53,7 @@ class FeasibleParticleHeuristic:
         execution_backend="python",
         parallel_workers=1,
         objective_config=None,
+        decoder=None,
     ):
         self.objective_config = objective_config or {
             "solver": {"multiobjective": False}
@@ -62,6 +63,7 @@ class FeasibleParticleHeuristic:
         self.log = log
         self.problem = ProblemData.from_map(map)
         self.rng = rng or np.random.default_rng(seed=123)
+        self.decoder = self._resolve_decoder(decoder)
         self.dim_x = self.problem.p * self.problem.t
         self.dim_q = self.problem.p * self.problem.v * self.problem.i * self.problem.t
         self.particle_dim = self.dim_x + self.dim_q
@@ -98,6 +100,35 @@ class FeasibleParticleHeuristic:
                 dtype=float,
             )
         self._delivery_upper_bounds = compute_delivery_upper_bounds(self.problem)
+        demand = np.asarray(self._demand, dtype=np.float64)
+        self._cumulative_demand = np.zeros(
+            (self.problem.p, self.problem.i, self.problem.t), dtype=np.float64
+        )
+        self._cumulative_demand[:, 1:, :] = np.cumsum(demand, axis=2)
+        self._fleet_cap = float(
+            self.decoder["fleet_utilization"] * self.problem.v * self.problem.C
+        )
+        # Levelling is only needed when a period delivered just in time would
+        # already exceed the usable fleet capacity.
+        first_deficit = np.maximum(
+            demand[:, :, 0] - self._initial_inventory[:, 1:], 0.0
+        ).sum()
+        peak_load = max(
+            float(first_deficit),
+            float(demand[:, :, 1:].sum(axis=(0, 1)).max(initial=0.0)),
+        )
+        self._guard_active = bool(peak_load > self._fleet_cap)
+        # The lookahead decoder reads one delivery gene per customer and period
+        # (product 0, vehicle 0); the other delivery genes stay unused.
+        self.delivery_gene_indices = np.array(
+            [
+                self.dim_x
+                + (((0 * self.problem.v + 0) * self.problem.i + i) * self.problem.t + t)
+                for i in range(1, self.problem.i)
+                for t in range(self.problem.t)
+            ],
+            dtype=np.int64,
+        )
         if bounds is not None:
             self.lower_bounds = np.asarray(bounds["lower"], dtype=float)
             self.upper_bounds = np.asarray(bounds["upper"], dtype=float)
@@ -148,6 +179,77 @@ class FeasibleParticleHeuristic:
             self.upper_bounds = None
             self.lower_delivery_bounds = None
             self.upper_delivery_bounds = None
+
+    DECODER_DEFAULTS = {
+        "setup_threshold": 0.0,
+        "routing": "nearest_neighbor",
+        "delivery": "just_in_time",
+        "delivery_threshold": 0.5,
+        "max_cover": 2,
+        "fleet_utilization": 0.9,
+    }
+
+    def _resolve_decoder(self, decoder):
+        """Validate the decoder options; the defaults reproduce the legacy decoder.
+
+        ``setup_threshold``: a production gene whose sigmoid is at most this value
+        adds no production beyond what the period requires, so the setup can be
+        skipped (0 keeps the legacy behaviour, where any gene produces a little).
+        ``routing``: ``nearest_neighbor`` (legacy best-fit assignment plus nearest
+        neighbor routes) or ``savings_2opt`` (Clarke-Wright partition plus 2-opt and
+        Or-opt on every route, falling back to best-fit above the fleet size).
+        ``delivery``: ``just_in_time`` (legacy: each customer receives only its
+        deficit) or ``lookahead``, which also delivers ahead of the deficit: it
+        levels the load when some period would exceed ``fleet_utilization`` of the
+        fleet capacity, and the delivery genes (slot ``p=0, v=0``) above
+        ``delivery_threshold`` cover the next ``k <= max_cover`` periods of a
+        customer. Every extra quantity is clipped, so it never invalidates a
+        particle.
+        """
+        resolved = {**self.DECODER_DEFAULTS, **(decoder or {})}
+        threshold = resolved["setup_threshold"]
+        if (
+            isinstance(threshold, bool)
+            or not isinstance(threshold, (int, float))
+            or not 0.0 <= threshold < 1.0
+        ):
+            raise ValueError("decoder.setup_threshold deve estar em [0, 1)")
+        if resolved["delivery"] not in ("just_in_time", "lookahead"):
+            raise ValueError("decoder.delivery deve ser just_in_time ou lookahead")
+        delivery_threshold = resolved["delivery_threshold"]
+        if (
+            isinstance(delivery_threshold, bool)
+            or not isinstance(delivery_threshold, (int, float))
+            or not 0.0 <= delivery_threshold < 1.0
+        ):
+            raise ValueError("decoder.delivery_threshold deve estar em [0, 1)")
+        max_cover = resolved["max_cover"]
+        if (
+            isinstance(max_cover, bool)
+            or not isinstance(max_cover, int)
+            or max_cover < 1
+        ):
+            raise ValueError("decoder.max_cover deve ser um inteiro positivo")
+        utilization = resolved["fleet_utilization"]
+        if (
+            isinstance(utilization, bool)
+            or not isinstance(utilization, (int, float))
+            or not 0.0 < utilization <= 1.0
+        ):
+            raise ValueError("decoder.fleet_utilization deve estar em (0, 1]")
+        if resolved["routing"] not in ("nearest_neighbor", "savings_2opt"):
+            raise ValueError(
+                "decoder.routing deve ser nearest_neighbor ou savings_2opt"
+            )
+        if resolved["routing"] == "savings_2opt":
+            distance = np.asarray(self.problem.a_i_k, dtype=np.float64)
+            if not np.allclose(distance, distance.T):
+                self.log.warning(
+                    "decoder.routing=savings_2opt exige distâncias simétricas; "
+                    "usando nearest_neighbor."
+                )
+                resolved["routing"] = "nearest_neighbor"
+        return resolved
 
     def build_population(self, particles: np.ndarray):
         if self.execution_backend == "numba":
@@ -221,6 +323,14 @@ class FeasibleParticleHeuristic:
             np.ascontiguousarray(upper_q, dtype=np.float64),
             self.lower_bounds is not None,
             self.lower_delivery_bounds is not None,
+            float(self.decoder["setup_threshold"]),
+            1 if self.decoder["routing"] == "savings_2opt" else 0,
+            1 if self.decoder["delivery"] == "lookahead" else 0,
+            float(self.decoder["delivery_threshold"]),
+            int(self.decoder["max_cover"]),
+            self._fleet_cap,
+            self._guard_active,
+            np.ascontiguousarray(self._cumulative_demand),
         )
         self.kernel_seconds += time.perf_counter() - started_at
         state = PopulationState(*values, np.zeros(len(particles), dtype=bool))
@@ -604,6 +714,16 @@ class FeasibleParticleHeuristic:
         bounded_value = min(60.0, max(-60.0, float(value)))
         return 1.0 / (1.0 + math.exp(-bounded_value))
 
+    def _production_share(self, gene):
+        """Sigmoid of a production gene, zero below the decoder setup threshold."""
+        share = self._normalize_gene(gene)
+        threshold = self.decoder["setup_threshold"]
+        if threshold > 0.0:
+            share = (
+                0.0 if share <= threshold else (share - threshold) / (1.0 - threshold)
+            )
+        return share
+
     def _pick_quantity_in_range(self, low, high, gene):
         low = float(max(0, low))
         high = float(max(low, high))
@@ -615,7 +735,7 @@ class FeasibleParticleHeuristic:
     def _bounded_production_from_gene(self, p, t, gene):
         if self.lower_bounds is None:
             return None
-        normalized = self._normalize_gene(gene)
+        normalized = self._production_share(gene)
         value = self.lower_bounds[p, t] + normalized * (
             self.upper_bounds[p, t] - self.lower_bounds[p, t]
         )
@@ -633,6 +753,128 @@ class FeasibleParticleHeuristic:
             )
         return float(total)
 
+    def _plan_ahead_deliveries(self, t, raw_q, previous_inventory, deficits):
+        """Deliveries beyond the deficit; mirrors ``_plan_ahead`` of the numba kernel."""
+        problem, decoder = self.problem, self.decoder
+        products, locations, periods = problem.p, problem.i, problem.t
+        cumulative, capacity = self._cumulative_demand, self._inventory_capacity
+        fleet_cap = self._fleet_cap
+        stock = np.zeros((products, locations))
+        ahead = np.zeros((products, locations))
+        mandatory = 0.0
+        for p in range(products):
+            for c in range(1, locations):
+                value = (
+                    previous_inventory[p, c]
+                    + deficits[c][p]
+                    - self._demand[p, c - 1, t]
+                )
+                stock[p, c] = value if value > 0 else 0.0
+                mandatory += deficits[c][p]
+
+        if self._guard_active and t < periods - 1:
+            need = np.zeros(periods - t)
+            for later in range(t + 1, periods):
+                total = 0.0
+                for p in range(products):
+                    for c in range(1, locations):
+                        value = (
+                            cumulative[p, c, later] - cumulative[p, c, t] - stock[p, c]
+                        )
+                        if value > 0:
+                            total += value
+                need[later - t] = total
+            carry = 0.0
+            for later in range(periods - 1, t, -1):
+                load = need[later - t] - need[later - t - 1] + carry
+                carry = load - fleet_cap if load > fleet_cap else 0.0
+            spare = max(0.0, fleet_cap - mandatory)
+            remaining = carry if carry < spare else spare
+            for later in range(t + 1, periods):
+                if remaining <= 1e-9:
+                    break
+                wanted = np.zeros((products, locations))
+                wanted_total = 0.0
+                for c in range(1, locations):
+                    for p in range(products):
+                        base = stock[p, c] + ahead[p, c]
+                        covered = cumulative[p, c, later] - cumulative[p, c, t]
+                        before = cumulative[p, c, later - 1] - cumulative[p, c, t]
+                        value = (covered - base if covered > base else 0.0) - (
+                            before - base if before > base else 0.0
+                        )
+                        room = capacity[p, c] - base
+                        if room < value:
+                            value = room
+                        if value > 0:
+                            wanted[p, c] = value
+                            wanted_total += value
+                if wanted_total <= 1e-9:
+                    continue
+                factor = 1.0 if wanted_total <= remaining else remaining / wanted_total
+                for c in range(1, locations):
+                    for p in range(products):
+                        amount = wanted[p, c] * factor
+                        if amount > 0:
+                            ahead[p, c] += amount
+                            remaining -= amount
+
+        loaded = mandatory + sum(
+            ahead[p, c] for p in range(products) for c in range(1, locations)
+        )
+        threshold = decoder["delivery_threshold"]
+        for c in range(1, locations):
+            share = self._normalize_gene(raw_q[0, 0, c, t])
+            if share <= threshold:
+                continue
+            cover = 1 + int(
+                math.floor(
+                    (share - threshold) / (1.0 - threshold) * decoder["max_cover"]
+                )
+            )
+            cover = min(cover, decoder["max_cover"])
+            last = min(t + cover, periods - 1)
+            if last <= t:
+                continue
+            customer_total = 0.0
+            for p in range(products):
+                customer_total += deficits[c][p] + ahead[p, c]
+            for p in range(products):
+                target = min(
+                    cumulative[p, c, last] - cumulative[p, c, t], capacity[p, c]
+                )
+                add = target - (stock[p, c] + ahead[p, c])
+                if add <= 0:
+                    continue
+                add = min(add, problem.C - customer_total, fleet_cap - loaded)
+                if add <= 1e-6:
+                    continue
+                ahead[p, c] += add
+                customer_total += add
+                loaded += add
+        return ahead
+
+    def _with_ahead_deliveries(self, t, raw_q, previous_inventory, deficits):
+        """Deficit plus deliveries ahead, clipped to the production time left."""
+        problem = self.problem
+        ahead = self._plan_ahead_deliveries(t, raw_q, previous_inventory, deficits)
+        mandatory_time = total_time = 0.0
+        for p in range(problem.p):
+            mandatory_total = sum(deficits[c][p] for c in deficits)
+            ahead_total = sum(deficits[c][p] + ahead[p, c] for c in deficits)
+            need_mandatory = max(0, mandatory_total - previous_inventory[p, 0])
+            need_total = max(0, ahead_total - previous_inventory[p, 0])
+            mandatory_time += self._production_time[p] * need_mandatory
+            total_time += self._production_time[p] * need_total
+        scale = 1.0
+        if total_time > problem.B + 1e-8 and total_time > mandatory_time:
+            scale = (problem.B - mandatory_time) / (total_time - mandatory_time)
+            scale = max(scale, 0.0)
+        return {
+            c: [deficits[c][p] + scale * ahead[p, c] for p in range(problem.p)]
+            for c in deficits
+        }
+
     def _build_period_state(self, t, raw_x, raw_q, previous_inventory):
         deficits = {
             customer: [
@@ -647,10 +889,13 @@ class FeasibleParticleHeuristic:
             ]
             for customer in range(1, self.problem.i)
         }
+        needs = deficits
+        if self.decoder["delivery"] == "lookahead":
+            needs = self._with_ahead_deliveries(t, raw_q, previous_inventory, deficits)
 
         minimum_production = np.zeros(self.problem.p, dtype=float)
         for p in range(self.problem.p):
-            total_deficit = sum(deficits[customer][p] for customer in deficits)
+            total_deficit = sum(needs[customer][p] for customer in needs)
             minimum_production[p] = max(
                 0, total_deficit - float(previous_inventory[p, 0])
             )
@@ -704,9 +949,11 @@ class FeasibleParticleHeuristic:
             if extra_high <= 0:
                 continue
             if self.lower_bounds is None:
-                extra_units = self._pick_quantity_in_range(0, extra_high, raw_x[p, t])
+                extra_units = extra_high * self._production_share(raw_x[p, t])
             else:
                 extra_units = extra_high
+            if self.decoder["setup_threshold"] > 0.0 and extra_units < 1e-6:
+                continue
             production[p] += extra_units
             remaining_time -= self.problem.b_p[p] * extra_units
 
@@ -716,7 +963,7 @@ class FeasibleParticleHeuristic:
         }
 
         for customer in range(1, self.problem.i):
-            lower_by_product = deficits[customer]
+            lower_by_product = needs[customer]
             lower_total = sum(lower_by_product)
             if lower_total > self.problem.C + 1e-8:
                 return None
@@ -859,7 +1106,115 @@ class FeasibleParticleHeuristic:
                 excess_by_product[p] -= quantity
         return True
 
+    def _savings_assignment(self, period_deliveries):
+        """Clarke-Wright partition of the loaded customers (ascending index).
+
+        Mirrors ``_savings_partition`` of the numba kernel. Returns ``None`` when
+        more routes than vehicles result, so the caller can fall back to best-fit.
+        """
+        loads = {
+            customer: sum(period_deliveries[customer])
+            for customer in sorted(period_deliveries)
+            if sum(period_deliveries[customer]) > 0
+        }
+        customers = list(loads)
+        count = len(customers)
+        if count == 0:
+            return {}
+        distance = self._distance
+        pairs, saving = [], []
+        for left in range(count):
+            for right in range(left + 1, count):
+                i, j = customers[left], customers[right]
+                saving.append(-(distance[0, i] + distance[j, 0] - distance[i, j]))
+                pairs.append((i, j))
+        routes = [[customer] for customer in customers]
+        route_load = [loads[customer] for customer in customers]
+        route_of = {customer: index for index, customer in enumerate(customers)}
+        for position in np.argsort(np.asarray(saving), kind="mergesort"):
+            i, j = pairs[position]
+            a, b = route_of[i], route_of[j]
+            if a == b or route_load[a] + route_load[b] > self.problem.C + 1e-8:
+                continue
+            first, second = routes[a], routes[b]
+            if not (first[0] == i or first[-1] == i):
+                continue
+            if not (second[0] == j or second[-1] == j):
+                continue
+            if first[-1] != i:
+                first.reverse()
+            if second[0] != j:
+                second.reverse()
+            for customer in second:
+                route_of[customer] = a
+            first.extend(second)
+            route_load[a] += route_load[b]
+            routes[b] = []
+            route_load[b] = 0.0
+        used = [route for route in routes if route]
+        if len(used) > self.problem.v:
+            return None
+        vehicle_of = {}
+        for vehicle, route in enumerate(sorted(used, key=min)):
+            for customer in route:
+                vehicle_of[customer] = vehicle
+        return {customer: vehicle_of[customer] for customer in customers}
+
+    def _improve_route(self, route):
+        """2-opt and single-node relocation, mirroring ``_improve_route`` of the kernel."""
+        distance = self._distance
+        nodes = list(route)
+        length = len(nodes)
+        improved = True
+        while improved:
+            improved = False
+            for first in range(length - 1):
+                for last in range(first + 1, length):
+                    before_node = 0 if first == 0 else nodes[first - 1]
+                    after_node = 0 if last == length - 1 else nodes[last + 1]
+                    before = distance[before_node, nodes[first]]
+                    after = distance[before_node, nodes[last]]
+                    before += distance[nodes[last], after_node]
+                    after += distance[nodes[first], after_node]
+                    if after < before - 1e-9:
+                        nodes[first : last + 1] = nodes[first : last + 1][::-1]
+                        improved = True
+            for source in range(length):
+                node = nodes[source]
+                previous = 0 if source == 0 else nodes[source - 1]
+                following = 0 if source == length - 1 else nodes[source + 1]
+                removal = (
+                    distance[previous, node]
+                    + distance[node, following]
+                    - distance[previous, following]
+                )
+                best_gain, best_slot = 1e-9, -1
+                for slot in range(length + 1):
+                    if slot in (source, source + 1):
+                        continue
+                    left = 0 if slot == 0 else nodes[slot - 1]
+                    right = 0 if slot == length else nodes[slot]
+                    insertion = (
+                        distance[left, node]
+                        + distance[node, right]
+                        - distance[left, right]
+                    )
+                    if removal - insertion > best_gain:
+                        best_gain, best_slot = removal - insertion, slot
+                if best_slot >= 0:
+                    nodes.pop(source)
+                    nodes.insert(
+                        best_slot - 1 if best_slot > source else best_slot, node
+                    )
+                    improved = True
+                    break
+        return nodes
+
     def _assign_customers_to_vehicles(self, period_deliveries, raw_q, t):
+        if self.decoder["routing"] == "savings_2opt":
+            partition = self._savings_assignment(period_deliveries)
+            if partition is not None:
+                return partition
         remaining_capacity = [self.problem.C for _ in range(self.problem.v)]
         assignment = {}
         customers = sorted(
@@ -929,6 +1284,8 @@ class FeasibleParticleHeuristic:
                 route.append(next_customer)
                 unvisited.remove(next_customer)
                 current = next_customer
+            if self.decoder["routing"] == "savings_2opt" and len(route) > 1:
+                route = self._improve_route(route)
             routes[vehicle] = route
 
         return routes

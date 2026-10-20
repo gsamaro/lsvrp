@@ -102,6 +102,7 @@ class ParticleSwarmOptimization:
             execution_backend=self.pso_config["execution_backend"],
             parallel_workers=self.parallel_workers,
             objective_config=self.objective_config,
+            decoder=self.pso_config["decoder"],
         )
         self.rng = np.random.default_rng(seed=self.pso_config["seed"])
         self.audit_rng = np.random.default_rng(seed=int(self.pso_config["seed"]) + 1)
@@ -184,8 +185,25 @@ class ParticleSwarmOptimization:
             },
             "use_as_mip_start": True,
             "return_heuristic_result_without_cplex": False,
+            "decoder": {
+                "setup_threshold": 0.5,
+                "routing": "savings_2opt",
+                "delivery": "lookahead",
+                "delivery_threshold": 0.5,
+                "max_cover": 2,
+                "fleet_utilization": 0.9,
+            },
+            "initial_bias": {"delivery": 3.0, "production": 1.0},
         }
         merged = {**defaults, **configured}
+        merged["initial_bias"] = {
+            **defaults["initial_bias"],
+            **(configured.get("initial_bias") or {}),
+        }
+        merged["decoder"] = {
+            **defaults["decoder"],
+            **(configured.get("decoder") or {}),
+        }
         merged["lot_sizing_bounds"] = {
             **defaults["lot_sizing_bounds"],
             **(configured.get("lot_sizing_bounds") or {}),
@@ -246,11 +264,30 @@ class ParticleSwarmOptimization:
             "telemetry": 0.0,
         }
 
+    def _apply_initial_bias(self, positions):
+        """Shift fresh genes toward "do nothing extra" for the active decoder options.
+
+        Genes start at N(0, 1), so half of the production genes and half of the
+        delivery genes would start above their thresholds and the swarm would begin
+        far from the plain just-in-time plan. The shift is only applied for the
+        options that give those genes a threshold, so the legacy decoder keeps
+        its original initialization.
+        """
+        bias = self.pso_config["initial_bias"]
+        decoder = self.heuristic.decoder
+        if decoder["setup_threshold"] > 0.0 and bias["production"]:
+            positions[..., : self.heuristic.dim_x] -= bias["production"]
+        if decoder["delivery"] == "lookahead" and bias["delivery"]:
+            positions[..., self.heuristic.delivery_gene_indices] -= bias["delivery"]
+        return positions
+
     def _random_positions(self):
-        return self.rng.normal(
-            loc=0.0,
-            scale=1.0,
-            size=(int(self.pso_config["swarm_size"]), self.heuristic.particle_dim),
+        return self._apply_initial_bias(
+            self.rng.normal(
+                loc=0.0,
+                scale=1.0,
+                size=(int(self.pso_config["swarm_size"]), self.heuristic.particle_dim),
+            )
         ).astype(np.float32)
 
     def _initialize_swarm(self):
@@ -435,10 +472,12 @@ class ParticleSwarmOptimization:
     def _resample_solution(self):
         for _ in range(int(self.pso_config["max_initial_resample_attempts"])):
             self._resample_attempts += 1
-            candidate_position = self.rng.normal(
-                loc=0.0,
-                scale=1.0,
-                size=(self.heuristic.particle_dim,),
+            candidate_position = self._apply_initial_bias(
+                self.rng.normal(
+                    loc=0.0,
+                    scale=1.0,
+                    size=(self.heuristic.particle_dim,),
+                )
             )
             candidate_position = candidate_position.astype(np.float32)
             candidate_state = self.heuristic.build_population_state(
@@ -562,8 +601,8 @@ class ParticleSwarmOptimization:
         if not selected:
             return
         selected = np.asarray(selected, dtype=int)
-        self.positions[selected] = self.rng.normal(
-            0.0, 1.0, size=(len(selected), self.heuristic.particle_dim)
+        self.positions[selected] = self._apply_initial_bias(
+            self.rng.normal(0.0, 1.0, size=(len(selected), self.heuristic.particle_dim))
         )
         self.velocities[selected] = 0.0
         self.personal_best_positions[selected] = self.positions[selected]
