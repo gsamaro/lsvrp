@@ -6,6 +6,7 @@ import numpy as np
 
 from config import Config
 from src.solvers._routing_common import (
+    arc_items,
     canonicalize_vehicles,
     compact_solution,
     materialize_routes,
@@ -15,6 +16,7 @@ from src.solvers._routing_common import (
 from src.solvers._solver_common import (
     ProblemData,
     build_results_from_variables,
+    clone_solution,
     objective_from_components,
     result_variables,
     solution_components,
@@ -47,9 +49,49 @@ class DeterministicMatheuristic:
         )
 
     def _constructive_start(self):
-        heuristic = FeasibleParticleHeuristic(self.data, self.dir, self.log)
-        compact = heuristic.build_population(np.zeros((1, heuristic.particle_dim)))[0]
-        if not compact["feasible"]:
+        """First feasible solution of the restricted stage, per ``matheuristic.start``.
+
+        ``legacy`` decodes one particle of zero genes with the legacy decoder, which
+        produces ahead without need and starts far from any good plan. ``decoder``
+        decodes a particle of strongly negative genes with the configured PSO
+        decoder, i.e. just-in-time deliveries and no extra production. ``pso`` runs
+        the PSO and starts from its best particle, falling back to ``decoder``.
+        """
+        mode = self.settings["start"]
+        compact = None
+        if mode == "pso":
+            compact = self._pso_start()
+        if compact is None and mode in ("decoder", "pso"):
+            heuristic = FeasibleParticleHeuristic(
+                self.data,
+                self.dir,
+                self.log,
+                decoder=self.config["solver"]["pso"]["decoder"],
+            )
+            compact = heuristic.build_population(
+                np.full((1, heuristic.particle_dim), -20.0)
+            )[0]
+        elif compact is None:
+            heuristic = FeasibleParticleHeuristic(self.data, self.dir, self.log)
+            compact = heuristic.build_population(np.zeros((1, heuristic.particle_dim)))[
+                0
+            ]
+        return self._ordered_start(compact)
+
+    def _pso_start(self):
+        from src.solvers.ParticleSwarmOptimization import ParticleSwarmOptimization
+
+        pso = ParticleSwarmOptimization(self.data, self.dir, self.log)
+        try:
+            pso.pso_config["return_heuristic_result_without_cplex"] = True
+            pso.solver()
+            solution = pso.global_best_solution
+            return clone_solution(solution) if solution is not None else None
+        finally:
+            pso.terminate()
+
+    def _ordered_start(self, compact):
+        if compact is None or not compact["feasible"]:
             return None
         rank = {i: r for r, i in enumerate(self.order)}
         compact["route_plan"] = [
@@ -65,9 +107,19 @@ class DeterministicMatheuristic:
             else None
         )
 
+    @staticmethod
+    def _delivery_totals(variables):
+        """Delivery per product, customer and period without numerical residue.
+
+        The restricted MIP leaves quantities near 1e-12 where it does not deliver;
+        taken as deliveries they would force visits that the solution does not make.
+        """
+        totals = variables["Q"].sum(axis=1)
+        return np.where(totals < 1e-6, 0.0, totals)
+
     def _improvement_start(self, variables):
         compact = compact_solution(self.problem, variables)
-        totals = variables["Q"].sum(axis=1)
+        totals = self._delivery_totals(variables)
         compact["route_plan"] = [
             [[i for i in route if totals[:, i, t].sum() > 0] for route in period]
             for t, period in enumerate(compact["route_plan"])
@@ -78,14 +130,27 @@ class DeterministicMatheuristic:
         started = time.perf_counter()
         if seed is not None and self.config["solver"]["symmetry_breaking"]["hc1"]:
             seed = canonicalize_vehicles(self.problem, seed)
+        # Without the vehicle index the restricted stage keeps binary arcs along the
+        # TSP order (no eta) and the improvement keeps the plan fixed on all arcs.
+        multiobjective = bool(self.config["solver"]["multiobjective"])
+        fleet = bool(
+            self.data.get(
+                "aggregate_vehicles", self.config["solver"]["aggregate_vehicles"]
+            )
+        )
         stage = MultProductProdctionRoutingProblem(
             self.data,
             self.dir,
             self.log,
             {"start": seed is not None, "variables": seed},
-            routing_profile=profile,
+            routing_profile=None if fleet else profile,
             fixed_plan=fixed,
-            transport_objective=name == "route_improvement",
+            # F4+F5 is the improvement criterion only when the objective is a plain
+            # sum; with goal programming the stage must minimize the configured
+            # objective, whose lambda is a maximum over periods and components, so a
+            # lower transport total can still be a worse solution.
+            transport_objective=name == "route_improvement" and not multiobjective,
+            arc_order=self.order if fleet and name == "restricted" else None,
         )
         try:
             stage.solver(timeLimit=limit, numThreads=threads)
@@ -110,7 +175,12 @@ class DeterministicMatheuristic:
                 ):
                     report["violations"].append("Entregas agregadas fixadas alteradas")
                 required = fixed["delivery_totals"].sum(axis=0) > 0
-                visited = np.rint(values["eta"].sum(axis=0)) > 0
+                if "eta" in values:
+                    visited = np.rint(values["eta"].sum(axis=0)) > 0
+                else:
+                    visited = np.zeros_like(required)
+                    for (_, i, _, t), value in arc_items(values["Z"]):
+                        visited[i, t] |= i != 0 and value > 0.5
                 if not np.array_equal(required[1:], visited[1:]):
                     report["violations"].append(
                         "Visitas não correspondem às entregas positivas"
@@ -146,7 +216,7 @@ class DeterministicMatheuristic:
                 "extract_seconds": extract_seconds,
                 "variables": stage.model.number_of_variables,
                 "constraints": stage.model.number_of_constraints,
-                "bound": getattr(info, "best_bound", None),
+                "bound": stage._unscale(getattr(info, "best_bound", None)),
                 "gap": getattr(info, "mip_relative_gap", None),
                 "gap_scope": name,
                 "has_incumbent": has_incumbent,
@@ -159,7 +229,7 @@ class DeterministicMatheuristic:
             if values is not None:
                 costs = solution_components(self.problem, values)
                 record.update(
-                    objective=float(stage.model.objective_value),
+                    objective=stage._unscale(float(stage.model.objective_value)),
                     configured_objective=self._score(values)[0],
                     costs=costs.tolist(),
                 )
@@ -209,7 +279,7 @@ class DeterministicMatheuristic:
                 fixed = {
                     "X": self.best["X"],
                     "Y": self.best["Y"],
-                    "delivery_totals": self.best["Q"].sum(axis=1),
+                    "delivery_totals": self._delivery_totals(self.best),
                 }
                 candidate = self._stage(
                     "route_improvement",
