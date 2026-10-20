@@ -4,6 +4,10 @@
 |---|---|---|
 | `tests/test_worker_process_mpi.py` | Unitário com executor falso | Uso de um único `MPIPoolExecutor`, submissão de todas as tarefas e fallback sequencial |
 | `tests/test_process_results.py` | Unitário com pandas e pyarrow reais | Geração de hashes, escrita de `.xlsx`/`.parquet` e ausência de solução |
+| `tests/test_pso_decoder.py` | Unitário | Opções do decodificador do PSO: validação, equivalência entre o kernel Numba e o backend Python (limiar de setup, economias, 2-opt, entregas antecipadas, bounds e frotas apertadas), períodos sem setup, agrupamento por vizinhança, retorno ao best-fit, nivelamento de carga que torna viável uma instância inviável "na hora", genes de cobertura e seus cortes (estoque, `C`, frota, produção), viés inicial e configuração |
+| `tests/test_matheuristic_fleet.py` | Unitário e integração CPLEX | Modos de partida da matheurística, limpeza dos totais de entrega, `arc_order` e plano fixo sem `eta`, tamanho menor dos modelos sem veículo, igualdade do ótimo do estágio restrito com e sem índice (mono e multiobjetivo), melhoria que preserva o plano e fluxo só matheurística |
+| `tests/test_objective_scale.py` | Unitário e integração CPLEX (`cplex_integration`) | Fator `solver.objective_scale`: padrão neutro, coeficientes escalados no CPLEX, ramos sem escala (objetivo único), `_unscale` e igualdade de `FO`, limite, gap e desvios entre os modelos com e sem escala |
+| `tests/test_vehicle_aggregation.py` | Unitário e integração CPLEX (`cplex_integration`) | Formulação sem índice de veículo: configuração, precedência da opção, forma do modelo, divisão de rotas por veículo, MIP start e igualdade do ótimo com o modelo indexado |
 
 Os testes usam mocks para não depender de CPLEX ou MPI real. Os testes de persistência usam arquivos Excel e Parquet reais em diretórios temporários. Execute a suíte com:
 

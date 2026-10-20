@@ -7,6 +7,7 @@
 - [6. Variáveis de Decisão](#6-variáveis-de-decisão)
 - [7. Função Objetivo](#7-função-objetivo)
 - [8. Restrições](#8-restrições)
+- [Formulação sem índice de veículo](#formulação-sem-índice-de-veículo)
 - [Quebra de simetria entre veículos: VC + HC1](#quebra-de-simetria-entre-veículos-vc--hc1)
 - [Desigualdades cumulativas de capacidade arredondada](#desigualdades-cumulativas-de-capacidade-arredondada)
 - [Desigualdades lógicas de Coelho (15)-(17)](#desigualdades-lógicas-de-coelho-15-17)
@@ -226,6 +227,26 @@ Interpretação:
 - a normalização por `\overline{b}_t^j` evita distorções de escala entre componentes;
 - `\alpha` regula o compromisso entre minimax e soma ponderada dos desvios.
 
+## Escala do objetivo entregue ao CPLEX
+
+O custo marginal de uma variável de decisão no objetivo multiobjetivo é da ordem de `(1-\alpha)\, v_t^j\, c / \overline{b}_t^j`, onde `c` é o custo unitário do componente `j`. Para `\alpha = 0{,}99` e pesos `0{,}2` os coeficientes de `p_t^j` vão de `2\times 10^{-10}` a `1{,}1\times 10^{-5}` (mediana `5\times 10^{-8}`) nas instâncias de 20 clientes, e de `1{,}4\times 10^{-10}` a `1{,}2\times 10^{-5}` nas de 30 clientes. Os custos reduzidos das variáveis `x`, `y`, `I`, `z` ficam abaixo da tolerância de otimalidade do CPLEX (`10^{-6}`), e o simplex (dual ou primal) pode parar antes do ótimo do LP. Medido nas relaxações lineares do modelo agregado, `\alpha = 0{,}99`:
+
+| Instância | LP exato (barrier) | dual simplex, sem escala | primal, sem escala |
+| --- | --- | --- | --- |
+| PRP13 C20 S4 | 0,11618 | 0,12067 (+3,9%) | 0,12270 (+5,6%) |
+| PRP10 C20 S2 | 0,08964 | 0,09830 (+9,7%) | 0,09624 (+7,4%) |
+| PRP19 C30 S4 | 0,07683 | 0,08259 (+7,5%) | 0,08445 (+9,9%) |
+
+Como o limite inferior do MIP nasce dessas relaxações, o limite reportado ficava acima do valor válido.
+
+A formulação não muda. A implementação multiplica a expressão do objetivo multiobjetivo por `K = solver.objective_scale` apenas dentro do CPLEX:
+
+`\min K\left[\alpha \lambda + (1-\alpha)\sum_t \sum_j \frac{v_t^j p_t^j}{\overline{b}_t^j}\right]`
+
+e divide por `K` todo valor de objetivo ou limite lido de volta (`FO`, `objBound`, `relaxedModelObjVal`, telemetria de limite e de incumbente, estágios da matheurística). `FO`, limite inferior e gap são reportados na mesma unidade de antes; o gap relativo não depende de `K`. O fator só vale no ramo multiobjetivo: `build_target`, objetivo único e a melhoria de rota por transporte não são escalados. Com `K = 10^4`, dual, primal e barrier concordam com diferença relativa de até `3\times 10^{-6}` nas três instâncias acima, e com `K \ge 10^5` coincidem em todos os dígitos medidos (7 casas); o valor configurado em `config/config.json` é `10^5`. O padrão em `config/config.py` é `1.0`, que preserva o comportamento anterior.
+
+Uma troca de variável `q = p / \overline{b}` (desvio adimensional) foi testada e descartada: ela leva os coeficientes do objetivo para `[0{,}002;\ 0{,}99]`, mas não muda o custo reduzido das variáveis de decisão e o dual simplex continuou inexato (S4: 0,11995; S2: 0,09806).
+
 ## Componentes de custo auxiliares
 
 Pelo LaTeX:
@@ -289,7 +310,7 @@ O código possui três caminhos:
 | Modo | Condição | Implementação |
 | --- | --- | --- |
 | construção de targets | `postprocessing.build_target = true` | minimiza soma ponderada direta dos custos |
-| multiobjetivo | `solver.multiobjective = true` | minimiza expressão com `lambda`, desvios positivos e targets |
+| multiobjetivo | `solver.multiobjective = true` | minimiza expressão com `lambda`, desvios positivos e targets, multiplicada por `solver.objective_scale` dentro do CPLEX |
 | singleobjective | caso contrário | minimiza combinação simples dos cinco custos |
 
 Arquivos:
@@ -433,6 +454,10 @@ incumbente, gap, nós processados, nós restantes e um indicador
 que o CPLEX ainda está no nó raiz. O intervalo padrão de amostragem é de um
 segundo e pode ser ajustado por
 `solver.telemetry.bound_progress_interval_seconds`.
+
+## Observação numérica sobre a escala do objetivo
+
+Na variante multiobjetivo, o coeficiente de `p_t^j` no objetivo é `(1-alpha) w_j / b̃_t^j`, da ordem de `1e-9` quando o target é da ordem de `1e6`. Esse valor fica abaixo da tolerância de otimalidade padrão do CPLEX (`1e-6`). Na instância `PRP13_C20_P8_V5_T12_S4` com bounds fortalecidos, o simplex dual sem escala retornou LP `0,1220` (modelo agregado) e `0,1211` (indexado), contra o ótimo `0,11618` obtido com o objetivo multiplicado por `1e3` ou mais (simplex dual e barrier concordam). Sem a escala, valores de LP e de bound acima do ótimo podem aparecer. Multiplicar o objetivo por uma constante não altera o ótimo; essa escala ainda não é aplicada pelo modelo.
 
 ## Restrição 8: Balanço de estoque na planta
 
@@ -755,6 +780,70 @@ do modelo e não dependem de uma configuração opcional. No código, recebem os
 prefixos `VISIT_CAP_Z_*` e `VISIT_Q_Z_*`, criados por
 `createVehicleVisitDeliveryBounds`.
 
+## Formulação sem índice de veículo
+
+### Motivação
+
+Os veículos são idênticos (`C`, `f` e `a_{ik}` não dependem de `v`) e cada cliente é visitado no máximo uma vez por período. Nesse caso o índice `v` de `Z`, `R` e `Q` só replica V vezes as mesmas restrições: `R` é 84,5% das 238.669 colunas da instância de 20 clientes, 8 produtos, 5 veículos e 12 períodos. A opção `solver.aggregate_vehicles` (default `false`) remove esse índice. O modelo passa a ter 49.549 colunas nessa instância.
+
+### Variáveis
+
+Em vez de `z_{vikt}`, `r_{pvikt}` e `q_{pvit}`, o modelo usa
+
+`z_{ikt} = Σ_v z_{vikt}` (binária), `r_{pikt} = Σ_v r_{pvikt}` e `q_{pit} = Σ_v q_{pvit}`.
+
+No código o índice é mantido com um único valor (`v = 0`, a frota inteira), o que preserva as chaves de `Z_v_i_k_t`, `R_p_v_i_k_t` e `Q_p_v_i_t`.
+
+### Restrições
+
+As restrições de produção, estoque e do objetivo não mudam; `f_t^4` e `f_t^5` usam `z_{ikt}`. As restrições de rota ficam:
+
+`Σ_{k} z_{0kt} ≤ V` (cada saída da planta é um veículo; substitui `EQ_10`)
+
+`Σ_{i≠k} z_{ikt} − Σ_{l≠k} z_{klt} = 0` para todo nó `k` (conservação)
+
+`Σ_{i≠k} z_{ikt} ≤ 1` para todo cliente `k` (visita única)
+
+`Σ_p r_{pikt} ≤ C z_{ikt}` (capacidade no arco)
+
+`Σ_{i≠k} r_{pikt} − Σ_{l≠k} r_{pklt} = q_{pkt}` (fluxo de produto nos clientes) e o balanço agregado na planta
+
+`Σ_p q_{pit} ≤ C Σ_k z_{ikt}` e `q_{pit} ≤ q̄_{pit} Σ_k z_{ikt}` (entregas ligadas à visita)
+
+### Capacidade e atribuição de veículos
+
+A capacidade `C` continua imposta pelo fluxo de carga no arco. Como cada cliente tem grau de entrada no máximo um, as rotas são caminhos disjuntos que partem da planta, e o fluxo de uma rota nunca se mistura com o de outra. O primeiro arco `(0,k)` de cada rota transporta ao menos a soma das entregas dela, e esse arco é limitado por `C`. Logo a carga de cada rota é no máximo `C`.
+
+O modelo não decide qual veículo atende qual cliente, porque a escolha não altera custo nem viabilidade. Depois da solução, `expand_aggregated_vehicles` (`src/solvers/_routing_common.py`) reconstrói os veículos:
+
+1. cada arco `(0,k)` com `z = 1` inicia uma rota, seguida pelos sucessores até a planta;
+2. as rotas recebem os rótulos `v = 0, 1, …` ordenadas pelo menor cliente que atendem (a ordem canônica de VC/HC1);
+3. `Q`, `R` e `Z` passam para o veículo da rota; arcos fora de qualquer caminho da planta (ciclos sem entrega) ficam no veículo 0 e são rejeitados pela auditoria de rotas, como no modelo indexado.
+
+`get_snapshot` já devolve os valores expandidos, de modo que `getResults`, `ProcessResults` e os Parquets mantêm o contrato com índice de veículo.
+
+### Equivalência
+
+Dada uma solução com índice de veículo, a soma sobre `v` satisfaz o modelo agregado com o mesmo custo. Dada uma solução agregada, a expansão acima a devolve ao modelo indexado, pois há no máximo V rotas. No relaxamento linear vale a mesma correspondência pela média sobre as permutações de veículos, porque as restrições são simétricas. Em consequência o ótimo é o mesmo; apenas o tamanho do modelo e a simetria mudam.
+
+Validação feita:
+
+- Nos casos pequenos resolvidos por ambos os modelos (2–3 veículos, 4–6 clientes, 2–4 períodos, modos mono e multiobjetivo) o ótimo coincidiu, a solução expandida passou na auditoria `validate_variables` e o custo recomputado coincidiu com o do modelo. Dois casos estão em `tests/test_vehicle_aggregation.py`.
+- Na instância `PRP13_C20_P8_V5_T12_S4` (bounds fortalecidos, `alpha=0,99`, pesos 0,2) o LP vale `0,1161777` nos dois modelos, com concordância até a sétima casa. O simplex dual levou 116,5 s no modelo indexado e 2,2 s no agregado.
+- Na instância `PRP10_C10_P5_V2_T6_S1`, o fluxo `InstanceProcess` → `ProcessResults` gera os mesmos arquivos e colunas com a opção ligada ou desligada.
+
+### Efeito nas demais opções
+
+- **HC1/VC:** dispensadas (retornam `false`), pois não há rótulos de veículo a permutar.
+- **Coelho (15)–(17):** continuam válidas, com a frota inteira no lugar de um veículo; `u_{it} ≤ s_t` passa a ser `Σ_k z_{ikt} ≤ Σ_k z_{0kt}`.
+- **Cortes de capacidade arredondada:** inalterados, pois já agregam `Z` sobre os veículos.
+- **MIP start:** uma solução com índice de veículo (PSO, matheurística) é somada sobre `v` por `aggregate_vehicle_axis`; cada arco e cada cliente pertence a um único veículo, então a soma é exata.
+- **Etapas da matheurística:** com `routing_profile` (perfis por veículo) a opção é ignorada. Com a opção ligada, a matheurística usa o modelo agregado nos estágios 2 e 3: arcos restritos à ordem do TSP com `Z` binária no restrito (`arc_order`), e plano fixo (`X`, `Y` e entregas) com visita única dos clientes carregados na melhoria (`createFixedPlanConstraints`). O destino `exact_start` usa o modelo completo e portanto respeita a opção.
+- **Construção de targets** com `target_use_relaxation=true`: ignora a opção, pois a relaxação exporta arcos fracionários que não podem ser divididos em rotas.
+- **Veículos diferentes** (capacidade, custo ou disponibilidade por veículo) ou consistência de veículo entre períodos invalidariam a agregação. Nada disso existe hoje no parser.
+
+A opção é controlada por `solver.aggregate_vehicles` em `config/config.json`; um valor explícito `aggregate_vehicles` no mapa de dados tem precedência, como em `strengthened_bounds`. `applied_features["aggregate_vehicles"]` registra o valor efetivo.
+
 ## Quebra de simetria entre veículos: VC + HC1
 
 ### Motivação
@@ -949,6 +1038,7 @@ flowchart TD
 | \eqref{eq:vehicle-flow} | `MultProductProdctionRoutingProblem` | `createEnsureRoutesOnlyPlant` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | \eqref{eq:single-visit} | `MultProductProdctionRoutingProblem` | `createVehicleMostVisitCustomerEachPeriod` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | bounds de entrega em função de `Z` | `MultProductProdctionRoutingProblem` | `createVehicleVisitDeliveryBounds` | `src/solvers/MultProductProdctionRoutingProblem.py` |
+| formulação sem índice de veículo | `MultProductProdctionRoutingProblem` / `_routing_common` | `_resolve_aggregate_vehicles`, `get_snapshot`, `expand_aggregated_vehicles`, `aggregate_vehicle_axis` | `src/solvers/MultProductProdctionRoutingProblem.py`, `src/solvers/_routing_common.py` |
 | VC e HC1 | `MultProductProdctionRoutingProblem` | `createVehicleSymmetryBreaking` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | Coelho (15)–(17) | `MultProductProdctionRoutingProblem` | `createCoelhoValidInequalities` | `src/solvers/MultProductProdctionRoutingProblem.py` |
 | configuração HC1 | `Config` | `normalize` | `config/config.py`, `config/config.json` |

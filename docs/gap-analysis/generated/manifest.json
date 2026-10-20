@@ -1,0 +1,104 @@
+{
+  "sources": {
+    "baseline": "/Users/gabamaro/.codex/worktrees/d672/lsvrp/out/2026-09-21-40da15-92914b-union_results.xlsx",
+    "tight_bounds": "/Users/gabamaro/.codex/worktrees/d672/lsvrp/out/2026-09-19-898e7a-e7a9b4-union_results.xlsx",
+    "all_features": "/Users/gabamaro/.codex/worktrees/d672/lsvrp/out/2026-09-16-898e7a-200533-union_results.xlsx",
+    "october_run": "/Users/gabamaro/.codex/worktrees/d672/lsvrp/out/2026-10-05-0a58f8-22bd43-union_results.xlsx"
+  },
+  "output_dir": "/Users/gabamaro/.codex/worktrees/d672/lsvrp/docs/gap-analysis/generated",
+  "figure_dir": "/Users/gabamaro/.codex/worktrees/d672/lsvrp/docs/gap-analysis/figures",
+  "filters": {
+    "clients": 20,
+    "reported_gap_weights": [
+      [
+        0.2,
+        0.2,
+        0.2,
+        0.2,
+        0.2
+      ],
+      [
+        0.35,
+        0.35,
+        0.1,
+        0.1,
+        0.1
+      ],
+      [
+        0.2,
+        0.5,
+        0.1,
+        0.1,
+        0.1
+      ],
+      [
+        0.25,
+        0.25,
+        0.25,
+        0.125,
+        0.125
+      ],
+      [
+        0.3,
+        0.3,
+        0.1,
+        0.2,
+        0.1
+      ],
+      [
+        0.3,
+        0.3,
+        0.1,
+        0.1,
+        0.2
+      ]
+    ],
+    "excluded_single_objective_weights": [
+      [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "gap_processing": "clip below zero, then convert fraction to percent",
+    "period_rows": "deduplicated by instance, class, seed, weight hash, and alpha",
+    "october_run": "monoobjective run; report GAP only for non-unit weight vectors",
+    "paired_comparisons": "all four scenarios, matched by instance, class, seed, weight hash, and alpha"
+  },
+  "observations_per_scenario": {
+    "baseline": 1800,
+    "tight_bounds": 1800,
+    "all_features": 1800,
+    "october_run": 1800
+  }
+}

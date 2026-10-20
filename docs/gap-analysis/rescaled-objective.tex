@@ -1,0 +1,233 @@
+% Acompanhamento da reescala do objetivo multiobjetivo.
+% Correspondência principal: src/solvers/MultProductProdctionRoutingProblem.py
+% (solver.objective_scale, crateObjectiveFunction, _unscale).
+
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[brazil]{babel}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
+
+\newcommand{\tb}[1]{\overline{b}_{#1}}
+
+\title{Reescala do Objetivo Multiobjetivo\\
+       Acompanhamento de Resultados e Simulações}
+\author{Implementação do repositório LSVRP}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\sloppy
+O objetivo multiobjetivo do modelo tem coeficientes de ordem $10^{-10}$ a
+$10^{-5}$ sobre os desvios $p_t^j$. O custo marginal das variáveis de decisão
+fica abaixo da tolerância de otimalidade do CPLEX, e o simplex (dual ou
+primal) para antes do ótimo do LP, deixando o limite inferior acima do valor
+válido. Este documento registra o diagnóstico, a solução adotada (um fator
+global \texttt{solver.objective\_scale} aplicado ao objetivo dentro do CPLEX) e
+os resultados das simulações com o modelo reescalado. Todos os experimentos
+usam $\alpha=0{,}99$, pesos $0{,}2$, modelo sem índice de veículo e limites
+fortalecidos.
+\end{abstract}
+
+\section{Diagnóstico}
+
+\subsection{Faixa dos coeficientes}
+
+O objetivo multiobjetivo é
+\begin{equation}
+  \min\ \alpha\lambda+(1-\alpha)\sum_{t}\sum_{j}\frac{v_j\,p_t^j}{\tb{t}^j},
+\end{equation}
+em que $\tb{t}^j$ é a meta ajustada (zeros trocados pela média). Com
+$\alpha=0{,}99$ e $v_j=0{,}2$, os coeficientes de $p_t^j$ calculados a partir de
+\texttt{out/target/targets.xlsx} são:
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lrrrr}
+    \toprule
+    Grupo & Mínimo & Percentil 5 & Mediana & Máximo\\
+    \midrule
+    20 clientes & $2{,}0\times10^{-10}$ & $1{,}9\times10^{-9}$ & $5{,}5\times10^{-8}$ & $1{,}1\times10^{-5}$\\
+    30 clientes & $1{,}4\times10^{-10}$ & $8{,}4\times10^{-10}$ & $3{,}0\times10^{-8}$ & $1{,}2\times10^{-5}$\\
+    \bottomrule
+  \end{tabular}
+  \caption{Coeficientes de $p_t^j$ no objetivo ($\alpha=0{,}99$). O coeficiente
+  de $\lambda$ é $0{,}99$.}
+\end{table}
+
+O efeito de uma unidade de produção, estoque ou transporte no objetivo é esse
+coeficiente vezes o custo unitário. É da ordem de $10^{-8}$, abaixo da
+tolerância de otimalidade do CPLEX ($10^{-6}$).
+
+\subsection{O LP sai inexato}
+
+Na relaxação linear do modelo agregado, o barrier encontra o valor exato,
+enquanto o dual simplex e o primal terminam acima dele:
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lrrr}
+    \toprule
+    Instância & LP exato (barrier) & Dual, sem escala & Primal, sem escala\\
+    \midrule
+    PRP13 C20 S4 & 0{,}11618 & 0{,}12067 (+3{,}9\%) & 0{,}12270 (+5{,}6\%)\\
+    PRP10 C20 S2 & 0{,}08964 & 0{,}09830 (+9{,}7\%) & 0{,}09624 (+7{,}4\%)\\
+    PRP19 C30 S4 & 0{,}07683 & 0{,}08259 (+7{,}5\%) & 0{,}08445 (+9{,}9\%)\\
+    \bottomrule
+  \end{tabular}
+  \caption{Valor da relaxação linear sem escala. O limite inferior do MIP nasce
+  dessas relaxações.}
+\end{table}
+
+\section{Solução adotada}
+
+\subsection{Fator global}
+
+A formulação não muda. A expressão do objetivo multiobjetivo é multiplicada por
+$K=\texttt{solver.objective\_scale}$ apenas dentro do CPLEX:
+\begin{equation}
+  \min\ K\Bigl[\alpha\lambda+(1-\alpha)\sum_{t}\sum_{j}\frac{v_j\,p_t^j}{\tb{t}^j}\Bigr].
+\end{equation}
+Todo valor de objetivo ou limite lido de volta é dividido por $K$: \texttt{FO},
+\texttt{objBound}, \texttt{relaxedModelObjVal}, a telemetria de limite e de
+incumbente e os registros dos estágios da matheurística. Objetivo, limite e
+gap são reportados na mesma unidade de antes, e o gap relativo não depende de
+$K$. O fator só vale no ramo multiobjetivo: \texttt{build\_target}, objetivo
+único e a melhoria de rota por transporte não são escalados.
+
+\subsection{Escolha de $K$}
+
+Variei $K$ na relaxação linear de três instâncias e comparei dual e primal ao
+barrier. A tabela mostra a diferença relativa ao valor exato.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lrrrrrr}
+    \toprule
+    & \multicolumn{2}{c}{PRP13 C20 S4} & \multicolumn{2}{c}{PRP10 C20 S2} & \multicolumn{2}{c}{PRP19 C30 S4}\\
+    \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+    $K$ & dual & primal & dual & primal & dual & primal\\
+    \midrule
+    $1$      & +3{,}87\%   & +5{,}61\%   & +9{,}66\%   & +7{,}37\%   & +7{,}50\%   & +9{,}93\%\\
+    $10^{2}$ & $\approx 0$ & +0{,}023\%  & +0{,}038\%  & +0{,}050\%  & +0{,}031\%  & +0{,}053\%\\
+    $10^{3}$ & +0{,}002\%  & +0{,}004\%  & +0{,}0004\% & +0{,}0025\% & +0{,}002\%  & +0{,}004\%\\
+    $10^{4}$ & +0{,}0001\% & +0{,}0003\% & $0$         & $0$         & $0$         & +0{,}0001\%\\
+    $10^{5}$ & $0$         & $0$         & $0$         & $0$         & $0$         & $0$\\
+    \bottomrule
+  \end{tabular}
+  \caption{Diferença relativa ao valor exato do LP (barrier) por $K$, com dois
+  threads. $K\ge10^{5}$ coincide em todos os dígitos medidos (sete casas) e foi
+  o valor adotado em \texttt{config/config.json}; o padrão de
+  \texttt{config/config.py} é $1{,}0$.}
+\end{table}
+
+O LP exato custa mais iterações: na instância de 30 clientes o dual simplex
+leva cerca de 4 s sem escala (parando cedo) e 27 a 33 s com $K\ge10^{3}$.
+
+\subsection{Alternativa descartada: desvios normalizados}
+
+Testei trocar $p_t^j$ por $q_t^j=p_t^j/\tb{t}^j$, o que leva os coeficientes do
+objetivo para $[0{,}002;\,0{,}99]$. Não resolveu: o custo reduzido das variáveis
+de decisão não depende da escala das linhas, e o dual simplex continuou
+inexato.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lrrr}
+    \toprule
+    Instância & Exato & Dual com $q$ & Primal com $q$\\
+    \midrule
+    PRP13 C20 S4 & 0{,}11618 & 0{,}11995 & 0{,}12317\\
+    PRP10 C20 S2 & 0{,}08964 & 0{,}09806 & 0{,}09712\\
+    \bottomrule
+  \end{tabular}
+  \caption{Relaxação linear com a variável normalizada $q$ (sem fator global).}
+\end{table}
+
+\section{Resultados com o modelo reescalado}
+
+\subsection{Protocolo}
+
+PSO (100 iterações, semente 123, enxame de 1000) seguido do MIP completo com a
+melhor partícula como solução inicial; 150 s, 2 threads, modelo sem índice de
+veículo, limites fortalecidos, $\alpha=0{,}99$. O mesmo start do PSO é usado
+nas duas configurações de cada instância. Uma rodada por célula.
+
+\subsection{MIP de 150 s}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{llrrrrr}
+    \toprule
+    Instância & $K$ & Start PSO & Objetivo & Limite & Gap & Nós\\
+    \midrule
+    PRP13 C20 S4 & $1$      & 0{,}3515 & 0{,}2461 & 0{,}1680 & 31{,}7\% & 0\\
+                 & $10^{5}$ & 0{,}3515 & 0{,}2086 & 0{,}1650 & 20{,}9\% & 0\\
+    PRP10 C20 S2 & $1$      & 0{,}3222 & 0{,}3222 & 0{,}2049 & 36{,}4\% & 0\\
+                 & $10^{5}$ & 0{,}3222 & 0{,}3034 & 0{,}2034 & 33{,}0\% & 0\\
+    PRP15 C20 S3 & $1$      & 0{,}2456 & 0{,}2368 & 0{,}1430 & 39{,}6\% & 0\\
+                 & $10^{5}$ & 0{,}2456 & 0{,}2456 & 0{,}1431 & 41{,}8\% & 0\\
+    PRP25 C20 S1 & $1$      & 0{,}2173 & 0{,}2057 & 0{,}1379 & 33{,}0\% & 0\\
+                 & $10^{5}$ & 0{,}2173 & 0{,}2026 & 0{,}1574 & 22{,}3\% & 0\\
+    \midrule
+    Média        & $1$      &          & 0{,}2527 & 0{,}1634 & 35{,}2\% &\\
+                 & $10^{5}$ &          & 0{,}2401 & 0{,}1672 & 29{,}5\% &\\
+    \bottomrule
+  \end{tabular}
+  \caption{PSO $\to$ MIP completo, 150 s. Objetivo, limite e gap na unidade
+  original (divididos por $K$).}
+\end{table}
+
+\subsection{Leitura}
+
+\begin{itemize}[leftmargin=*]
+  \item O gap médio caiu de 35{,}2\% para 29{,}5\% e o objetivo médio de 0{,}2527
+  para 0{,}2401 ($-5{,}0\%$). Houve melhora em três instâncias (S4: $-15{,}2\%$
+  no objetivo; S2: $-5{,}8\%$; S1: $-1{,}5\%$) e piora em uma (S3: o MIP não
+  melhorou o start e o gap foi de 39{,}6\% para 41{,}8\%).
+  \item O limite não caiu de forma consistente, ao contrário do que o LP
+  inexato sugeria: caiu 1{,}8\% (S4) e 0{,}7\% (S2), ficou igual em S3 e
+  subiu 14{,}1\% em S1. Nos logs, com $K=10^{5}$ as rodadas de cortes
+  consomem menos iterações do simplex na S4 (162 mil na terceira rodada, contra
+  285 mil sem escala) e a S1 completa cinco rodadas, contra duas. O limite
+  refletiu o progresso na raiz tanto quanto a correção da escala; os dois
+  efeitos não foram separados.
+  \item Nenhuma rodada entrou na árvore (zero nós processados): o gap é o da
+  raiz com cortes e heurísticas.
+  \item Não há explicação medida para a melhora da incumbente. A hipótese é que
+  o objetivo acima da tolerância faz as heurísticas da raiz enxergarem
+  diferenças de custo que antes ficavam abaixo dela.
+\end{itemize}
+
+\subsection{Limitações}
+
+Uma rodada por célula, 150 s e 2 threads, quatro instâncias de 20 clientes e
+$\alpha=0{,}99$ apenas. O resultado de 150 s depende do instante em que a
+raiz termina, e as diferenças entre configurações têm a mesma ordem do ruído
+observado em repetições anteriores (cerca de 3 pontos percentuais de gap).
+
+\section{Próximos passos}
+
+\begin{enumerate}[leftmargin=*]
+  \item Repetir a comparação com mais sementes e instâncias, e em 30 clientes,
+  para separar o efeito do fator do ruído de tempo da raiz.
+  \item Com o modelo reescalado, testar a estratégia do LP nas rodadas de
+  cortes (perturbação, \texttt{subalgorithm} primal ou barrier).
+  \item Reavaliar a configuração dos cortes (flow cover e flow path, MIR,
+  \texttt{cutsfactor}) sobre o modelo reescalado.
+  \item Reforço de lot sizing sobre o setup, que o LP quase não enxerga.
+  \item Validar a configuração final com o limite de produção de 1 hora.
+\end{enumerate}
+
+\end{document}

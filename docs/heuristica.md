@@ -83,6 +83,165 @@ os objetivos sobre a produção `sum(X[p,t])` por objetivos sobre as entregas
 bounds mais úteis para a construção das partículas do que os bounds atuais de
 produção.
 
+### Opções do decodificador: setup e roteamento
+
+O decodificador transforma os genes em produção, entregas e rotas. Uma análise
+na instância `PRP13_C20_P8_V5_T12_S4` (multiobjetivo, `alpha = 0,99`, pesos 0,2)
+encontrou três limitações, tratadas pelas opções `solver.pso.decoder`.
+
+**Diagnóstico.**
+
+- A produção extra é `sigmoid(gene) * folga`, sempre positiva. Mesmo com gene
+  `-60` a quantidade vale `~1e-27`, e `Y = 1` quando a produção é positiva. A
+  partícula não tinha como deixar de produzir um produto num período: o melhor
+  PSO fazia 96 setups (todo produto, todo período) ou 60, conforme os bounds.
+- Os genes de `Q` (10.080 dos 10.176 genes) não alteravam o custo. As entregas
+  são `déficit = max(0, demanda - estoque)`, apenas o excedente acima de
+  `U[p][0]` é drenado, e a preferência dos genes só desempata. Sortear todos os
+  genes de `Q` 200 vezes deu sempre o mesmo custo, e a diversidade de perfis de
+  entrega da população era 1.
+- Com os bounds do PL ligados, o custo do melhor PSO (`1,2013`) era exatamente
+  o custo com todos os genes de produção em `-60`: o PSO devolvia o vértice do
+  PL (`X = lower`), pois `producao = max(necessário, lower)` fixa um piso de
+  produção, e não melhorava nada além disso. O enxame convergia em ~25
+  iterações.
+- A atribuição por `best-fit decreasing` ignora a geografia e as rotas eram
+  construídas por vizinho mais próximo, sem melhoria.
+
+**Opções** (`solver.pso.decoder`; os defaults de `FeasibleParticleHeuristic`
+reproduzem o decodificador antigo, os do PSO e do `Config` ligam as melhorias):
+
+| Opção | Valores | Efeito |
+|---|---|---|
+| `setup_threshold` | `[0, 1)`, padrão `0.5` | Se `sigmoid(gene)` é no máximo o limiar, a partícula não produz além do necessário no período (a parte acima do limiar é reescalada para `[0, 1]`). Extras abaixo de `1e-6` viram zero. `0` reproduz o decodificador antigo. |
+| `delivery` | `just_in_time`, `lookahead` (padrão no PSO) | `just_in_time` entrega só o déficit do período (decodificador antigo). `lookahead` também entrega antes do déficit, ver abaixo. |
+| `delivery_threshold` | `[0, 1)`, padrão `0.5` | Limiar do gene de cobertura: abaixo dele o cliente só recebe o déficit. |
+| `max_cover` | inteiro `>= 1`, padrão `2` | Máximo de períodos à frente que a cobertura de um cliente pode atender. |
+| `fleet_utilization` | `(0, 1]`, padrão `0.9` | Fração da capacidade da frota (`V·C`) que o nivelamento e a cobertura aceitam usar por período. |
+| `routing` | `nearest_neighbor`, `savings_2opt` (padrão) | `savings_2opt` particiona os clientes com carga em rotas pelo algoritmo de economias de Clarke-Wright, com capacidade `C` e no máximo `V` rotas, e aplica 2-opt e realocação de um nó (Or-opt) a cada rota. Se a partição usar mais de `V` rotas, o período volta ao `best-fit`. Exige distâncias simétricas; caso contrário usa `nearest_neighbor` com aviso. |
+
+O backend Python é o espelho exato do kernel Numba: mesmas economias, mesma
+ordem de desempate (`mergesort` estável sobre pares em ordem crescente de
+índice), mesmo 2-opt e mesma subtração das capacidades residuais em ordem
+crescente de cliente. `tests/test_pso_decoder.py` compara os dois backends
+nos oito modos (limiar, roteamento e bounds), com bounds de entrega e em
+frotas apertadas.
+
+**Resultado** (PSO de 1.000 partículas e 1.000 iterações, custo da função
+configurada):
+
+| Configuração | Custo na S4 | Setups |
+|---|---|---|
+| Antes (bounds do PL ligados) | 1,2013 | 60 |
+| Sem bounds do PL | 0,5562 | 96 |
+| Sem bounds + limiar de setup | 0,4786 | 48 |
+| Sem bounds + economias e 2-opt | 0,5397 | 96 |
+| Sem bounds + as duas melhorias | **0,3454** | 50 |
+| Com bounds + as duas melhorias | 1,1751 | 44 |
+
+Em 12 instâncias de 20 clientes (3 por classe e sementes variadas, 300
+iterações) o custo médio caiu de `0,728` (antes) para `0,276` (razão média
+`0,40`, entre `0,24` e `0,57`), com solução viável em todas.
+
+**MIP completo com o PSO como solução inicial** (S4, `alpha = 0,99`, bounds
+fortalecidos, 5 minutos de MIP, 2 threads, quatro execuções simultâneas):
+
+| PSO | MIP | Solução inicial | Objetivo final | Bound | Gap |
+|---|---|---|---|---|---|
+| antigo | com índice de veículo | 1,2013 | 1,2013 | 0 | 100% |
+| antigo | `aggregate_vehicles` | 1,2013 | 0,5284 | 0,1586 | 70% |
+| novo | com índice de veículo | 0,3454 | 0,3454 | 0 | 100% |
+| novo | `aggregate_vehicles` | 0,3454 | **0,2405** | **0,1685** | **30%** |
+
+Com o índice de veículo a relaxação da raiz consumiu ~290 s dos 300 s, e o MIP
+nem produziu bound. Com `aggregate_vehicles` ela leva ~2 s, o CPLEX aplica
+rodadas de cortes e melhora a solução inicial, mas continua na raiz (0 nós) nos
+300 s. É uma instância e uma semente; o PSO levou 124-144 s por rodar
+simultaneamente com as outras execuções (a compilação do kernel conta
+~20 s).
+
+**Bounds do PL.** Eles são o principal peso morto: com as duas melhorias ligadas
+o custo médio é `0,677` com bounds e `0,276` sem. Também não garantem
+viabilidade: das 801 instâncias do repositório, 103 não têm nenhuma partícula
+viável (2 de 10C, 45 de 30C, 56 de 5C, nenhuma de 20C), e os bounds do PL não
+resgatam nenhuma delas. `config/config.json` passa a usar
+`lot_sizing_bounds.enabled = false`; o default do código continua `true`.
+
+### Entregas antecipadas (`delivery: lookahead`)
+
+No modo `just_in_time` o cliente só recebe o déficit do período. Isso deixava
+103 das 801 instâncias do repositório sem nenhuma partícula viável (2 de 10C,
+45 de 30C, 56 de 5C): em 68 delas a carga de algum período passa da capacidade
+da frota `V·C` (até 1,51×), e em 35 a carga fica em 95-100% da frota e os
+clientes não cabem nos veículos (cada cliente é atendido por um só veículo). A
+produção nunca era o problema (no máximo 0,44 de `B`).
+
+O modo `lookahead` acrescenta entregas além do déficit, de duas fontes, e
+todas são cortadas em vez de invalidar a partícula:
+
+1. **Nivelamento de carga.** Só é ligado nas instâncias em que a carga "na
+   hora" de algum período passa de `fleet_utilization·V·C`. A cada período
+   calcula a necessidade futura acumulada de cada cliente e produto (acima do
+   estoque projetado), faz uma passada de trás para frente com a capacidade
+   `fleet_utilization·V·C` por período e obtém quanto precisa sair agora. Esse
+   volume é alocado pelos prazos mais próximos primeiro e repartido entre os
+   clientes proporcionalmente à necessidade, o que mantém as cargas parecidas
+   e fáceis de empacotar. Fica limitado pela folga da frota no período e pelo
+   estoque máximo de cada cliente.
+2. **Genes de cobertura.** O gene de `Q` do par `(cliente, período)` (slot
+   `p=0, v=0`; 252 dos 10.080 genes na S4) acima de `delivery_threshold` faz o
+   cliente receber o necessário para cobrir os próximos `k <= max_cover`
+   períodos, o que permite pular visitas e setups. A quantidade é limitada por
+   `U` do cliente, por `C` e pela capacidade usável da frota.
+
+As entregas são feitas antes da produção, que passa a produzir sob demanda; se
+a antecipação excede o tempo de produção `B`, só a parte antecipada é
+reduzida. O kernel Numba e o backend Python seguem o mesmo algoritmo
+(`tests/test_pso_decoder.py`; os floats diferem no máximo por arredondamento,
+pois a multiplicação-soma da alocação proporcional pode ser fundida no
+kernel).
+
+**Viés inicial** (`solver.pso.initial_bias`). Os genes começam em `N(0, 1)`,
+então metade dos genes de entrega começa ligada e a população parte longe do
+plano "na hora" (na S4, 0,465 contra 0,345). Os genes de entrega são
+deslocados em `-delivery` (padrão 3) e os de produção em `-production` (padrão
+1), só quando o limiar correspondente está ativo, e isso vale para a
+inicialização, a reamostragem e a reinicialização por estagnação.
+
+**Resultado.**
+
+- **Viabilidade** (300 partículas aleatórias por instância, 801 instâncias):
+
+  | Grupo | Sem partícula viável: `just_in_time` → `lookahead` | Fração viável média |
+  |---|---|---|
+  | 5C | 56 → 0 | 0,721 → 1,000 |
+  | 10C | 2 → 0 | 0,990 → 1,000 |
+  | 20C | 0 → 0 | 1,000 → 1,000 |
+  | 30C | 45 → 0 | 0,775 → 1,000 |
+
+  A fração mínima é 0,983 sem o viés inicial e 1,000 com ele. Com
+  `fleet_utilization` de 0,95 ainda havia até 33% de partículas inviáveis
+  (falha de empacotamento) e com 0,85 ou menos voltavam instâncias sem solução,
+  por isso o padrão é 0,9.
+- **Diversidade (S4).** Os perfis de entrega distintos passam de 1 (sempre) para
+  entre 24 e 900 ao longo da busca, e sortear os genes de `Q` passa a mudar o
+  custo. A população ainda converge: 24 perfis na iteração 600.
+- **Qualidade.** Na S4, com 5 sementes e 1.000 iterações, o decodificador
+  anterior (`just_in_time`, sem viés) tem custo médio `0,327` e o final `0,335`,
+  sem diferença: o custo cai em dois patamares (~0,30 e ~0,34) que dependem da
+  semente. Em 12 instâncias de 20 clientes (uma semente) a média foi `0,274`
+  contra `0,258` e o uso de rotas caiu de 40,9 para 37,8, mas as diferenças por
+  instância estão no nível do ruído de semente. Em instâncias folgadas o
+  ganho é de viabilidade e diversidade, não de custo.
+- **MIP completo na S4** (5 minutos, 2 threads, `aggregate_vehicles`): solução
+  inicial `0,3442`, objetivo final `0,2489`, bound `0,1656`, gap `33%`, equivalente
+  aos `0,2405` e `30%` do decodificador anterior.
+
+**Limitações.** Só o gene `(p=0, v=0)` de cada `(cliente, período)` é lido; os
+demais genes de `Q` continuam sem efeito e a mutação de `Q` sorteia entre todos
+eles. O nivelamento garante a capacidade agregada da frota, não o empacotamento
+exato: ainda pode haver partículas inviáveis em instâncias muito apertadas.
+
 ### Melhorias de desempenho e diversidade de `Q`
 
 As partículas são construídas em lote por um kernel Numba. O estado da

@@ -124,6 +124,9 @@ padrão, de modo que os desvios negativos $n_t^j$ não são criados.
 
 O PSO não altera a formulação do MIP; quando ativado, ele fornece uma solução
 inicial para o mesmo modelo exato.
+A opção \texttt{solver.aggregate\_vehicles}, desativada por padrão, remove o
+índice de veículo de $z$, $r$ e $q$ sem mudar o ótimo; ela é descrita na
+Seção~\ref{sec:vehicle-free}.
 
 \section{Variáveis de decisão}
 
@@ -564,6 +567,10 @@ Fluxo de produtos & \texttt{createVehiclePreventTransshipmentIntermediateNodes},
 & \texttt{createEliminationSubroutes} \\
 Capacidade e roteamento & métodos \texttt{createVehicle...} \\
 Bounds de entrega em função de $Z$ & \texttt{createVehicleVisitDeliveryBounds} \\
+Sem índice de veículo & \texttt{\_resolve\_aggregate\_vehicles},\\
+& \texttt{expand\_aggregated\_vehicles} \\
+Decodificador do PSO & \texttt{FeasibleParticleHeuristic},\\
+& \texttt{\_pso\_numba\_kernel} \\
 HC1/VC & \texttt{createVehicleSymmetryBreaking} \\
 Coelho & \texttt{createCoelhoValidInequalities} \\
 Separador & \texttt{RoundedCapacitySeparation.py} \\
@@ -625,6 +632,343 @@ O modelo de dimensionamento usado pelo PSO encontrou, em todos os cenários,
 bound inferior agregado $89608$ e bound superior agregado $119993$, ambos com
 gap zero. Os resumos completos estão em
 \texttt{out/ablation\_prp13\_2026-09-19\_final/summary.csv}.
+
+\subsection{Formulação sem índice de veículo}
+\label{sec:vehicle-free}
+
+Os veículos são idênticos ($C$, $f$ e $a_{ik}$ não dependem de $v$) e cada
+cliente é visitado no máximo uma vez por período. Nesse caso o índice $v$ só
+replica $V$ vezes as mesmas restrições, e as variáveis de fluxo $r_{pvikt}$
+são 84,5\% das 238.669 colunas da instância \texttt{PRP13\_C20\_P8\_V5\_T12\_S4}.
+A opção \texttt{solver.aggregate\_vehicles} substitui as variáveis por suas
+somas sobre os veículos:
+\begin{equation}
+  z_{ikt}=\sum_{v\in\set{V}}z_{vikt}\in\{0,1\},\quad
+  r_{pikt}=\sum_{v\in\set{V}}r_{pvikt}\ge0,\quad
+  q_{pit}=\sum_{v\in\set{V}}q_{pvit}\ge0.
+  \label{eq:aggregated-variables}
+\end{equation}
+Os balanços de estoque, os limites de produção e os componentes
+$f_t^1,\ldots,f_t^5$ não mudam, com $f_t^4=f\sum_{k}z_{0kt}$ e
+$f_t^5=\sum_{i\ne k}a_{ik}z_{ikt}$. As restrições de rota passam a ser:
+\begin{align}
+  \sum_{k\in\set{C}}z_{0kt}&\le V
+    && t\in\set{T}, \label{eq:agg-departures}\\
+  \sum_{i\in\set{K}:i\ne k}z_{ikt}-\sum_{l\in\set{K}:l\ne k}z_{klt}&=0
+    && k\in\set{K},\ t\in\set{T}, \label{eq:agg-flow}\\
+  \sum_{i\in\set{K}:i\ne k}z_{ikt}&\le1
+    && k\in\set{C},\ t\in\set{T}, \label{eq:agg-visit}\\
+  \sum_{p\in\set{P}}r_{pikt}&\le C\,z_{ikt}
+    && i\ne k,\ t\in\set{T}, \label{eq:agg-capacity}\\
+  \sum_{i\in\set{K}:i\ne k}r_{pikt}-\sum_{l\in\set{K}:l\ne k}r_{pklt}&=q_{pkt}
+    && p\in\set{P},\ k\in\set{C},\ t\in\set{T}, \label{eq:agg-product-flow}\\
+  \sum_{k\in\set{C}}r_{p0kt}-\sum_{i\in\set{C}}r_{pi0t}
+    &=\sum_{l\in\set{C}}q_{plt}
+    && p\in\set{P},\ t\in\set{T}, \label{eq:agg-plant-flow}\\
+  \sum_{p\in\set{P}}q_{pit}&\le C\sum_{k\ne i}z_{ikt},\quad
+  q_{pit}\le\overline Q_{pit}\sum_{k\ne i}z_{ikt}
+    && p\in\set{P},\ i\in\set{C},\ t\in\set{T}. \label{eq:agg-delivery}
+\end{align}
+A restrição \eqref{eq:agg-departures} substitui a saída única por veículo
+\eqref{eq:one-departure}: cada arco que sai da planta é um veículo.
+
+A capacidade continua sendo imposta pelo fluxo de carga. Como cada cliente tem
+no máximo um arco de entrada \eqref{eq:agg-visit}, as rotas são caminhos
+disjuntos que partem da planta e o fluxo de uma rota nunca se mistura com o de
+outra. O primeiro arco $(0,k)$ de cada rota transporta ao menos a soma das
+entregas dela e é limitado por $C$ em \eqref{eq:agg-capacity}; logo cada rota
+carrega no máximo $C$.
+
+\paragraph{Reconstrução dos veículos.} O modelo não decide qual veículo atende
+qual cliente, pois a escolha não altera custo nem viabilidade. Depois da
+resolução, cada arco $(0,k)$ com $z_{0kt}=1$ inicia uma rota, seguida pelos
+sucessores até a planta. As rotas recebem os rótulos $v=0,1,\ldots$ em ordem
+crescente do menor cliente que atendem, e $q$, $r$ e $z$ passam para o veículo
+da rota. A saída mantém, assim, o índice de veículo.
+
+\paragraph{Equivalência.} Dada uma solução do modelo indexado, a soma sobre
+$v$ satisfaz \eqref{eq:aggregated-variables}--\eqref{eq:agg-delivery} com o mesmo
+custo. Dada uma solução agregada, a reconstrução acima a devolve ao modelo
+indexado, pois há no máximo $V$ rotas. No relaxamento linear vale a mesma
+correspondência pela média das soluções sobre as permutações dos veículos, já
+que as restrições são simétricas. A equivalência foi conferida numericamente:
+na instância acima o LP vale $0{,}1161777$ nos dois modelos, com o simplex dual
+levando 116,5~s no modelo indexado e 2,2~s no agregado. Em 52 comparações com
+instâncias aleatórias (2 a 3 veículos, 4 a 6 clientes, 2 a 4 períodos, modos
+mono e multiobjetivo) os ótimos coincidiram, e em 4 delas o modelo indexado
+não terminou no tempo enquanto o agregado provou o mesmo valor. A opção não se
+aplica quando os veículos diferem em capacidade, custo ou disponibilidade.
+
+\paragraph{Observação numérica.} Os coeficientes de $p_t^j$ em
+\eqref{eq:objective} valem $(1-\alpha)w_j/\widetilde b_t^j\approx10^{-9}$, abaixo
+da tolerância de otimalidade padrão do CPLEX ($10^{-6}$). Sem reescalar o
+objetivo, o simplex dual retornou valores de LP até 5\% acima do ótimo
+$0{,}11618$ da mesma instância, enquanto o ótimo é recuperado multiplicando o
+objetivo por $10^{3}$ ou mais. Os valores de LP desta seção são os obtidos
+com o objetivo reescalado.
+
+\subsection{Ajustes do PSO}
+\label{sec:pso-adjustments}
+
+A solução inicial do MIP vem do PSO. Uma análise do decodificador na mesma
+instância encontrou quatro limitações, todas tratadas em
+\texttt{solver.pso.decoder}:
+\begin{itemize}[leftmargin=1.8em]
+  \item \textbf{Setup:} a produção extra era $\operatorname{sigmoid}(g)\cdot
+  \text{folga}$, sempre positiva, e $y_{pt}=1$ quando $x_{pt}>0$; a partícula
+  não podia deixar de produzir. Agora um gene com sigmoide abaixo de um limiar
+  (0,5) não produz além do necessário, o que permite períodos sem setup.
+  \item \textbf{Bounds do PL de dimensionamento:} o piso de produção
+  $x_{pt}\ge X^{\mathrm{lower}}_{pt}$ fazia o PSO devolver o vértice do PL
+  (custo $1{,}2013$, igual ao custo com todos os genes de produção em $-60$).
+  Eles foram desligados e não resgatavam nenhuma instância inviável.
+  \item \textbf{Roteamento:} a atribuição por \emph{best-fit} ignorava a
+  geografia e as rotas eram por vizinho mais próximo. Agora os clientes são
+  particionados por economias de Clarke--Wright (com $C$ e no máximo $V$ rotas,
+  voltando ao \emph{best-fit} se exceder) e cada rota recebe 2-opt e Or-opt.
+  \item \textbf{Entregas:} o cliente só recebia o déficit do período, os
+  10.080 genes de $q$ não alteravam o custo e 103 das 801 instâncias do
+  repositório não tinham nenhuma partícula viável (a carga de algum período
+  passa da capacidade da frota ou os clientes não cabem nos veículos). Agora há
+  um nivelamento de carga, que antecipa entregas quando algum período passaria
+  de $90\%$ de $VC$, e genes de cobertura, que entregam a demanda dos próximos
+  até dois períodos. Todas as quantidades extras são cortadas pelo estoque
+  máximo do cliente, por $C$, pela frota e pelo tempo de produção.
+\end{itemize}
+Os genes iniciais são deslocados para o plano ``entrega na hora, sem produção
+extra''. Na \texttt{PRP13\_C20\_P8\_V5\_T12\_S4}, o custo do PSO com 1000
+partículas e 1000 iterações cai de $1{,}2013$ para $0{,}345$. Das 801
+instâncias, as 103 sem partícula viável passam a ter partículas viáveis, e a
+fração de partículas viáveis é de $\approx100\%$ em todos os grupos. As
+entregas antecipadas, porém, não reduzem o custo na \texttt{S4}: com 5 sementes
+o decodificador sem elas tem custo médio $0{,}327$ e o final $0{,}335$. O ganho
+dessa parte é de viabilidade e de diversidade de perfis de entrega (de 1 para
+centenas), não de custo.
+
+\subsection{Experimento com o índice de veículo e o PSO}
+
+Foi executado um fatorial $2^3$ na mesma instância, com os mesmos pesos e
+$\alpha$ da seção anterior, desligando Coelho e os cortes (que não alteraram o
+\emph{bound}). Os fatores foram: bounds fortalecidos (não/sim), índice de
+veículo (com/sem) e PSO (anterior/novo). O PSO anterior usa os bounds do PL e o
+decodificador antigo; o novo usa os ajustes acima. Como na seção anterior, o PSO
+tem 100 iterações e entrega sua solução como MIP start, e o MIP tem 150
+segundos. Cada cenário usou 2 threads, com quatro cenários simultâneos. Os
+cenários da seção anterior usaram o número de threads padrão do CPLEX, e por
+isso suas FO não são comparáveis às desta tabela.
+
+\begin{center}
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccrrrrr}
+\toprule
+Cenário & Bounds & Índice de veículo & PSO & Solução inicial & FO & Bound & Gap & Nós proc. \\
+\midrule
+V1 & não & com & anterior & 1,2013 & 1,2013 & 0,0000 & 100,00\% & 0 \\
+V2 & não & sem & anterior & 1,2013 & 1,2013 & 0,0430 & 96,42\% & 0 \\
+V3 & não & com & novo     & 0,3492 & 0,3492 & 0,0000 & 100,00\% & 0 \\
+V4 & não & sem & novo     & 0,3492 & 0,3492 & 0,0427 & 87,76\% & 0 \\
+V5 & sim & com & anterior & 1,2013 & 1,2013 & 0,0000 & 100,00\% & 0 \\
+V6 & sim & sem & anterior & 1,2013 & 1,2013 & 0,1567 & 86,96\% & 0 \\
+V7 & sim & com & novo     & 0,3515 & 0,3515 & 0,0000 & 100,00\% & 0 \\
+V8 & sim & sem & novo     & 0,3515 & 0,3515 & 0,1545 & 56,03\% & 0 \\
+\bottomrule
+\end{tabular}
+}%
+\end{center}
+
+Todos os cenários terminaram por limite de tempo, com zero nós processados, e
+nenhum melhorou a solução inicial do PSO em 150 segundos. Com o índice de
+veículo (V1, V3, V5 e V7) o relaxamento da raiz não terminou no tempo, o
+\emph{bound} é zero e o gap é de 100\%, qualquer que seja o PSO ou o uso dos
+bounds. Sem o índice, o \emph{bound} sai de $\approx0{,}043$ (o LP sem os bounds
+fortalecidos) para $\approx0{,}155$ com eles. O PSO novo reduz a solução
+inicial de $1{,}20$ para $0{,}35$, e a combinação dos três reforços (V8) reduz o
+gap de 100\% para 56,03\%.
+
+Com 300 segundos de MIP e bounds fortalecidos, duas execuções com 2 threads
+partindo do PSO novo e do modelo sem índice de veículo melhoraram a solução
+inicial: de $0{,}3454$ para $0{,}2405$ (\emph{bound} $0{,}1685$, gap de 30\%) e
+de $0{,}3442$ para $0{,}2489$ (\emph{bound} $0{,}1656$, gap de 33\%); com o PSO
+anterior o resultado foi $0{,}5284$ (gap de 70\%). O CPLEX ainda não saiu do nó
+raiz nessas execuções, e o ganho vem de rodadas de cortes e heurísticas da
+raiz.
+
+Os resultados são de uma instância e uma semente, e o PSO tem variação
+entre sementes de cerca de $\pm0{,}02$ no custo da \texttt{S4}.
+
+\section{Testes dos fluxos de solução}
+\label{sec:flows}
+
+Esta seção compara os fluxos que combinam PSO, matheurística e MIP completo,
+todos com as melhores configurações das seções anteriores:
+\texttt{multiobjective}, bounds fortalecidos, \texttt{aggregate\_vehicles},
+PSO com o decodificador novo (sem os bounds do PL de dimensionamento) e, nos
+fluxos com matheurística, melhoria de rotas ligada. Os pesos são $0{,}2$ em
+todos os componentes e $\alpha=0{,}99$.
+
+\subsection{Fluxos}
+
+\begin{center}
+\small
+\begin{tabular}{llp{7.2cm}}
+\toprule
+Fluxo & Nome & Configuração \\
+\midrule
+F2 & só PSO & \texttt{method=PSO}, sem chamar o MIP \\
+F3 & PSO $\to$ MIP & \texttt{method=PSO}, solução do PSO como MIP start do modelo sem índice de veículo \\
+F4 & só matheurística & \texttt{matheuristic.start=decoder}, \texttt{use\_as=final} \\
+F5 & PSO $\to$ matheurística & \texttt{start=pso} (o PSO roda dentro da matheurística e sua melhor partícula, reordenada pela ordem do TSP, é a partida do MIP restrito), \texttt{use\_as=final} \\
+F6 & matheurística $\to$ MIP & \texttt{use\_as=exact\_start}, com \texttt{start=pso} (F6-PSO) ou \texttt{start=decoder} (F6-dec) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Na matheurística, o estágio restrito resolve o MPPRP com arcos apenas ao longo
+da ordem do TSP e $z$ binária, sem índice de veículo, e a melhoria de rotas
+fixa $x$, $y$ e as entregas e minimiza o objetivo configurado. O gap desses
+estágios vale para os respectivos problemas restritos e não certifica o
+MPPRP completo.
+
+\subsection{Protocolo}
+
+As instâncias são \texttt{PRP13\_C20\_P8\_V5\_T12\_S4}, \texttt{PRP10\_C20\_P8\_V5\_T12\_S2},
+\texttt{PRP15\_C20\_P8\_V5\_T12\_S3} e \texttt{PRP25\_C20\_P8\_V5\_T12\_S1} (20 clientes,
+uma por classe e a S4 da seção anterior) e \texttt{PRP19\_C30\_P10\_V5\_T12\_S4} e
+\texttt{PRP25\_C30\_P10\_V5\_T12\_S1} (30 clientes; a primeira é a mais apertada,
+com só 71\% das partículas viáveis no decodificador antigo). Todas as
+execuções usam 2 threads, uma execução por caso e PSO com 1000 partículas e
+1000 iterações. Os limites diferem entre os blocos, e os tempos de parede
+incluem o PSO quando ele é usado:
+
+\begin{center}
+\small
+\begin{tabular}{llrr}
+\toprule
+Instâncias & Fluxo & Limites (s) & Tempo de parede (s) \\
+\midrule
+20 clientes & F3 & MIP 150 & $\approx280$ \\
+ & F5 & restrito 100, melhoria 20 & $\approx238$ \\
+ & F6-PSO & restrito 100, melhoria 20, MIP 100 & $\approx332$ \\
+ & F4 & restrito 250, melhoria 50 & $\approx303$ \\
+ & F6-dec & restrito 150, melhoria 30, MIP 120 & $\approx303$ \\
+30 clientes & F3 & MIP 300 & 460--482 \\
+ & F4, F6-dec & como acima & $\approx304$ \\
+ & F5, F6-PSO & restrito 250 e 150 & 385--403 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Em 20 clientes, F3, F5 e F6-PSO rodaram quatro instâncias simultâneas e F4 e
+F6-dec, duas; em 30 clientes, duas. A S4 de F4 vem de um teste anterior, com
+restrito de 120~s e melhoria de 30~s. Como os orçamentos e a carga da máquina
+não são idênticos, a comparação entre fluxos é aproximada; diferenças pequenas
+não são significativas (a mesma sequência de estágios na S4 deu $0{,}2496$ e
+$0{,}2884$ em duas execuções).
+
+\subsection{Resultados}
+
+A tabela mostra o objetivo configurado da melhor solução de cada fluxo (menor
+é melhor). F2 coincide com a solução inicial de F3, pois o MIP não a melhorou
+em 150~s. Para 20 clientes:
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrrr}
+\toprule
+Instância & F2/F3 & F4 & F5 & F6-PSO & F6-dec \\
+\midrule
+S4 & 0,3442 & 0,2934 & 0,2496 & 0,2884 & 0,2922 \\
+S2 & 0,2909 & 0,2804 & 0,2892 & 0,2892 & 0,2806 \\
+S3 & 0,2227 & 0,2275 & 0,2153 & 0,2154 & 0,2304 \\
+S1 & 0,1943 & 0,2085 & 0,1957 & 0,1957 & 0,2076 \\
+\midrule
+Média & 0,2630 & 0,2525 & \textbf{0,2375} & 0,2472 & 0,2527 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+E para 30 clientes:
+
+\begin{center}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Instância & F2/F3 & F4 & F5 & F6-PSO & F6-dec \\
+\midrule
+\texttt{PRP19\_C30\_S4} & \textbf{0,3380} & 0,5467 & 0,3566 & 0,3566 & 0,5467 \\
+\texttt{PRP25\_C30\_S1} & \textbf{0,2810} & 0,5432 & 0,2925 & 0,2925 & 0,5432 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Leitura.}
+\begin{itemize}[leftmargin=1.8em]
+  \item Em 20 clientes, F5 é o melhor fluxo em média ($0{,}2375$), com menos
+  tempo que F3, e é igual ou melhor que F3 em 3 das 4 instâncias. O MIP depois
+  da matheurística (F6) não melhorou a solução em 100 a 120~s.
+  \item Em 30 clientes, o objetivo final da matheurística é exatamente o da sua
+  solução de partida, com os dois tipos de partida: $0{,}5467$ e $0{,}5432$ com
+  \texttt{decoder}, e $0{,}3566$ e $0{,}2925$ com PSO (calculados à parte). O MIP
+  restrito e a melhoria não acrescentaram nada em 250~s com 2 threads. O PSO
+  sozinho é melhor, porque reordenar as rotas pela ordem do TSP custa cerca de
+  $5\%$ ($0{,}3380\to0{,}3566$ e $0{,}2810\to0{,}2925$).
+  \item O PSO é a etapa mais cara em 30 clientes ($158$ a $179$~s com duas
+  execuções simultâneas).
+\end{itemize}
+
+\subsection{Gap e ramos abertos}
+
+Nos fluxos que terminam no MIP completo foram registrados o \emph{bound}, o
+gap e os nós. A coluna ``Nós'' mostra processados/restantes no fim do limite
+de tempo:
+
+\begin{center}
+\small
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llrrrrrrr}
+\toprule
+Instância & Fluxo & MIP (s) & Solução inicial & FO final & Bound & Gap & Nós \\
+\midrule
+S2 & F3 & 150 & 0,2909 & 0,2909 & 0,2002 & 31,19\% & 0/1 \\
+S4 & F3 & 150 & 0,3442 & 0,3442 & 0,1591 & 53,79\% & 0/1 \\
+S4 & F3 & 300 & 0,3442 & 0,2489 & 0,1656 & 33,47\% & 0/1 \\
+S3 & F3 & 150 & 0,2227 & 0,2227 & 0,0985 & 55,76\% & 0/1 \\
+S1 & F3 & 150 & 0,1943 & 0,1943 & 0,1187 & 38,93\% & 0/1 \\
+\texttt{PRP19\_C30\_S4} & F3 & 300 & 0,3380 & 0,3380 & 0,0769 & 77,26\% & 0/1 \\
+\texttt{PRP25\_C30\_S1} & F3 & 300 & 0,2810 & 0,2810 & 0,0932 & 66,83\% & 0/1 \\
+\bottomrule
+\end{tabular}
+}%
+\end{center}
+
+Em todas as execuções o CPLEX terminou no nó raiz, com zero nós processados e
+um nó restante: o único ramo aberto é a própria raiz, cujos cortes e
+heurísticas ocupam todo o limite de tempo. O gap reportado é, portanto, o
+\emph{bound} da raiz contra a solução inicial, e só na S4 com 300~s o CPLEX
+melhorou a solução ($0{,}3442\to0{,}2489$).
+
+Para a matheurística só foram guardados os gaps dos estágios no teste da S4
+(restrito de 120~s e melhoria de 30~s, 2 threads), e os números de nós não
+foram registrados em nenhuma execução desses fluxos:
+
+\begin{center}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Partida & Restrito: bound & Restrito: gap & Melhoria: bound & Melhoria: gap \\
+\midrule
+\texttt{decoder} & 0,1688 & 42,83\% & 0,2835 & 3,39\% \\
+PSO & 0,1654 & 34,49\% & 0,2359 & 6,54\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+O gap do restrito vale para o MPPRP restrito à ordem do TSP; o da melhoria
+vale para o problema com $x$, $y$ e as entregas fixos. Nas execuções de F6 o
+gap do MIP posterior e os nós também não foram registrados. Os valores de
+F4 a F6 nas 30 clientes e nas outras instâncias de 20 clientes são, assim,
+comparáveis apenas pelo objetivo.
 
 \section{Resultados comparativos em DATA\_PRP\_20C}
 
