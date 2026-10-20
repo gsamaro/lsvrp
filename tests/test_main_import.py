@@ -29,7 +29,9 @@ class MainImportTestCase(unittest.TestCase):
         instances = [{"file": "./data/DATA_PRP_5C/PRP1.dat"}]
         postprocessing = MagicMock()
 
-        with patch("main.build_runtime_context", return_value=context), patch(
+        with patch("main.Config.get", return_value=None), patch(
+            "main.build_runtime_context", return_value=context
+        ), patch(
             "main.create_run_logger", return_value=log
         ), patch("main.validate_runtime_context") as validate, patch(
             "main.build_instances", return_value=instances
@@ -54,6 +56,25 @@ class MainImportTestCase(unittest.TestCase):
             instancies=instances, solver="PSO"
         )
         finalize.assert_called_once_with(postprocessing, "test-run", False)
+
+    def test_main_runs_configured_experiments_and_fails_if_one_fails(self):
+        with patch("main.Config.get", return_value=[{"name": "a"}]), patch(
+            "main.run_experiments", return_value=["a"]
+        ) as run_experiments, patch("main.run_single") as run_single:
+            with self.assertRaises(SystemExit) as raised:
+                main.main()
+
+        run_experiments.assert_called_once_with()
+        run_single.assert_not_called()
+        self.assertEqual(raised.exception.code, 1)
+
+    def test_main_returns_normally_when_all_experiments_succeed(self):
+        with patch("main.Config.get", return_value=[{"name": "a"}]), patch(
+            "main.run_experiments", return_value=[]
+        ), patch("main.run_single") as run_single:
+            main.main()
+
+        run_single.assert_not_called()
 
 
 if __name__ == "__main__":

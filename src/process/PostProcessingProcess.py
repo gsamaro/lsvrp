@@ -5,6 +5,7 @@ from config import Config
 from constants import ALPHA
 from openpyxl import load_workbook
 from src.helpers.InstanceMetadata import enrich_with_instance_metadata
+from src.helpers.TargetsLoader import normalize_instance_file_key
 
 
 class PostProcessingProcess:
@@ -67,7 +68,47 @@ class PostProcessingProcess:
 
         return result_df, config_df
 
-    def union_results(self, run_tag=None, build_target=False, include_targets=True):
+    @staticmethod
+    def add_pairing_keys(union_df, experiment=None, fingerprint=None, run_tag=None):
+        """Columns that identify the same task and period across experiments.
+
+        ``task_key`` (instance, weight vector, alpha) and ``row_key`` (task and period)
+        do not depend on the experiment, so rows of different experiments can be
+        joined on them. ``hash_file`` and ``hash_row`` carry the same information.
+        """
+        union_df = union_df.copy()
+        union_df["experiment"] = experiment if experiment is not None else "default"
+        union_df["experiment_fingerprint"] = (
+            fingerprint if fingerprint is not None else pd.NA
+        )
+        union_df["experiment_run_tag"] = run_tag if run_tag is not None else pd.NA
+        def column(name, default=""):
+            if name in union_df.columns:
+                return union_df[name]
+            return pd.Series(default, index=union_df.index, dtype="object")
+
+        instance_key = column("file").map(
+            lambda value: "" if pd.isna(value) else normalize_instance_file_key(value)
+        )
+        alpha = pd.to_numeric(column("alpha", pd.NA), errors="coerce").map(
+            lambda value: "" if pd.isna(value) else f"{value:g}"
+        )
+        period = pd.to_numeric(column("time", pd.NA), errors="coerce").astype("Int64")
+        union_df["instance_key"] = instance_key
+        union_df["task_key"] = (
+            instance_key + "|" + column("weight").astype(str) + "|" + alpha
+        )
+        union_df["row_key"] = union_df["task_key"] + "|" + period.astype(str)
+        return union_df
+
+    def union_results(
+        self,
+        run_tag=None,
+        build_target=False,
+        include_targets=True,
+        experiment=None,
+        experiment_fingerprint=None,
+    ):
         # Recursively collect all .xlsx files under output (including subfolders)
         excel_paths = []
         for root, _, files in os.walk(self.output):
@@ -268,6 +309,13 @@ class PostProcessingProcess:
             ]:
                 if c not in union_df.columns:
                     union_df[c] = pd.NA
+
+        union_df = self.add_pairing_keys(
+            union_df,
+            experiment=experiment,
+            fingerprint=experiment_fingerprint,
+            run_tag=run_tag,
+        )
 
         if self.log is not None:
             self.log.info("Preparando para salvar.")

@@ -104,8 +104,9 @@ def is_supported_prp_file(file_name):
     return int(instance_part) < 31
 
 
-def build_instances(instance_dir, output, files, num_threads, time_limit):
-    instances = []
+def list_instance_files(instance_dir, files):
+    """``(data folder, file name)`` of every eligible instance; creates nothing."""
+    selected = []
     for selection in files:
         if ".dat" in selection:
             data, file_name = selection.split("/", 1)
@@ -119,27 +120,37 @@ def build_instances(instance_dir, output, files, num_threads, time_limit):
             ]
 
         for file_name in candidates:
-            if not is_supported_prp_file(file_name):
-                continue
+            if is_supported_prp_file(file_name):
+                selected.append((data, file_name))
+    return selected
 
-            output_file = f"{output}{data}/{file_name[:-4]}/"
-            os.makedirs(output_file, exist_ok=True)
-            instances.append(
-                {
-                    "file": f"{instance_dir}{data}/{file_name}",
-                    "output": output_file,
-                    "numThreads": num_threads,
-                    "timeLimit": time_limit,
-                }
-            )
+
+def build_instances(instance_dir, output, files, num_threads, time_limit):
+    instances = []
+    for data, file_name in list_instance_files(instance_dir, files):
+        output_file = f"{output}{data}/{file_name[:-4]}/"
+        os.makedirs(output_file, exist_ok=True)
+        instances.append(
+            {
+                "file": f"{instance_dir}{data}/{file_name}",
+                "output": output_file,
+                "numThreads": num_threads,
+                "timeLimit": time_limit,
+            }
+        )
     return instances
 
 
-def finalize_postprocessing(postprocessing, run_tag, build_target):
+def finalize_postprocessing(
+    postprocessing, run_tag, build_target, experiment=None, fingerprint=None
+):
     if hasattr(postprocessing.log, "info"):
         postprocessing.log.info("Iniciando union results")
+    extra = {}
+    if experiment is not None:
+        extra = {"experiment": experiment, "experiment_fingerprint": fingerprint}
     union_path = postprocessing.union_results(
-        run_tag=run_tag, build_target=build_target
+        run_tag=run_tag, build_target=build_target, **extra
     )
     if build_target:
         if not union_path:

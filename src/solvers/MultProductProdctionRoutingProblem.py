@@ -19,6 +19,7 @@ from docplex.mp.model import Model
 from docplex.mp.relax_linear import LinearRelaxer
 
 from config import Config
+from src.helpers import TimeBudget as time_budget
 from src.helpers.SolverTelemetry import get_config
 from src.log.Logger import Logger
 from src.solvers._routing_common import (
@@ -388,6 +389,27 @@ class MultProductProdctionRoutingProblem:
                             f">> Adjusting target {t}_{k} from {self.targets[t][k]} to {mean_val}"
                         )
                         self.new_targets[t][k] = mean_val
+
+    def _apply_polishing(self):
+        """Start CPLEX solution polishing after ``solver.polishing.after_seconds``.
+
+        Only the unrestricted MIP is polished (the matheuristic stages fix routes or
+        arcs). With a task time budget the instant counts from the task start and
+        is converted to the CPLEX clock; otherwise it counts from the MIP start.
+        """
+        after = Config.get_nested("solver", "polishing", "after_seconds")
+        if (
+            after is None
+            or self.routing_profile
+            or self.arc_order is not None
+            or self.fixed_plan is not None
+            or Config.get_nested("postprocessing", "build_target", default=False)
+        ):
+            return
+        spent = time_budget.elapsed()
+        start_after = max(1.0, float(after) - (spent or 0.0))
+        self.model.context.cplex_parameters.mip.polishafter.time = start_after
+        self.applied_features["polishing_after_seconds"] = start_after
 
     def _unscale(self, value):
         """Convert a CPLEX objective value or bound back to the reported unit."""
@@ -1515,9 +1537,10 @@ class MultProductProdctionRoutingProblem:
 
         # Set parameters
         if timeLimit is not None:
-            self.model.set_time_limit(timeLimit)
+            self.model.set_time_limit(time_budget.clamp(timeLimit))
         if numThreads is not None:
             self.model.context.cplex_parameters.threads = numThreads
+        self._apply_polishing()
 
         self.build_seconds = time.perf_counter() - build_started_at
         start_time = time.time()

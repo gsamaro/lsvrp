@@ -219,6 +219,88 @@ class WorkerProcessMPITestCase(unittest.TestCase):
         )
         instance_process.return_value.process.assert_called_once_with()
 
+    def test_process_applies_the_experiment_config_carried_by_the_task(self):
+        """MPI workers only know config.json; the task carries its experiment config."""
+        import json
+
+        from config import Config
+        from src.process import WorkerProcess as worker_module
+
+        previous = Config._data
+        worker_module._applied_config_hash = None
+        try:
+            Config.replace({"solver": {"timeLimit": 10, "polishing": {"after_seconds": None}}})
+            experiment = Config.snapshot()
+            experiment["solver"]["polishing"]["after_seconds"] = 3000
+            context = {
+                "label": "tarefa",
+                "config_hash": "h1",
+                "config_json": json.dumps(experiment),
+            }
+            seen = []
+
+            def fake_instance_process(*args, **kwargs):
+                seen.append(Config.get_nested("solver", "polishing", "after_seconds"))
+                return MagicMock()
+
+            with patch(
+                "src.process.WorkerProcess.InstanceProcess", fake_instance_process
+            ):
+                process(self.logger, self._instance(1), "PSO", [0.2], {}, 0.99, context)
+                Config.replace({"solver": {"timeLimit": 10}})
+                # same hash: the already installed config is not applied again
+                process(self.logger, self._instance(1), "PSO", [0.2], {}, 0.99, context)
+                # a different experiment (new hash) is applied
+                other = dict(context, config_hash="h2")
+                process(self.logger, self._instance(1), "PSO", [0.2], {}, 0.99, other)
+
+            self.assertEqual(seen, [3000, None, 3000])
+        finally:
+            Config._data = previous
+            worker_module._applied_config_hash = None
+
+    def test_process_without_config_json_keeps_the_local_config(self):
+        from config import Config
+
+        previous = Config._data
+        try:
+            Config.replace({"solver": {"timeLimit": 55}})
+            with patch("src.process.WorkerProcess.InstanceProcess"):
+                process(self.logger, self._instance(1), "PSO", [0.2], {}, 0.99, {"label": "x"})
+            self.assertEqual(Config.get_nested("solver", "timeLimit"), 55)
+        finally:
+            Config._data = previous
+
+    def test_shared_executor_is_reused_and_not_shut_down(self):
+        worker = self._build_worker()
+        executor = FakeExecutor(max_workers=2)
+        executor.exited = False
+        executor.__exit__ = lambda *a: setattr(executor, "exited", True)
+
+        with patch("src.process.WorkerProcess.Config.get_nested") as get_nested, patch(
+            "src.process.WorkerProcess.MPI_BOOL", True
+        ), patch(
+            "src.process.WorkerProcess.as_completed", side_effect=lambda f: list(f)
+        ), patch.object(worker, "_resolve_num_workers", return_value=2):
+            get_nested.side_effect = self._config_value(False)
+            with patch("src.process.WorkerProcess.MPIPoolExecutor", FakeExecutor, create=True):
+                worker.run_parallel([self._instance(1)], "PSO", executor=executor)
+                worker.run_parallel([self._instance(2)], "PSO", executor=executor)
+
+        total = len(WEIGHTS_OPTIMIZE) * len(ALPHA)
+        self.assertEqual(len(FakeExecutor.submitted), 2 * total)
+        self.assertEqual(FakeExecutor.max_workers_used, [2])  # only the one we built
+        self.assertFalse(executor.exited)
+
+    def test_count_tasks_matches_what_run_parallel_creates(self):
+        worker = self._build_worker()
+        with patch("src.process.WorkerProcess.Config.get_nested") as get_nested:
+            get_nested.side_effect = self._config_value(False)
+            self.assertEqual(
+                worker.count_tasks([self._instance(1), self._instance(2)]),
+                2 * len(WEIGHTS_OPTIMIZE) * len(ALPHA),
+            )
+
     def test_process_safely_serializes_docplex_limits_error(self):
         error = DOcplexLimitsExceeded(1, 2)
 

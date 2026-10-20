@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-10-20
+
+### New
+
+- Added `experiments` to `config/config.json`: a list of `{name, overrides}` run one after another in a single job (a single queue submission on the cluster). Each experiment is the base configuration with its overrides deep-merged on top, runs to completion including its `union_results`, and writes under `<instance.output>/<name>/`. Overrides of `instance.output`, `workers` and `experiments` are rejected, and every experiment is validated before anything runs. Without `experiments` the behavior is unchanged.
+- `src/process/ExperimentRunner.py` keeps an `experiment_state.json` per experiment and resumes safely: it skips an experiment only after opening the exact `union_results` recorded in the state and checking the experiment name, the configuration fingerprint and the number of tasks. A changed configuration moves the old folder to `<name>.stale-<timestamp>` (nothing is deleted). A failing experiment does not stop the next ones and the job exits with code 1.
+- The consolidated `union_results` has pairing keys: `experiment`, `experiment_fingerprint`, `experiment_run_tag`, `instance_key`, `task_key` (`instance|weight|alpha`) and `row_key` (`task_key|period`). `task_key` and `row_key` are the same in every experiment for the same instance, weight vector and alpha.
+- MPI workers apply the resolved configuration carried by each task (`config_json`), so persistent ranks follow the experiment being run, and one `MPIPoolExecutor` is shared by all experiments. `WorkerProcess.run_parallel` accepts an `executor`, and `Config.experiments()` / `Config.replace()` were added.
+- Added `solver.total_time_budget` (default `false`): `timeLimit` becomes the total budget of a task and every CPLEX call receives only the time left (`src/helpers/TimeBudget.py`).
+- Added `solver.polishing.after_seconds` (default `null`): starts CPLEX solution polishing on the unrestricted MIP after that many seconds (counted from the task start with a time budget).
+- `config/config.json` now holds the production setup for the 20-customer instances (1 thread, 3600 s per task, vehicle-free model, `objective_scale` 1e5, single-threaded PSO) and three experiments: `pso_mip_polish`, `matheuristic_mip_polish` and `matheuristic`.
+
+### Fixes
+
+- The matheuristic PSO start now uses the thread limit of the run instead of every available core.
+
+### Notes
+
+- The tests of the vehicle-indexed model no longer depend on `config/config.json`.
+
 ## 2026-10-19
 
 ### New

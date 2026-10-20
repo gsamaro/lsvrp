@@ -1,3 +1,5 @@
+import contextlib
+import json
 import os
 import traceback
 from concurrent.futures import as_completed
@@ -115,7 +117,20 @@ class WorkerProcess:
         )
         return context
 
-    def run_parallel(self, instancies=[], solver="GUROBY"):
+    def count_tasks(self, instancies):
+        """Tasks ``run_parallel`` would create for ``instancies`` (instance x weight x alpha)."""
+        return len(instancies) * len(self._resolve_weights()) * len(ALPHA)
+
+    def create_executor(self, total_tasks):
+        """One ``MPIPoolExecutor`` to be shared by every experiment of a job.
+
+        Returns ``None`` without ``mpi4py`` (the sequential fallback is used).
+        """
+        if not MPI_BOOL:
+            return None
+        return MPIPoolExecutor(max_workers=self._resolve_num_workers(total_tasks))
+
+    def run_parallel(self, instancies=[], solver="GUROBY", executor=None):
         self.log.info(">> Iniciando processamento paralelo.")
         self._ensure_targets_loaded()
         weights = self._resolve_weights()
@@ -146,7 +161,13 @@ class WorkerProcess:
                 f">> Iniciando processamento paralelo com MPI usando {max_workers} workers."
             )
             future_contexts = {}
-            with MPIPoolExecutor(max_workers=max_workers) as executor:
+            # A shared executor (several experiments in one job) is not shut down here.
+            pool_context = (
+                contextlib.nullcontext(executor)
+                if executor is not None
+                else MPIPoolExecutor(max_workers=max_workers)
+            )
+            with pool_context as executor:
                 for task in tasks:
                     context = self._build_task_context(
                         task["instancie"],
@@ -210,7 +231,28 @@ class WorkerProcess:
         self.log.info(">> Fim do processamento paralelo.")
 
 
+_applied_config_hash = None
+
+
+def _apply_task_config(context):
+    """Install the experiment configuration carried by the task.
+
+    MPI workers are persistent processes that only know ``config.json``; the task
+    context carries the resolved configuration of its experiment (``config_json``).
+    """
+    global _applied_config_hash
+    config_json = (context or {}).get("config_json")
+    if not config_json:
+        return
+    config_hash = context.get("config_hash")
+    if config_hash and config_hash == _applied_config_hash:
+        return
+    Config.replace(json.loads(config_json))
+    _applied_config_hash = config_hash
+
+
 def process(log, instancie, solver, w, targets_by_file, alpha, context=None):
+    _apply_task_config(context)
     context_label = context["label"] if context else instancie["file"]
     log.debug(f">> Processando instância ({context_label}).")
     InstanceProcess(

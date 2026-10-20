@@ -215,6 +215,8 @@ Se o PSO não tiver uma solução para usar como MIP start, a chamada ao solver 
 | `solver.multiobjective` | `true` usa goal programming com targets, desvios e `alpha`; `false` usa a soma ponderada dos custos. |
 | `solver.strengthened_bounds` | Ativa bounds fortalecidos da formulação; também pode fornecer bounds à heurística do PSO. |
 | `solver.objective_scale` | Fator `K` (padrão `1.0` em `config/config.py`, `100000.0` em `config/config.json`) aplicado ao objetivo multiobjetivo apenas dentro do CPLEX; todo objetivo e limite lido de volta é dividido por `K`. Sem ele, o dual simplex e o primal param antes do ótimo do LP e o limite inferior sai acima do valor válido (até 10% nas relaxações medidas). `FO`, limite e gap mantêm a unidade anterior. Detalhes em `docs/mathematical-model.md`. |
+| `solver.total_time_budget` | `false` por padrão. Com `true`, `timeLimit` é o orçamento total de cada tarefa (PSO/matheurística, construção do modelo e MIP): cada chamada ao CPLEX recebe só o tempo restante. Sem ele, `timeLimit` vale para cada solve e o PSO/matheurística somam por fora. |
+| `solver.polishing.after_seconds` | `null` por padrão (desligado). Número de segundos após o qual o CPLEX passa a fazer *solution polishing* (`mip.polishafter.time`) no MIP completo; as etapas da matheurística não são afetadas. Com `total_time_budget`, o instante conta desde o início da tarefa. Depois que o polishing começa a árvore deixa de ramificar: o limite inferior fica congelado e só a incumbente melhora. |
 | `solver.aggregate_vehicles` | `false` por padrão. Com `true`, o modelo exato remove o índice de veículo de `Z`, `R` e `Q` (a frota vira um único conjunto, com no máximo `V` saídas da planta por período) e reconstrói os veículos na saída. Reduz muito o número de colunas (49.549 contra 238.669 na instância de 20 clientes, 5 veículos e 12 períodos) e elimina a simetria entre veículos. Só vale com veículos idênticos; as etapas da matheurística e a construção de targets por relaxação ignoram a opção; HC1/VC ficam dispensadas. Detalhes em `docs/mathematical-model.md`. |
 | `solver.goal_programming.positive_only_deviations` | Escolhe a variante de desvios da formulação exata. Só afeta o modelo quando `multiobjective` está ativo. |
 | `solver.symmetry_breaking.hc1` | Ativa a quebra de simetria HC1 no modelo exato e é considerada ao preparar soluções para handoff. |
@@ -274,6 +276,23 @@ mpirun python -m mpi4py.futures main.py
 ```
 
 Eles também carregam `mpich/4.1.1-gcc-9.4.0`, ativam `phd3/bin/activate` e usam filas PBS como `memlong`, `memshort`, `paralela`, `parexp` e `testes`.
+
+#### Vários experimentos num único job
+
+Para comparar configurações sem voltar à fila a cada uma, `config/config.json` aceita a chave de topo `experiments`: uma lista de `{"name", "overrides"}`. `overrides` é um recorte parcial do próprio config, mesclado em profundidade sobre a base (listas substituem), então nada é duplicado. Exemplo:
+
+```json
+"experiments": [
+  {"name": "pso_mip_polish", "overrides": {"solver": {"polishing": {"after_seconds": 3000}}}},
+  {"name": "matheuristic", "overrides": {"solver": {"matheuristic": {"enabled": true, "use_as": "final"}}}}
+]
+```
+
+- Cada experimento roda por completo (inclusive o `union_results`) antes do próximo e grava em `<instance.output>/<name>/` (`./out/pso_mip_polish/`). Os nomes usam letras, números, `_` e `-`; `instance.output`, `workers` e `experiments` não podem ser sobrescritos. Todos os experimentos são validados antes de rodar qualquer coisa.
+- Sem `experiments`, o comportamento é o de sempre: uma execução, saída em `instance.output`.
+- O `union_results` de cada experimento traz as colunas `experiment`, `experiment_fingerprint`, `experiment_run_tag`, `instance_key`, `task_key` (`instância|peso|alpha`) e `row_key` (`task_key|período`). `task_key` e `row_key` são iguais em todos os experimentos para a mesma instância, peso e alpha, e servem para parear linhas na análise. `hash_file` e `hash_row` carregam a mesma informação.
+- Cada pasta tem `experiment_state.json` (`status`, `fingerprint`, `run_tag`, `union_path`, tarefas esperadas e encontradas). Numa nova submissão, um experimento só é pulado se o `union_results` apontado pelo estado existe e traz o nome do experimento, o mesmo `fingerprint` (hash do config resolvido, sem `workers` e `logging`) e todas as tarefas esperadas. Se o config do experimento mudou, a pasta anterior é movida para `<name>.stale-<data>` (nada é apagado) e o experimento recomeça limpo. Experimentos incompletos ou com falha são refeitos, e o processo termina com código 1 se algum falhou.
+- Os workers MPI recebem o config resolvido de cada tarefa (`config_json`) e o aplicam antes de resolver a instância; um único `MPIPoolExecutor` é reutilizado por todos os experimentos.
 
 ### Geração de relatórios
 
@@ -386,7 +405,8 @@ Referências cruzadas: `src/helpers/ReadPrpFile.py`, `src/helpers/TargetsLoader.
 
 ### `src/process`
 
-- `WorkerProcess.py`: cria tarefas para cada instância, peso e alpha; carrega targets; usa um único executor MPI ou fallback sequencial.
+- `ExperimentRunner.py`: roda os `experiments` do config em sequência (pasta, estado, retomada e `union_results` por experimento) com um único executor MPI.
+- `WorkerProcess.py`: cria tarefas para cada instância, peso e alpha; carrega targets; usa um único executor MPI (próprio ou compartilhado) ou fallback sequencial; aplica o config do experimento carregado em cada tarefa.
 - `RuntimeContext.py`: prepara configuração, `run_tag`, logger e instâncias; finaliza a consolidação e protege a geração de targets.
 - `InstanceProcess.py`: encapsula a execução de uma instância: leitura, criação do solver, solve, extração, escrita de resultados e cleanup.
 - `ProcessResults.py`: transforma variáveis do solver em planilhas e registros Parquet. Calcula `f1` a `f5`, hashes e custos auxiliares.

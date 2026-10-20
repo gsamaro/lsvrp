@@ -180,3 +180,146 @@ def test_normalize_rejects_invalid_runtime_controls(path, value, message):
 
     with pytest.raises(ValueError, match=message):
         Config.normalize(configured)
+
+
+# ------------------------------------------------------------------ experiments
+
+
+def _with_experiments(experiments, **solver):
+    configured = _valid_config()
+    configured.pop("experiments", None)
+    configured["solver"].update(solver)
+    configured["instance"]["output"] = "./out/"
+    configured["experiments"] = experiments
+    return Config.normalize(configured)
+
+
+def test_experiments_default_to_a_single_run_with_the_base_output(monkeypatch):
+    configured = _valid_config()
+    configured.pop("experiments", None)
+    monkeypatch.setattr(Config, "_data", Config.normalize(configured))
+
+    resolved = Config.experiments()
+
+    assert [name for name, _ in resolved] == ["default"]
+    assert resolved[0][1]["instance"]["output"] == configured["instance"]["output"]
+    assert "experiments" not in resolved[0][1]
+
+
+def test_experiments_merge_overrides_in_depth(monkeypatch):
+    base = _with_experiments(
+        [
+            {
+                "name": "mat",
+                "overrides": {
+                    "solver": {
+                        "matheuristic": {
+                            "enabled": True,
+                            "restricted": {"time_limit": 3600},
+                        },
+                        "polishing": {"after_seconds": 3000},
+                    }
+                },
+            },
+            {"name": "plain"},
+        ]
+    )
+    monkeypatch.setattr(Config, "_data", base)
+
+    (mat_name, mat), (plain_name, plain) = Config.experiments()
+
+    assert (mat_name, plain_name) == ("mat", "plain")
+    assert mat["instance"]["output"] == "./out/mat/"
+    assert plain["instance"]["output"] == "./out/plain/"
+    assert mat["solver"]["matheuristic"]["enabled"] is True
+    assert mat["solver"]["matheuristic"]["restricted"]["time_limit"] == 3600
+    # sibling keys of the override survive and the other experiment is untouched
+    assert mat["solver"]["matheuristic"]["tsp"] == base["solver"]["matheuristic"]["tsp"]
+    assert mat["solver"]["polishing"]["after_seconds"] == 3000
+    assert plain["solver"]["polishing"]["after_seconds"] is None
+    assert plain["solver"]["matheuristic"] == base["solver"]["matheuristic"]
+    assert mat["experiment"] == "mat" and plain["experiment"] == "plain"
+    assert mat["solver"]["telemetry"]["experiment_id"] == "mat"
+    assert "experiments" not in mat
+
+
+@pytest.mark.parametrize(
+    ("experiments", "message"),
+    [
+        ([{"name": "a"}, {"name": "a"}], "repetido"),
+        ([{"name": "a b"}], "name"),
+        ([{"name": ""}], "name"),
+        ([{"overrides": {}}], "name"),
+        ({"name": "a"}, "lista"),
+        ([{"name": "a", "overrides": "x"}], "overrides"),
+    ],
+)
+def test_invalid_experiment_lists_are_rejected(experiments, message):
+    with pytest.raises(ValueError, match=message):
+        _with_experiments(experiments)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"instance": {"output": "./other/"}},
+        {"workers": {"num": 2}},
+        {"experiments": []},
+    ],
+)
+def test_forbidden_overrides_are_rejected(monkeypatch, overrides):
+    monkeypatch.setattr(
+        Config, "_data", _with_experiments([{"name": "a", "overrides": overrides}])
+    )
+
+    with pytest.raises(ValueError, match="não pode alterar"):
+        Config.experiments()
+
+
+def test_an_invalid_override_fails_before_anything_runs(monkeypatch):
+    monkeypatch.setattr(
+        Config,
+        "_data",
+        _with_experiments(
+            [
+                {"name": "ok"},
+                {
+                    "name": "bad",
+                    "overrides": {"solver": {"polishing": {"after_seconds": -1}}},
+                },
+            ]
+        ),
+    )
+
+    with pytest.raises(ValueError, match="experiments\\[bad\\].*polishing"):
+        Config.experiments()
+
+
+def test_experiment_output_cannot_collide_with_the_targets_folder(monkeypatch):
+    configured = _with_experiments([{"name": "target"}])
+    configured["postprocessing"]["output"] = "./out/target/"
+    monkeypatch.setattr(Config, "_data", configured)
+
+    with pytest.raises(ValueError, match="coincide"):
+        Config.experiments()
+
+
+def test_replace_installs_a_normalized_copy(monkeypatch):
+    monkeypatch.setattr(Config, "_data", None)
+    snapshot = {"solver": {"timeLimit": 77}}
+
+    Config.replace(snapshot)
+    snapshot["solver"]["timeLimit"] = 1
+
+    assert Config.get_nested("solver", "timeLimit") == 77
+    assert Config.get_nested("solver", "objective_scale") == 1.0
+
+
+def test_production_config_declares_three_experiments_sharing_one_base():
+    configured = Config.normalize(_valid_config())
+
+    names = [item["name"] for item in configured["experiments"]]
+    assert names == ["pso_mip_polish", "matheuristic_mip_polish", "matheuristic"]
+    assert configured["solver"]["total_time_budget"] is True
+    assert configured["solver"]["threadsLimit"] == 1
+    assert configured["solver"]["aggregate_vehicles"] is True

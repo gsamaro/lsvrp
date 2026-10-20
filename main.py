@@ -1,3 +1,7 @@
+import sys
+
+from config import Config
+from src.process.ExperimentRunner import run_experiments
 from src.process.PostProcessingProcess import PostProcessingProcess
 from src.process.RuntimeContext import (
     build_instances,
@@ -9,7 +13,8 @@ from src.process.RuntimeContext import (
 from src.process.WorkerProcess import WorkerProcess
 
 
-def main():
+def run_single():
+    """One run with the base configuration (no ``experiments`` configured)."""
     context = build_runtime_context()
     log = create_run_logger(context.output)
     log.info(f"Iniciando job run_tag={context.run_tag}.")
@@ -33,6 +38,16 @@ def main():
 
     postprocessing = PostProcessingProcess(log=log, output=context.output)
     finalize_postprocessing(postprocessing, context.run_tag, context.build_target)
+
+
+def main():
+    if Config.get("experiments"):
+        # Several configurations in one job: each one runs to completion (with its
+        # union_results) before the next one starts.
+        if run_experiments():
+            sys.exit(1)
+        return
+    run_single()
 
 
 if __name__ == "__main__":

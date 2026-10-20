@@ -40,6 +40,7 @@ class DeterministicMatheuristic:
         self.final_results = None
         self.destination_telemetry = {}
         self.destination_offset = 0.0
+        self._num_threads = None
 
     def _score(self, variables):
         costs = solution_components(self.problem, variables)
@@ -84,7 +85,8 @@ class DeterministicMatheuristic:
         pso = ParticleSwarmOptimization(self.data, self.dir, self.log)
         try:
             pso.pso_config["return_heuristic_result_without_cplex"] = True
-            pso.solver()
+            # Same thread limit as the MIP stages (one thread in production).
+            pso.solver(numThreads=self._num_threads)
             solution = pso.global_best_solution
             return clone_solution(solution) if solution is not None else None
         finally:
@@ -253,6 +255,7 @@ class DeterministicMatheuristic:
 
     def solver(self, numThreads=None, timeLimit=None):
         started = time.perf_counter()
+        self._num_threads = numThreads
         tsp = solve_tsp(
             self.problem.a_i_k, self.settings["tsp"]["time_limit"], numThreads, self.log
         )

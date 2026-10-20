@@ -2,6 +2,7 @@ import gc
 import time
 
 from config import Config
+from src.helpers import TimeBudget as time_budget
 from src.helpers.ReadPrpFile import ReadPrpFile as RD
 from src.helpers.SolverTelemetry import get_config, new_run_id, write_shards
 from src.helpers.TargetsLoader import normalize_instance_file_key
@@ -68,6 +69,12 @@ class InstanceProcess:
         NODE_COUNT = OBJ_BOUND = NEW_TARGETS = None
 
         try:
+            # solver.total_time_budget: timeLimit covers the whole task (PSO,
+            # matheuristic stages, model construction and MIP), not only the MIP.
+            if self.timeLimit and Config.get_nested(
+                "solver", "total_time_budget", default=False
+            ):
+                time_budget.start(self.timeLimit)
             data = RD(file_path=self.instance, log=self.log).getDataSet()
             data["weight"] = self.weight
             data["alpha"] = self.alpha
@@ -187,6 +194,7 @@ class InstanceProcess:
             self.log.debug("Resultados gerados.")
             self.isFinished = True
         finally:
+            time_budget.clear()
             if instance is not None and hasattr(instance, "terminate"):
                 try:
                     instance.terminate()

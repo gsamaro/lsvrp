@@ -1,6 +1,8 @@
 import copy
 import json
 import math
+import os
+import re
 from pathlib import Path
 
 
@@ -37,6 +39,8 @@ class Config:
             "strengthened_bounds": True,
             "aggregate_vehicles": False,
             "objective_scale": 1.0,
+            "total_time_budget": False,
+            "polishing": {"after_seconds": None},
             "goal_programming": {
                 "positive_only_deviations": True,
             },
@@ -68,6 +72,100 @@ class Config:
             config_path = Path(__file__).parent / "config.json"
             with open(config_path, "r", encoding="utf-8") as f:
                 cls._data = cls.normalize(json.load(f))
+
+    # Keys an experiment cannot override: the output folder is derived from the
+    # experiment name, the worker pool is shared by every experiment of a job, and
+    # the experiment list/name are managed by ``experiments``.
+    _EXPERIMENT_FORBIDDEN = (
+        ("instance", "output"),
+        ("workers",),
+        ("experiments",),
+        ("experiment",),
+    )
+    _EXPERIMENT_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
+
+    @classmethod
+    def replace(cls, snapshot):
+        """Install a complete configuration (used per experiment and by workers)."""
+        cls._data = cls.normalize(copy.deepcopy(snapshot))
+
+    @classmethod
+    def experiments(cls):
+        """Resolve ``experiments`` into ``[(name, config)]``, validating all of them.
+
+        Each experiment is the base configuration (without ``experiments``) with its
+        ``overrides`` deep-merged on top, writing under ``<instance.output>/<name>/``.
+        Without ``experiments`` a single ``default`` item keeps the base output.
+        """
+        cls.load()
+        base = copy.deepcopy(cls._data)
+        listed = base.pop("experiments", None)
+        if not listed:
+            base["experiment"] = "default"
+            return [("default", base)]
+
+        base_output = base["instance"]["output"].rstrip("/\\")
+        resolved = []
+        for item in listed:
+            name = item["name"]
+            overrides = item.get("overrides") or {}
+            for path in cls._EXPERIMENT_FORBIDDEN:
+                if cls._has_path(overrides, path):
+                    raise ValueError(
+                        f"config.experiments[{name}].overrides não pode alterar "
+                        f"{'.'.join(path)}"
+                    )
+            merged = cls._merge_defaults(base, copy.deepcopy(overrides))
+            merged["instance"]["output"] = f"{base_output}/{name}/"
+            if os.path.normpath(merged["instance"]["output"]) == os.path.normpath(
+                merged["postprocessing"]["output"]
+            ):
+                raise ValueError(
+                    f"config.experiments[{name}]: a pasta do experimento coincide "
+                    "com postprocessing.output"
+                )
+            merged["experiment"] = name
+            telemetry = merged["solver"].setdefault("telemetry", {})
+            if not overrides.get("solver", {}).get("telemetry", {}).get("experiment_id"):
+                telemetry["experiment_id"] = name
+            try:
+                resolved.append((name, cls.normalize(merged)))
+            except ValueError as error:
+                raise ValueError(f"config.experiments[{name}]: {error}") from error
+        return resolved
+
+    @staticmethod
+    def _has_path(data, path):
+        for key in path:
+            if not isinstance(data, dict) or key not in data:
+                return False
+            data = data[key]
+        return True
+
+    @classmethod
+    def _validate_experiments(cls, listed):
+        if listed is None:
+            return
+        if not isinstance(listed, list):
+            raise ValueError("config.experiments deve ser uma lista")
+        names = set()
+        for position, item in enumerate(listed):
+            if not isinstance(item, dict):
+                raise ValueError(f"config.experiments[{position}] deve ser um objeto")
+            name = item.get("name")
+            if not isinstance(name, str) or not cls._EXPERIMENT_NAME.match(name):
+                raise ValueError(
+                    f"config.experiments[{position}].name deve usar apenas "
+                    "letras, números, '_' e '-'"
+                )
+            if name in names:
+                raise ValueError(f"config.experiments tem nome repetido: {name}")
+            names.add(name)
+            overrides = item.get("overrides", {})
+            if overrides is not None and not isinstance(overrides, dict):
+                raise ValueError(
+                    f"config.experiments[{name}].overrides deve ser um objeto"
+                )
 
     @classmethod
     def _merge_defaults(cls, defaults, configured):
@@ -143,6 +241,20 @@ class Config:
         ):
             raise ValueError("config.solver.objective_scale deve ser um número positivo")
         solver["objective_scale"] = float(objective_scale)
+        cls._validate_bool(
+            solver["total_time_budget"], "config.solver.total_time_budget"
+        )
+        after_seconds = solver["polishing"]["after_seconds"]
+        if after_seconds is not None and (
+            isinstance(after_seconds, bool)
+            or not isinstance(after_seconds, (int, float))
+            or not math.isfinite(after_seconds)
+            or after_seconds <= 0
+        ):
+            raise ValueError(
+                "config.solver.polishing.after_seconds deve ser um número positivo ou null"
+            )
+        cls._validate_experiments(configured.get("experiments"))
         goal_programming = solver["goal_programming"]
         cls._validate_bool(
             goal_programming["positive_only_deviations"],

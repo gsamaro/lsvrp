@@ -1,12 +1,16 @@
 {
   "solver": {
     "threadsLimit": 1,
-    "timeLimit": 180,
+    "timeLimit": 3600,
     "method": "PSO",
     "multiobjective": true,
-    "strengthened_bounds": false,
-    "aggregate_vehicles": false,
+    "strengthened_bounds": true,
+    "aggregate_vehicles": true,
     "objective_scale": 100000.0,
+    "total_time_budget": true,
+    "polishing": {
+      "after_seconds": null
+    },
     "goal_programming": {
       "positive_only_deviations": true
     },
@@ -53,7 +57,7 @@
       "audit_fraction": 0.01,
       "audit_interval": 10,
       "execution_backend": "numba",
-      "parallel_workers": "auto",
+      "parallel_workers": 1,
       "jit_warmup": true,
       "seed": 123,
       "initialization_mix": "constructive",
@@ -82,8 +86,9 @@
       "time_limit": null
     },
     "matheuristic": {
-      "enabled": true,
+      "enabled": false,
       "use_as": "final",
+      "start": "pso",
       "tsp": {
         "time_limit": 10
       },
@@ -95,7 +100,7 @@
         "time_limit": 30
       },
       "debug": {
-        "enabled": true
+        "enabled": false
       }
     }
   },
@@ -109,7 +114,7 @@
     "dir": "./data/",
     "output": "./out/",
     "files": [
-      "DATA_PRP_20C/PRP13_C20_P8_V5_T12_S4.dat"
+      "DATA_PRP_20C"
     ]
   },
   "relaxed_solution": {
@@ -120,5 +125,60 @@
   "postprocessing": {
     "build_target": false,
     "output": "./out/target/"
-  }
+  },
+  "experiments": [
+    {
+      "name": "pso_mip_polish",
+      "overrides": {
+        "solver": {
+          "polishing": {
+            "after_seconds": 3000
+          }
+        }
+      }
+    },
+    {
+      "name": "matheuristic_mip_polish",
+      "overrides": {
+        "solver": {
+          "method": "GUROBY",
+          "polishing": {
+            "after_seconds": 3000
+          },
+          "matheuristic": {
+            "enabled": true,
+            "use_as": "exact_start",
+            "start": "pso",
+            "tsp": {
+              "time_limit": 10
+            },
+            "restricted": {
+              "time_limit": 180
+            },
+            "route_improvement": {
+              "enabled": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "matheuristic",
+      "overrides": {
+        "solver": {
+          "matheuristic": {
+            "enabled": true,
+            "use_as": "final",
+            "start": "pso",
+            "restricted": {
+              "time_limit": 3600
+            },
+            "route_improvement": {
+              "enabled": false
+            }
+          }
+        }
+      }
+    }
+  ]
 }

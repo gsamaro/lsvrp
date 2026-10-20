@@ -40,6 +40,26 @@ class DummyLogger:
 
 
 class MPPRPObjectiveTestCase(unittest.TestCase):
+    def setUp(self):
+        # The vehicle-indexed model is under test: do not inherit config.json,
+        # whose production values (aggregated model, objective scale) change it.
+        from config import Config
+
+        Config.load()
+        previous = Config._data
+        self.addCleanup(setattr, Config, "_data", previous)
+        Config._data = Config.normalize(
+            {
+                "solver": {
+                    "multiobjective": False,
+                    "aggregate_vehicles": False,
+                    "strengthened_bounds": False,
+                    "objective_scale": 1.0,
+                    "method": "GUROBY",
+                },
+            }
+        )
+
     @staticmethod
     def _data(num_customers=1, num_vehicles=1):
         nodes = num_customers + 1
