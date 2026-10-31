@@ -38,11 +38,13 @@ class Config:
             "multiobjective": True,
             "strengthened_bounds": True,
             "aggregate_vehicles": False,
+            "symmetric_routes": False,
             "objective_scale": 1.0,
             "total_time_budget": False,
             "polishing": {"after_seconds": None},
             "goal_programming": {
                 "positive_only_deviations": True,
+                "optimize_f1": True,
             },
             "symmetry_breaking": {"hc1": False},
             "coelho_inequalities": False,
@@ -232,6 +234,13 @@ class Config:
         cls._validate_bool(
             solver["aggregate_vehicles"], "config.solver.aggregate_vehicles"
         )
+        cls._validate_bool(
+            solver["symmetric_routes"], "config.solver.symmetric_routes"
+        )
+        if solver["symmetric_routes"] and not solver["aggregate_vehicles"]:
+            raise ValueError(
+                "config.solver.symmetric_routes exige config.solver.aggregate_vehicles"
+            )
         objective_scale = solver["objective_scale"]
         if (
             isinstance(objective_scale, bool)
@@ -259,6 +268,10 @@ class Config:
         cls._validate_bool(
             goal_programming["positive_only_deviations"],
             "config.solver.goal_programming.positive_only_deviations",
+        )
+        cls._validate_bool(
+            goal_programming["optimize_f1"],
+            "config.solver.goal_programming.optimize_f1",
         )
         cls._validate_bool(
             solver["coelho_inequalities"], "config.solver.coelho_inequalities"

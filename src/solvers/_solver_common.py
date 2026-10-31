@@ -185,6 +185,101 @@ def solution_components(problem: ProblemData, variables):
     return result
 
 
+def optimize_f1_enabled(config=None):
+    """``solver.goal_programming.optimize_f1`` of a config snapshot (default: on)."""
+    if config is None:
+        from config import Config
+
+        return bool(
+            Config.get_nested(
+                "solver", "goal_programming", "optimize_f1", default=True
+            )
+        )
+    goal_programming = config.get("solver", {}).get("goal_programming", {})
+    return bool(goal_programming.get("optimize_f1", True))
+
+
+def effective_goal_weights(weight, optimize_f1=True):
+    """Weights of the goal criterion.
+
+    With ``optimize_f1`` off the production cost leaves the criterion and the
+    remaining weights are rescaled to sum to one.
+    """
+    weights = np.array(weight, dtype=float)
+    if optimize_f1:
+        return weights
+    weights[0] = 0.0
+    total = weights[1:].sum()
+    if not total > 0:
+        raise ValueError("optimize_f1=false exige algum peso positivo em f2..f5")
+    return weights / total
+
+
+def minimum_production_totals(problem: ProblemData):
+    """Least total production of each product that serves the demand.
+
+    A customer can only consume what reaches it, so it needs at least
+    ``max(0, demand - initial stock)``; the plant stock covers part of the sum.
+    Without backlog no feasible plan produces less, so the production cost f1
+    of a plan without waste equals ``c_p`` times this total.
+    """
+    demand = np.asarray(problem.d_p_i_t, dtype=float).sum(axis=2)
+    initial = np.asarray(problem.I_p_i_0, dtype=float)
+    need = np.maximum(0.0, demand - initial[:, 1:]).sum(axis=1)
+    return np.maximum(0.0, need - initial[:, 0])
+
+
+def trim_surplus(problem: ProblemData, variables, tolerance=1e-9):
+    """Remove the stock left at the end of the horizon from a feasible plan.
+
+    The latest deliveries and then the latest production are lowered until
+    nothing beyond the demand is produced, so the total production equals
+    ``minimum_production_totals``. Setups and routes stay. Returns a copy with
+    ``X``, ``I`` and ``Q`` updated, or the input untouched when it already has
+    no surplus.
+    """
+    x = np.array(variables["X"], dtype=float)
+    q = np.array(variables["Q"], dtype=float)
+    inventory = np.array(variables["I"], dtype=float)
+    demand = np.asarray(problem.d_p_i_t, dtype=float)
+    initial = np.asarray(problem.I_p_i_0, dtype=float)
+    changed = False
+    for p in range(problem.p):
+        for i in range(1, problem.i):
+            floor = max(0.0, initial[p, i] - demand[p, i - 1].sum())
+            surplus = inventory[p, i, -1] - floor
+            for t in range(problem.t - 1, -1, -1):
+                if surplus <= tolerance:
+                    break
+                delivered = q[p, :, i, t].sum()
+                cut = min(surplus, delivered)
+                if cut > tolerance:
+                    q[p, :, i, t] *= (delivered - cut) / delivered
+                    inventory[p, i, t:] -= cut
+                    surplus -= cut
+                    changed = True
+        delivered_total = q[p, :, 1:, :].sum(axis=(0, 1))
+        plant = initial[p, 0] + np.cumsum(x[p] - delivered_total)
+        surplus = plant[-1] - max(0.0, initial[p, 0] - delivered_total.sum())
+        for t in range(problem.t - 1, -1, -1):
+            if surplus <= tolerance:
+                break
+            cut = min(surplus, x[p, t])
+            if cut > tolerance:
+                x[p, t] -= cut
+                plant[t:] -= cut
+                surplus -= cut
+                changed = True
+        inventory[p, 0] = plant
+    if not changed:
+        return variables
+    if np.any(inventory < -1e-6):
+        return variables
+    trimmed = dict(variables)
+    trimmed.update(X=x, Q=q, I=np.maximum(inventory, 0.0))
+    return trimmed
+
+
 def adjusted_targets(targets, periods):
     if targets is None or len(targets) != periods:
         raise ValueError("Metas multiobjetivo devem conter todos os períodos")
@@ -207,7 +302,10 @@ def objective_from_components(problem, components, config):
         return np.sum(components, axis=(-2, -1))
     targets, normalizers = adjusted_targets(problem.raw_map.get("targets"), problem.t)
     positive = np.maximum(0.0, components - targets)
-    weighted = positive * np.asarray(problem.raw_map["weight"])[:, None] / normalizers
+    weight = effective_goal_weights(
+        problem.raw_map["weight"], optimize_f1_enabled(config)
+    )
+    weighted = positive * weight[:, None] / normalizers
     alpha = float(problem.raw_map["alpha"])
     return alpha * np.max(weighted, axis=(-2, -1)) + (1 - alpha) * np.sum(
         weighted, axis=(-2, -1)
@@ -230,9 +328,8 @@ def goal_start_values(problem, variables):
     targets, normalizers = adjusted_targets(problem.raw_map.get("targets"), problem.t)
     difference = solution_components(problem, variables) - targets
     positive, negative = np.maximum(0, difference), np.maximum(0, -difference)
-    limit = float(
-        np.max(np.asarray(problem.raw_map["weight"])[:, None] * positive / normalizers)
-    )
+    weight = effective_goal_weights(problem.raw_map["weight"], optimize_f1_enabled())
+    limit = float(np.max(weight[:, None] * positive / normalizers))
     return positive, negative, limit
 
 

@@ -34,7 +34,12 @@ class ParticleSwarmOptimization:
             "solver": {
                 "multiobjective": Config.get_nested(
                     "solver", "multiobjective", default=False
-                )
+                ),
+                "goal_programming": {
+                    "optimize_f1": Config.get_nested(
+                        "solver", "goal_programming", "optimize_f1", default=True
+                    )
+                },
             },
             "postprocessing": {
                 "build_target": Config.get_nested(

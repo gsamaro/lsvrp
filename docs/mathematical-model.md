@@ -858,6 +858,70 @@ Validação feita:
 
 A opção é controlada por `solver.aggregate_vehicles` em `config/config.json`; um valor explícito `aggregate_vehicles` no mapa de dados tem precedência, como em `strengthened_bounds`. `applied_features["aggregate_vehicles"]` registra o valor efetivo.
 
+## Rotas não direcionadas (`solver.symmetric_routes`)
+
+### Motivação
+
+A matriz `a_{ik}` é simétrica em todas as instâncias PRP 1–30 de 5, 10 e 20 clientes (sem exceção; a diagonal é zero e vale a desigualdade triangular). Uma rota e a sua reversa custam o mesmo, então o par de arcos `(i,k)` e `(k,i)` pode ser substituído por uma aresta. Com a opção ligada, o modelo sem índice de veículo troca `Z`, `R` por arcos e a conservação de fluxo por produto por três famílias de variáveis, todas por período `t`:
+
+- `x_{ikt}`, `i<k`: número de vezes que as rotas cruzam a aresta `{i,k}`. As arestas da planta são inteiras em `{0,1,2}` (2 é uma rota com um único cliente: ida e volta); as demais são binárias.
+- `u_{ikt}`, `i<k`: fluxo líquido de carga do nó menor para o maior, com `-C \le u \le C`.
+- `y_{kt}`, `k \ge 1`: cliente `k` visitado no período `t` (binária).
+
+### Restrições
+
+Para todo `t` e todo cliente `k`:
+
+`\sum_{i \ne k} x_{\{i,k\},t} = 2\,y_{kt}` (grau 2 se visitado),
+
+`\sum_{j<k} u_{jkt} - \sum_{j>k} u_{kjt} = \sum_p q_{pkt}` (o fluxo líquido que chega a `k` é a entrega),
+
+`|u_{ikt}| \le \tfrac{C}{2}\, x_{ikt}` (capacidade), `\sum_{k \ge 1} x_{0kt} \le 2V` (no máximo `V` saídas da planta),
+
+`\sum_p q_{pkt} \le C\,y_{kt}`, `q_{pkt} \le \bar q_{pkt}\,y_{kt}` (como em "Bounds de entrega em função de `Z`", com `y` no lugar da visita).
+
+As desigualdades de ligação `x_{0kt} \le 2 y_{kt}`, `x_{ikt} \le y_{it}`, `x_{ikt} \le y_{kt}` e `y_{kt} \le \tfrac12\sum_j x_{0jt}` (Coelho 15–17, ver abaixo) fazem parte desta formulação e são sempre criadas: sem elas o limite linear das arestas fica fraco (na instância `PRP21_C5_P3_V1_T6_S1` o modelo não fechou em 120 s; com elas, fechou em 2,9 s).
+
+Custos: `f_t^4 = f\,\tfrac12\sum_{k\ge1} x_{0kt}` e `f_t^5 = \sum_{i<k} a_{ik}\,x_{ikt}`.
+
+### Por que o fluxo líquido basta
+
+Numa rota `0 \to c_1 \to \dots \to c_r \to 0`, o fluxo de duas commodities de Baldacci, Hadjiconstantinou e Mingozzi (2004) usa `f_{ik}` (carga ainda a entregar) e `f_{ki}` (espaço vazio) com `f_{ik}+f_{ki}=C\,x_{ik}`. Escrevendo `u_{ik} = (f_{ik}-f_{ki})/2` as duas commodities viram uma só variável com sinal, e `f_{ik} = u_{ik} + C x_{ik}/2`. Somando a conservação ao longo de uma cadeia de clientes, `u_{0 c_1} + u_{0 c_r} = \sum_a q_{c_a}` e cada extremo vale no máximo `C/2`, logo a carga da rota é no máximo `C`. Para uma rota de um cliente (`x_{0c}=2`) o limite é `C`. Nenhuma outra orientação é necessária: qualquer solução inteira tem uma rota por cadeia de arestas ligada à planta.
+
+A carga por produto não aparece mais: a soma `\sum_p q_{pkt}` basta para a capacidade, e o fluxo de origem única na planta se decompõe em caminhos, de modo que `R_{pikt}` é reconstruído depois (a carga de cada arco é o que ainda falta entregar do produto `p`). Não há perda de solução nem de custo.
+
+### Tamanho
+
+Na instância de 20 clientes, 8 produtos e 12 períodos o modelo agregado direcionado tem 5.040 variáveis de arco binárias e 40.320 de fluxo `R`; o simétrico tem 2.520 de aresta (inteiras ou binárias), 2.520 de fluxo líquido e 240 de visita.
+
+### Conversões
+
+- **Entrada** (`_set_symmetric_start`): uma solução direcionada vira `x_{\{a,b\}} = Z_{ab}+Z_{ba}`, `y_k = 1` nos clientes das rotas e `u_{ik} = \sum_{(a\to b)\in\{i,k\}} \pm(g_{ab} - C/2)`, com `g_{ab}` a carga que o arco `a \to b` leva (entregas de `b` em diante) e sinal `+` quando `a<b`. A carga vem das entregas `Q`, não de `R`.
+- **Saída** (`_symmetric_arcs`): as arestas viram rotas (`edge_walks`), orientadas com o menor índice de cliente primeiro; `Z`, `R` e `Q` voltam no formato direcionado e o resto do pipeline (corte de ciclos desconectados, expansão por veículo, auditoria) não percebe a mudança. Ciclos sem a planta (carga zero) são emitidos como ciclos e removidos como antes. Na relaxação linear de `build_target` cada aresta vira meio arco em cada sentido, o que preserva `f_t^4` e `f_t^5`.
+
+### Escopo e limites
+
+- Vale só com `solver.aggregate_vehicles` ligado e só no MIP completo e na relaxação de `build_target`. As etapas da matheurística (`arc_order`, `routing_profile`, `fixed_plan`) mantêm os arcos direcionados e o PSO e a matheurística não mudam.
+- Exige `a_{ik}` simétrica (senão lança `ValueError`). Os cortes de capacidade arredondada por callback (`rounded_capacity_inequalities`) são ignorados com um aviso. HC1/VC já eram dispensados.
+- Valores ótimos: iguais ao modelo direcionado nos testes automáticos e em três instâncias de produção resolvidas até a otimalidade (`PRP1_C5`, `PRP21_C5`, multiobjetivo em `PRP1_C5`); em `PRP1_C10` os dois modelos terminaram o limite de 120 s com o mesmo incumbente, sem fechar o gap. O limite inferior do LP e o tempo de prova podem diferir entre os modelos (em `PRP1_C10` o limite do direcionado ficou acima em 120 s); a opção é `false` por padrão até a comparação no cluster.
+
+## Chave `optimize_f1`
+
+Com `solver.goal_programming.optimize_f1 = false` e `solver.multiobjective = true`, o custo de produção `f^1` sai do critério. Sem atraso, a produção total de cada produto não pode ficar abaixo de
+
+`N_p = \max\left(0,\ \sum_{i} \max(0,\ \sum_t d_{pit} - I_{pi0}) - I_{p00}\right)`
+
+(cada cliente só consome o que chega a ele; o estoque inicial da planta cobre parte do total). Com `c_p` por produto e não por período, o custo `f^1` de um plano sem desperdício é `\sum_p c_p N_p`, constante. Nas três instâncias testadas (`PRP1_C5`, `PRP21_C5`, `PRP1_C10`) esse valor coincide com o `f^1` do ótimo de custo total.
+
+Sem `f^1` no critério, produzir a mais deixa de custar enquanto `f^3` fica abaixo da meta (os desvios são só positivos). Por isso, com a chave desligada, o modelo acrescenta `\sum_t x_{pt} = N_p` para cada produto (`createMinimumProduction`), exceto quando o plano de produção já está fixo (`fixed_plan`). Dado qualquer plano viável, retirar das últimas entregas e da última produção o estoque que sobra no fim do horizonte mantém a viabilidade e chega a `N_p` (`trim_surplus`), então a restrição não elimina nenhum valor de objetivo alcançável.
+
+Mudanças no critério:
+
+- Pesos efetivos: `w_1 = 0` e `w_j \leftarrow w_j / \sum_{l \ge 2} w_l` para `j \ge 2`, dentro do modelo, na avaliação do critério (`objective_from_components`, usada pelo PSO e pela matheurística) e no valor inicial de `\lambda`. O vetor original continua nos resultados e no `weight_hash`.
+- O termo `p^1` e a restrição `\lambda \ge w_1 p^1/\bar b^1` perdem o peso. `p^1` continua sendo reportado como `\max(0, f^1 - b^1)`.
+- Soluções iniciais com sobra no fim do horizonte são aparadas antes de entrar como MIP start (`_without_surplus`), e as cargas dos arcos acompanham as entregas reduzidas.
+- Não vale em `build_target`: as cinco execuções monoobjetivo dos targets continuam como antes.
+
 ## Quebra de simetria entre veículos: VC + HC1
 
 ### Motivação

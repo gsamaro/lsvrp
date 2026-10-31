@@ -6,13 +6,15 @@
     "multiobjective": true,
     "strengthened_bounds": true,
     "aggregate_vehicles": true,
+    "symmetric_routes": false,
     "objective_scale": 100000.0,
     "total_time_budget": true,
     "polishing": {
       "after_seconds": null
     },
     "goal_programming": {
-      "positive_only_deviations": true
+      "positive_only_deviations": true,
+      "optimize_f1": true
     },
     "symmetry_breaking": {
       "hc1": false

@@ -25,7 +25,9 @@ from src.log.Logger import Logger
 from src.solvers._routing_common import (
     ZeroArcDict,
     aggregate_vehicle_axis,
+    directed_routes,
     drop_disconnected_arcs,
+    edge_walks,
     expand_aggregated_vehicles,
     ordered_arcs,
 )
@@ -36,8 +38,13 @@ from src.solvers._solver_common import (
     compute_delivery_upper_bounds,
     compute_inventory_upper_bounds,
     compute_production_upper_bounds,
+    effective_goal_weights,
     evaluate_configured_objective,
     goal_start_values,
+    minimum_production_totals,
+    optimize_f1_enabled,
+    solution_components,
+    trim_surplus,
 )
 from src.solvers.RoundedCapacitySeparation import (
     build_obligatory_demands,
@@ -119,11 +126,19 @@ class MultProductProdctionRoutingProblem:
         # Binary routing restricted to the forward arcs of a common customer order.
         self.arc_order = arc_order
         self._relaxation_replaced = False
+        self.symmetric_routes = self._resolve_symmetric_routes(map)
         self.aggregate_vehicles = self._resolve_aggregate_vehicles(map)
+        if self.symmetric_routes and not self._relaxed_targets():
+            self.aggregate_vehicles = True
         # Vehicle slots in the model: one fleet-wide slot when aggregated, in
         # which case the plant may be left up to ``self.v`` times per period.
-        self.v_model = 1 if self.aggregate_vehicles else self.v
-        self.departure_limit = self.v if self.aggregate_vehicles else 1
+        fleet_wide = self.aggregate_vehicles or self.symmetric_routes
+        self.v_model = 1 if fleet_wide else self.v
+        self.departure_limit = self.v if fleet_wide else 1
+        self.optimize_f1 = self._resolve_optimize_f1()
+        self.goal_weight = [
+            float(w) for w in effective_goal_weights(self.weight, self.optimize_f1)
+        ]
         all_arcs = tuple((i, k) for i in range(self.i) for k in range(self.k) if i != k)
         if routing_profile and routing_profile["mode"] == "ordered":
             base_arcs = ordered_arcs(routing_profile["order"])
@@ -233,17 +248,55 @@ class MultProductProdctionRoutingProblem:
                 ">> aggregate_vehicles ignorado nas etapas da matheurística."
             )
             return False
-        relaxed_targets = Config.get_nested(
-            "postprocessing", "build_target", default=False
-        ) and Config.get_nested(
-            "relaxed_solution", "target_use_relaxation", default=True
-        )
-        if relaxed_targets:
+        if self._relaxed_targets():
             self.log.debug(
                 ">> aggregate_vehicles ignorado na construção relaxada de targets."
             )
             return False
         return True
+
+    @staticmethod
+    def _relaxed_targets():
+        return bool(
+            Config.get_nested("postprocessing", "build_target", default=False)
+            and Config.get_nested(
+                "relaxed_solution", "target_use_relaxation", default=True
+            )
+        )
+
+    def _resolve_symmetric_routes(self, map):
+        """Decide whether routes use undirected edges instead of directed arcs.
+
+        The distances are symmetric, so a route and its reverse cost the same and
+        one variable per edge replaces the two arcs. The load travels as a signed
+        net flow per edge, bounded by half the vehicle capacity at each end of the
+        route. Only the unrestricted model uses it: the matheuristic stages fix
+        arcs, orders or plans and keep the directed formulation.
+        """
+        requested = map.get("symmetric_routes")
+        if requested is None:
+            requested = Config.get_nested("solver", "symmetric_routes", default=False)
+        if not requested:
+            return False
+        if self.routing_profile or self.fixed_plan is not None or (
+            self.arc_order is not None
+        ):
+            self.log.debug(
+                ">> symmetric_routes ignorado nas etapas restritas da matheurística."
+            )
+            return False
+        distances = np.asarray(map["a_ik"], dtype=float)
+        if not np.array_equal(distances, distances.T):
+            raise ValueError("symmetric_routes exige a matriz de distâncias simétrica")
+        return True
+
+    def _resolve_optimize_f1(self):
+        """Whether f1 enters the goal criterion; off fixes the production total."""
+        if not Config.get_nested("solver", "multiobjective", default=False):
+            return True
+        if Config.get_nested("postprocessing", "build_target", default=False):
+            return True
+        return bool(optimize_f1_enabled())
 
     def createDecisionVariables(self):
         self.model.X_p_t = self.model.continuous_var_dict(
@@ -275,30 +328,36 @@ class MultProductProdctionRoutingProblem:
                 name="Q",
             )
         )
-        self.model.R_p_v_i_k_t = ZeroArcDict(
-            self.model.continuous_var_dict(
-                (
-                    (p, v, i, k, t)
-                    for p in range(self.p)
-                    for v in range(self.v_model)
-                    for t in range(self.t)
-                    for i, k in self.arcs_by_period[t]
-                ),
-                lb=0,
-                name="R",
-            )
-        )
-        keys = [
-            (v, i, k, t)
-            for v in range(self.v_model)
-            for t in range(self.t)
-            for i, k in self.arcs_by_period[t]
-        ]
-        if self.routing_profile and self.routing_profile["mode"] == "ordered":
-            z = self.model.continuous_var_dict(keys, lb=0, ub=1, name="Z")
+        if self.symmetric_routes:
+            # Undirected edges, net flow and visits replace the arcs and the flows.
+            self.model.R_p_v_i_k_t = ZeroArcDict()
+            self.model.Z_v_i_k_t = ZeroArcDict()
+            self._create_symmetric_variables()
         else:
-            z = self.model.binary_var_dict(keys, name="Z")
-        self.model.Z_v_i_k_t = ZeroArcDict(z)
+            self.model.R_p_v_i_k_t = ZeroArcDict(
+                self.model.continuous_var_dict(
+                    (
+                        (p, v, i, k, t)
+                        for p in range(self.p)
+                        for v in range(self.v_model)
+                        for t in range(self.t)
+                        for i, k in self.arcs_by_period[t]
+                    ),
+                    lb=0,
+                    name="R",
+                )
+            )
+            keys = [
+                (v, i, k, t)
+                for v in range(self.v_model)
+                for t in range(self.t)
+                for i, k in self.arcs_by_period[t]
+            ]
+            if self.routing_profile and self.routing_profile["mode"] == "ordered":
+                z = self.model.continuous_var_dict(keys, lb=0, ub=1, name="Z")
+            else:
+                z = self.model.binary_var_dict(keys, name="Z")
+            self.model.Z_v_i_k_t = ZeroArcDict(z)
         self.eta = (
             self.model.binary_var_dict(
                 (
@@ -324,9 +383,194 @@ class MultProductProdctionRoutingProblem:
         )
         self.lambda_ = self.model.continuous_var(name="lambda")
 
+    def _create_symmetric_variables(self):
+        """Edge, net-flow and visit variables of the undirected route formulation.
+
+        ``Xe[i,k,t]`` (``i < k``) counts how many times a route crosses the edge:
+        plant edges reach 2 for a route with a single customer. ``Ue`` is the net
+        load flow from the lower to the higher node, at most half the capacity per
+        crossing, and ``Ye`` marks the visited customers.
+        """
+        self.edges = tuple(
+            (i, k) for i in range(self.i) for k in range(i + 1, self.k)
+        )
+        depot = self.model.integer_var_dict(
+            ((0, k, t) for k in range(1, self.k) for t in range(self.t)),
+            lb=0,
+            ub=2,
+            name="Xe",
+        )
+        inner = self.model.binary_var_dict(
+            ((i, k, t) for i, k in self.edges if i > 0 for t in range(self.t)),
+            name="Xe",
+        )
+        self.model.Xe_i_k_t = {**depot, **inner}
+        self.model.Ue_i_k_t = self.model.continuous_var_dict(
+            ((i, k, t) for i, k in self.edges for t in range(self.t)),
+            lb=-self.C,
+            ub=self.C,
+            name="Ue",
+        )
+        self.model.Ye_i_t = self.model.binary_var_dict(
+            ((i, t) for i in range(1, self.i) for t in range(self.t)), name="Ye"
+        )
+
+    def _route_count(self, t):
+        """Routes leaving the plant in period ``t`` (symmetric formulation)."""
+        return (
+            self.model.sum(self.model.Xe_i_k_t[0, k, t] for k in range(1, self.k)) / 2
+        )
+
+    def createSymmetricRouting(self):
+        """Degree, load-flow and capacity constraints over the undirected edges.
+
+        Customer ``k`` has two incident crossings when visited. The net flow from
+        the lower to the higher node delivers ``sum_p Q`` to every customer and is
+        bounded by ``C/2`` per crossing, which allows the two ends of a route to
+        carry at most ``C`` together: the load of a route never exceeds ``C``.
+        """
+        half = self.C / 2
+        for t in range(self.t):
+            self.model.add_constraint(
+                self.model.sum(self.model.Xe_i_k_t[0, k, t] for k in range(1, self.k))
+                <= 2 * self.departure_limit,
+                ctname=f"SYM_DEPARTURES_t_{t}",
+            )
+            for k in range(1, self.k):
+                incident = self.model.sum(
+                    self.model.Xe_i_k_t[min(i, k), max(i, k), t]
+                    for i in range(self.i)
+                    if i != k
+                )
+                self.model.add_constraint(
+                    incident == 2 * self.model.Ye_i_t[k, t],
+                    ctname=f"SYM_DEGREE_k_{k}_t_{t}",
+                )
+                net_inflow = self.model.sum(
+                    self.model.Ue_i_k_t[j, k, t] for j in range(k)
+                ) - self.model.sum(
+                    self.model.Ue_i_k_t[k, j, t] for j in range(k + 1, self.i)
+                )
+                self.model.add_constraint(
+                    net_inflow
+                    == self.model.sum(
+                        self.model.Q_p_v_i_t[p, 0, k, t] for p in range(self.p)
+                    ),
+                    ctname=f"SYM_FLOW_k_{k}_t_{t}",
+                )
+            for i, k in self.edges:
+                self.model.add_constraint(
+                    self.model.Ue_i_k_t[i, k, t] <= half * self.model.Xe_i_k_t[i, k, t],
+                    ctname=f"SYM_CAP_UP_i_{i}_k_{k}_t_{t}",
+                )
+                self.model.add_constraint(
+                    self.model.Ue_i_k_t[i, k, t] >= -half * self.model.Xe_i_k_t[i, k, t],
+                    ctname=f"SYM_CAP_DOWN_i_{i}_k_{k}_t_{t}",
+                )
+
+    def createMinimumProduction(self):
+        """Fix each product's total production at the least that serves the demand.
+
+        With f1 out of the criterion, producing more costs nothing while f3 stays
+        below its target. Without backlog a plan without waste is always reachable
+        from any feasible plan, so this loses no solution.
+        """
+        if self.optimize_f1 or self.fixed_plan is not None:
+            return False
+        totals = minimum_production_totals(ProblemData.from_map(self.data))
+        for p in range(self.p):
+            self.model.add_constraint(
+                self.model.sum(self.model.X_p_t[p, t] for t in range(self.t))
+                == float(totals[p]),
+                ctname=f"MIN_PRODUCTION_p_{p}",
+            )
+        return True
+
+    def _without_surplus(self, values):
+        """Start values without the stock left at the end of the horizon.
+
+        Needed when the production total is fixed (f1 off): a start with waste
+        would be infeasible. The loads of the arcs follow the lowered deliveries.
+        """
+        if self.optimize_f1 or self.fixed_plan is not None:
+            return values
+        if not all(name in values for name in ("X", "I", "Q")):
+            return values
+        trimmed = trim_surplus(ProblemData.from_map(self.data), values)
+        if trimmed is values:
+            return values
+        self.log.debug(">> Excedente de produção removido da solução inicial.")
+        if "R" in trimmed and "Z" in trimmed and not self.symmetric_routes:
+            trimmed["R"] = self._route_flows(trimmed["Z"], trimmed["Q"])
+        return trimmed
+
+    def _route_flows(self, z, q):
+        """Arc loads ``{(p, v, i, k, t): load}`` of the routes in ``z`` for deliveries ``q``."""
+        q = np.asarray(q, dtype=float)
+        flows = {}
+        for v in range(q.shape[1]):
+            for t in range(self.t):
+                for route in directed_routes(self._period_arcs(z, v, t)):
+                    load = q[:, v, route, t].sum(axis=1)
+                    path = [0, *route, 0]
+                    for a, b in zip(path, path[1:]):
+                        for p in range(self.p):
+                            if load[p] > 1e-9:
+                                flows[(p, v, a, b, t)] = float(load[p])
+                        if b:
+                            load = load - q[:, v, b, t]
+        return flows
+
+    @staticmethod
+    def _period_arcs(z, v, t):
+        if isinstance(z, dict):
+            return {
+                (i, k): value
+                for (vehicle, i, k, period), value in z.items()
+                if vehicle == v and period == t
+            }
+        array = np.asarray(z, dtype=float)[v, :, :, t]
+        return {(int(i), int(k)): float(array[i, k]) for i, k in np.argwhere(array > 0.5)}
+
+    def _set_symmetric_start(self, warm_start, values):
+        """Turn the directed routes of a start into edges, net flows and visits."""
+        if "Z" not in values or "Q" not in values:
+            return
+        z = aggregate_vehicle_axis("Z", values["Z"])
+        q = np.asarray(values["Q"], dtype=float).sum(axis=1)
+        edge, flow, visit = {}, {}, {}
+        for t in range(self.t):
+            if isinstance(z, dict):
+                arcs = {(i, k): value for (i, k, period), value in z.items() if period == t}
+            else:
+                arcs = {
+                    (int(i), int(k)): float(z[i, k, t])
+                    for i, k in np.argwhere(z[:, :, t] > 0.5)
+                }
+            for route in directed_routes(arcs):
+                load = q[:, route, t].sum()
+                path = [0, *route, 0]
+                for a, b in zip(path, path[1:]):
+                    key = (min(a, b), max(a, b), t)
+                    sign = 1.0 if a < b else -1.0
+                    edge[key] = edge.get(key, 0.0) + 1.0
+                    flow[key] = flow.get(key, 0.0) + sign * (load - self.C / 2)
+                    if b:
+                        load -= q[:, b, t].sum()
+                for customer in route:
+                    visit[(customer, t)] = 1.0
+        for key, variable in self.model.Xe_i_k_t.items():
+            warm_start.add_var_value(variable, edge.get(key, 0.0))
+        for key, variable in self.model.Ue_i_k_t.items():
+            warm_start.add_var_value(variable, flow.get(key, 0.0))
+        for key, variable in self.model.Ye_i_t.items():
+            warm_start.add_var_value(variable, visit.get(key, 0.0))
+
     def startVariables(self):
-        values = self.start["variables"]
+        values = self._without_surplus(self.start["variables"])
         warm_start = self.model.new_solution()
+        if self.symmetric_routes:
+            self._set_symmetric_start(warm_start, values)
         for name, mapping in (
             ("X", self.model.X_p_t),
             ("Y", self.model.Y_p_t),
@@ -337,6 +581,8 @@ class MultProductProdctionRoutingProblem:
             ("eta", self.eta),
         ):
             if name not in values:
+                continue
+            if self.symmetric_routes and name in ("R", "Z"):
                 continue
             source = (
                 values[name]
@@ -444,24 +690,33 @@ class MultProductProdctionRoutingProblem:
         ]
         self.f3 = objExpr_3
 
-        objExpr_4 = [
-            self.model.sum(
-                self.f * self.model.Z_v_i_k_t[v, 0, k, t]
-                for v in range(self.v_model)
-                for k in self.outgoing[t][0]
-            )
-            for t in range(self.t)
-        ]
+        if self.symmetric_routes:
+            objExpr_4 = [self.f * self._route_count(t) for t in range(self.t)]
+            objExpr_5 = [
+                self.model.sum(
+                    self.a_i_k[i][k] * self.model.Xe_i_k_t[i, k, t]
+                    for i, k in self.edges
+                )
+                for t in range(self.t)
+            ]
+        else:
+            objExpr_4 = [
+                self.model.sum(
+                    self.f * self.model.Z_v_i_k_t[v, 0, k, t]
+                    for v in range(self.v_model)
+                    for k in self.outgoing[t][0]
+                )
+                for t in range(self.t)
+            ]
+            objExpr_5 = [
+                self.model.sum(
+                    self.a_i_k[i][k] * self.model.Z_v_i_k_t[v, i, k, t]
+                    for v in range(self.v_model)
+                    for i, k in self.arcs_by_period[t]
+                )
+                for t in range(self.t)
+            ]
         self.f4 = objExpr_4
-
-        objExpr_5 = [
-            self.model.sum(
-                self.a_i_k[i][k] * self.model.Z_v_i_k_t[v, i, k, t]
-                for v in range(self.v_model)
-                for i, k in self.arcs_by_period[t]
-            )
-            for t in range(self.t)
-        ]
         self.f5 = objExpr_5
 
         objExpr = (
@@ -494,19 +749,19 @@ class MultProductProdctionRoutingProblem:
                         self.alpha * self.lambda_
                         + self.model.sum(
                             +(1 - self.alpha)
-                            * (self.weight[0] * self.positive[0, t])
+                            * (self.goal_weight[0] * self.positive[0, t])
                             / self.new_targets[t]["f1_target"]
                             + (1 - self.alpha)
-                            * (self.weight[1] * self.positive[1, t])
+                            * (self.goal_weight[1] * self.positive[1, t])
                             / self.new_targets[t]["f2_target"]
                             + (1 - self.alpha)
-                            * (self.weight[2] * self.positive[2, t])
+                            * (self.goal_weight[2] * self.positive[2, t])
                             / self.new_targets[t]["f3_target"]
                             + (1 - self.alpha)
-                            * (self.weight[3] * self.positive[3, t])
+                            * (self.goal_weight[3] * self.positive[3, t])
                             / self.new_targets[t]["f4_target"]
                             + (1 - self.alpha)
-                            * (self.weight[4] * self.positive[4, t])
+                            * (self.goal_weight[4] * self.positive[4, t])
                             / self.new_targets[t]["f5_target"]
                             for t in range(self.t)
                         )
@@ -714,6 +969,30 @@ class MultProductProdctionRoutingProblem:
             coelho_inequalities = Config.get_nested(
                 "solver", "coelho_inequalities", default=False
             )
+        if self.symmetric_routes:
+            # Part of the undirected formulation: they tie each edge to the visits of
+            # its ends and, without them, the linear bound of the edges is weak.
+            for t in range(self.t):
+                routes = self._route_count(t)
+                for i in range(1, self.i):
+                    visit = self.model.Ye_i_t[i, t]
+                    self.model.add_constraint(
+                        self.model.Xe_i_k_t[0, i, t] <= 2 * visit,
+                        ctname=f"COELHO_15_i_{i}_t_{t}",
+                    )
+                    self.model.add_constraint(
+                        visit <= routes, ctname=f"COELHO_17_i_{i}_t_{t}"
+                    )
+                for i, k in self.edges:
+                    if i == 0:
+                        continue
+                    for node in (i, k):
+                        self.model.add_constraint(
+                            self.model.Xe_i_k_t[i, k, t] <= self.model.Ye_i_t[node, t],
+                            ctname=f"COELHO_16_i_{i}_k_{k}_node_{node}_t_{t}",
+                        )
+            return True
+
         if not coelho_inequalities:
             return False
 
@@ -817,15 +1096,15 @@ class MultProductProdctionRoutingProblem:
         for t in range(self.t):
             self.model.add_constraints(
                 [
-                    self.weight[0] * self.positive[0, t]
+                    self.goal_weight[0] * self.positive[0, t]
                     <= self.lambda_ * self.new_targets[t]["f1_target"],
-                    self.weight[1] * self.positive[1, t]
+                    self.goal_weight[1] * self.positive[1, t]
                     <= self.lambda_ * self.new_targets[t]["f2_target"],
-                    self.weight[2] * self.positive[2, t]
+                    self.goal_weight[2] * self.positive[2, t]
                     <= self.lambda_ * self.new_targets[t]["f3_target"],
-                    self.weight[3] * self.positive[3, t]
+                    self.goal_weight[3] * self.positive[3, t]
                     <= self.lambda_ * self.new_targets[t]["f4_target"],
-                    self.weight[4] * self.positive[4, t]
+                    self.goal_weight[4] * self.positive[4, t]
                     <= self.lambda_ * self.new_targets[t]["f5_target"],
                 ]
             )
@@ -873,6 +1152,9 @@ class MultProductProdctionRoutingProblem:
                 for t in range(self.t)
             ]
             result[10] = self.model.solution.get_value(self.lambda_)
+            if not self.optimize_f1:
+                for t in range(self.t):
+                    result[6][t][0] = self._f1_deviation(t)
         if self._relaxation_replaced:
             # Target generation still exports fractional arc/setup values.
             result[0] = values["Z"].transpose(3, 0, 1, 2).tolist()
@@ -884,6 +1166,14 @@ class MultProductProdctionRoutingProblem:
             getattr(self, "new_targets", None),
         ]
         return tuple(result)
+
+    def _f1_deviation(self, t):
+        """Deviation of f1 above its target in period ``t``.
+
+        f1 has no weight, so the model leaves ``p1`` free above its lower bound.
+        """
+        target = self.new_targets[t]["f1_target"]
+        return max(0.0, float(self.model.solution.get_value(self.f1[t])) - target)
 
     def get_snapshot(self):
         # Physical states are linear in nodes; sparse arc maps avoid R/Z tensors.
@@ -902,20 +1192,23 @@ class MultProductProdctionRoutingProblem:
         ):
             for key, variable in mapping.items():
                 values[name][key] = solution.get_value(variable)
-        for name, mapping in (
-            ("R", self.model.R_p_v_i_k_t),
-            ("Z", self.model.Z_v_i_k_t),
-        ):
-            values[name] = {}
-            for key, variable in mapping.items():
-                value = float(solution.get_value(variable))
-                if value != 0:
-                    values[name][key] = value
+        if self.symmetric_routes:
+            values["R"], values["Z"] = self._symmetric_arcs(values["Q"])
+        else:
+            for name, mapping in (
+                ("R", self.model.R_p_v_i_k_t),
+                ("Z", self.model.Z_v_i_k_t),
+            ):
+                values[name] = {}
+                for key, variable in mapping.items():
+                    value = float(solution.get_value(variable))
+                    if value != 0:
+                        values[name][key] = value
         if self.eta:
             values["eta"] = np.zeros((self.v, self.i, self.t), dtype=float)
             for key, variable in self.eta.items():
                 values["eta"][key] = solution.get_value(variable)
-        if not self.eta:
+        if not self.eta and not (self.symmetric_routes and self._relaxation_replaced):
             # The model allows cycles among customers without delivery, detached
             # from the plant. They carry nothing and only add F5: drop them here,
             # before the route audit, which rejects any arc outside a plant route.
@@ -931,7 +1224,48 @@ class MultProductProdctionRoutingProblem:
         if self.aggregate_vehicles:
             # Output keeps one slice per vehicle: split the fleet-wide routes.
             values = expand_aggregated_vehicles(values, self.v)
+        elif self.symmetric_routes:
+            # Relaxed targets: one fleet-wide slot, padded to the vehicle axis.
+            padded = np.zeros((self.p, self.v, self.i, self.t), dtype=float)
+            padded[:, : values["Q"].shape[1]] = values["Q"]
+            values["Q"] = padded
         return values
+
+    def _symmetric_arcs(self, q):
+        """Directed arcs and loads, ``(R, Z)``, from the edge solution.
+
+        Each route gets an orientation (first customer with the smaller index) and
+        the load of an arc is what is still to be delivered. The linear relaxation
+        has no routes to orient: every edge becomes half an arc in each direction,
+        which keeps the transport costs.
+        """
+        solution = self.model.solution
+        flows, arcs = {}, {}
+        for t in range(self.t):
+            edges = {
+                (i, k): float(solution.get_value(self.model.Xe_i_k_t[i, k, t]))
+                for i, k in self.edges
+            }
+            if self._relaxation_replaced:
+                for (i, k), value in edges.items():
+                    if value > 1e-9:
+                        arcs[(0, i, k, t)] = arcs[(0, k, i, t)] = value / 2
+                continue
+            routes, cycles = edge_walks(edges)
+            for route in routes:
+                load = q[:, 0, route, t].sum(axis=1)
+                path = [0, *route, 0]
+                for a, b in zip(path, path[1:]):
+                    arcs[(0, a, b, t)] = 1.0
+                    for p in range(self.p):
+                        if load[p] > 1e-9:
+                            flows[(p, 0, a, b, t)] = float(load[p])
+                    if b:
+                        load = load - q[:, 0, b, t]
+            for cycle in cycles:
+                for a, b in zip(cycle, cycle[1:] + cycle[:1]):
+                    arcs[(0, a, b, t)] = 1.0
+        return flows, arcs
 
     def get_variables(self):
         from src.solvers._routing_common import materialize_snapshot
@@ -957,6 +1291,8 @@ class MultProductProdctionRoutingProblem:
             ),
             "lambda": np.asarray(self.model.solution.get_value(self.lambda_)),
         }
+        if not self.optimize_f1:
+            auxiliary["P"][0] = [self._f1_deviation(t) for t in range(self.t)]
         if self.negative:
             auxiliary["N"] = np.asarray(
                 [
@@ -970,6 +1306,8 @@ class MultProductProdctionRoutingProblem:
         return auxiliary
 
     def _visit_expression(self, v, i, t):
+        if self.symmetric_routes:
+            return self._route_count(t) if i == 0 else self.model.Ye_i_t[i, t]
         return (
             self.eta[v, i, t]
             if self.eta
@@ -1119,6 +1457,17 @@ class MultProductProdctionRoutingProblem:
                         else rebound
                     ),
                 )
+            for attr in ("Xe_i_k_t", "Ue_i_k_t", "Ye_i_t"):
+                source = getattr(original_model, attr, None)
+                if source is not None:
+                    setattr(
+                        relaxed,
+                        attr,
+                        {
+                            key: relaxed.get_var_by_name(variable.name)
+                            for key, variable in source.items()
+                        },
+                    )
             self.eta = {
                 key: relaxed.get_var_by_name(variable.name)
                 for key, variable in self.eta.items()
@@ -1412,6 +1761,11 @@ class MultProductProdctionRoutingProblem:
     def _install_rounded_capacity_callback(self):
         if not self._rounded_capacity_enabled():
             return False
+        if self.symmetric_routes:
+            self.log.warning(
+                ">> rounded_capacity_inequalities ignorado com symmetric_routes."
+            )
+            return False
         try:
             from cplex.callbacks import UserCutCallback
 
@@ -1511,18 +1865,22 @@ class MultProductProdctionRoutingProblem:
         self.log.debug("Produção criado")
         self.createDelimitMaximumCapacityItemsAtPlant()
         self.log.debug("Capacidade maxima planta criado")
-        self.createVehiclePreventTransshipmentIntermediateNodes()
-        self.log.debug("Transshipment criado")
-        self.createEliminationSubroutes()
-        self.log.debug("Subrotas criado")
-        self.createVehicleLoadCapacityDelimited()
-        self.log.debug("Capacidade maxima veículo criado")
-        if self.routing_profile:
-            self.createRouteVisitDegrees()
+        if self.symmetric_routes:
+            self.createSymmetricRouting()
+            self.log.debug("Rotas simétricas criadas")
         else:
-            self.createImposeMostOneRouteEachVehicle()
-            self.createEnsureRoutesOnlyPlant()
-            self.createVehicleMostVisitCustomerEachPeriod()
+            self.createVehiclePreventTransshipmentIntermediateNodes()
+            self.log.debug("Transshipment criado")
+            self.createEliminationSubroutes()
+            self.log.debug("Subrotas criado")
+            self.createVehicleLoadCapacityDelimited()
+            self.log.debug("Capacidade maxima veículo criado")
+            if self.routing_profile:
+                self.createRouteVisitDegrees()
+            else:
+                self.createImposeMostOneRouteEachVehicle()
+                self.createEnsureRoutesOnlyPlant()
+                self.createVehicleMostVisitCustomerEachPeriod()
         if self.fixed_plan is not None and not self.routing_profile:
             self.createFixedPlanConstraints()
         self.applied_features = {
@@ -1530,6 +1888,8 @@ class MultProductProdctionRoutingProblem:
             "aggregate_vehicles": self.aggregate_vehicles,
             "positive_only_deviations": self.positive_only_deviations,
             "objective_scale": self.objective_scale,
+            "symmetric_routes": self.symmetric_routes,
+            "optimize_f1": self.optimize_f1,
             "routing_profile": (
                 self.routing_profile["mode"] if self.routing_profile else "full"
             ),
@@ -1544,6 +1904,7 @@ class MultProductProdctionRoutingProblem:
         )
         if self.applied_features["coelho_inequalities"]:
             self.log.debug("Desigualdades lógicas de Coelho (15)-(17) criadas")
+        self.applied_features["minimum_production"] = self.createMinimumProduction()
         self.applied_features["hc1"] = self.createVehicleSymmetryBreaking()
         if self.applied_features["hc1"]:
             self.log.debug("Quebra de simetria VC + HC1 criada")

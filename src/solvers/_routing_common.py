@@ -223,6 +223,67 @@ def expand_aggregated_vehicles(variables, num_vehicles, threshold=0.5):
     return result
 
 
+def edge_walks(edges, threshold=0.5):
+    """Routes and detached cycles of one period of an undirected edge solution.
+
+    ``edges`` maps ``(i, k)`` with ``i < k`` to the edge value; a plant edge may
+    be used twice (a route with a single customer). Each route is oriented so that
+    its first customer has the smaller index. Returns ``(routes, cycles)``, where
+    each route lists its customers and each cycle lists the nodes of a loop that
+    never reaches the plant.
+    """
+    adjacency = {}
+    for (i, k), value in sorted(edges.items()):
+        if value <= threshold:
+            continue
+        for _ in range(int(round(value))):
+            adjacency.setdefault(i, []).append(k)
+            adjacency.setdefault(k, []).append(i)
+    for neighbours in adjacency.values():
+        neighbours.sort()
+
+    def step(node):
+        following = adjacency[node].pop(0)
+        adjacency[following].remove(node)
+        return following
+
+    routes = []
+    while adjacency.get(0):
+        node = step(0)
+        route = [node]
+        while adjacency[node]:
+            node = step(node)
+            if node == 0:
+                break
+            route.append(node)
+        if route[0] > route[-1]:
+            route.reverse()
+        routes.append(route)
+    cycles = []
+    for start in sorted(node for node in adjacency if node != 0):
+        while adjacency[start]:
+            cycle, node = [start], step(start)
+            while node != start and adjacency[node]:
+                cycle.append(node)
+                node = step(node)
+            cycles.append(cycle)
+    return routes, cycles
+
+
+def directed_routes(arcs, threshold=0.5):
+    """Routes (customer lists) of the directed arcs ``{(i, k): value}`` of one period."""
+    used = {arc for arc, value in arcs.items() if value > threshold}
+    successor = {i: k for i, k in used if i != 0}
+    routes = []
+    for start in sorted(k for i, k in used if i == 0):
+        route, node = [], start
+        while node != 0 and node not in route:
+            route.append(node)
+            node = successor.get(node, 0)
+        routes.append(route)
+    return routes
+
+
 def compact_solution(problem, variables):
     routes = routes_from_z(
         variables["Z"], shape=(problem.v, problem.i, problem.k, problem.t)
