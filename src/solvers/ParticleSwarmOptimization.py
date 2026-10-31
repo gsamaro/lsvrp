@@ -118,6 +118,7 @@ class ParticleSwarmOptimization:
         self.global_best_cost = float("inf")
         self.solverGurobi = None
         self._selected_exact_result = None
+        self._exact_outcome = None
         self.time = 0
         self.solCount = 0
         self._population_history = []
@@ -1088,6 +1089,9 @@ class ParticleSwarmOptimization:
             if selected == "pso":
                 exact.update(
                     exact_status=exact.get("status"),
+                    exact_validation_errors=list(
+                        (self._exact_outcome or {}).get("validation_errors", [])
+                    ),
                     status=(
                         "heuristic_complete"
                         if self.global_best_solution is not None
@@ -1155,20 +1159,35 @@ class ParticleSwarmOptimization:
         self._selected_exact_result = False
         standalone = bool(self.pso_config["return_heuristic_result_without_cplex"])
         use_as_mip_start = bool(self.pso_config["use_as_mip_start"])
+        self._exact_outcome = None
         if self.solverGurobi is not None and not standalone and use_as_mip_start:
             result = self.solverGurobi.getResults()
+            outcome = {
+                "has_solution": bool(result[11]),
+                "objective": result[7] if result[11] else None,
+                "gap": result[8] if result[11] else None,
+                "bound": result[14],
+                "validation_errors": [],
+                "configured_objective": None,
+                "selected": False,
+            }
+            self._exact_outcome = outcome
             if result[11]:
                 candidate = result_variables(self.problem, result)
                 report = validate_variables(self.problem, candidate)
-                if report["feasible"] and (
-                    self.global_best_solution is None
-                    or evaluate_configured_objective(
+                outcome["validation_errors"] = report["violations"]
+                if report["feasible"]:
+                    outcome["configured_objective"] = evaluate_configured_objective(
                         self.problem, candidate, self.objective_config
                     )
-                    <= self.global_best_cost + 1e-8
+                if report["feasible"] and (
+                    self.global_best_solution is None
+                    or outcome["configured_objective"] <= self.global_best_cost + 1e-8
                 ):
+                    outcome["selected"] = True
                     self._selected_exact_result = True
                     return result
+            self._log_exact_discarded(outcome)
             # A missing or worse exact incumbent cannot erase the PSO best.
 
         if self.global_best_solution is None:
@@ -1188,6 +1207,55 @@ class ParticleSwarmOptimization:
             config=self.objective_config,
             solution_count=int(self.global_best_solution is not None),
         )
+
+    def _log_exact_discarded(self, outcome):
+        """Say why the MIP result was not used: the heuristic is kept without a trace."""
+        task = (
+            f"{self.data.get('file')} weight={self.data.get('weight')} "
+            f"alpha={self.data.get('alpha')}"
+        )
+        if not outcome["has_solution"]:
+            self.log.info(f"MIP sem solução; mantida a solução do PSO ({task}).")
+        elif outcome["validation_errors"]:
+            self.log.warning(
+                f"Solução do MIP rejeitada na validação; mantida a solução do PSO "
+                f"({task}): {outcome['validation_errors']} "
+                f"objective={outcome['objective']} gap={outcome['gap']}"
+            )
+        else:
+            self.log.info(
+                f"Solução do MIP não melhora a do PSO; mantida a do PSO ({task}): "
+                f"objective={outcome['configured_objective']} "
+                f"pso={self.global_best_cost} gap={outcome['gap']}"
+            )
+
+    def get_artifacts(self):
+        """Stage record of the MIP started from the PSO, for ``write_artifacts``."""
+        outcome = getattr(self, "_exact_outcome", None)
+        if outcome is None:
+            return None
+        exact = self.solverGurobi
+        details = getattr(getattr(exact, "model", None), "solve_details", None)
+        record = {
+            "stage": "exact",
+            "status": str(getattr(details, "status", None)),
+            "elapsed_seconds": getattr(exact, "time", None),
+            "gap_scope": "unrestricted",
+            **outcome,
+        }
+        return {
+            "stages": [record],
+            "variables": [],
+            "metadata": {
+                "selected_stage": "exact" if outcome["selected"] else "pso",
+                "total_seconds": self.time,
+                "instance_file": self.data.get("file"),
+                "commit_hash": self.data.get("commit_hash"),
+                "config_hash": self.data.get("config_hash"),
+                "weight": self.data.get("weight"),
+                "alpha": self.data.get("alpha"),
+            },
+        }
 
     def terminate(self):
         if self.solverGurobi is not None and hasattr(self.solverGurobi, "terminate"):

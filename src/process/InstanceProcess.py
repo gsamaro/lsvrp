@@ -185,12 +185,13 @@ class InstanceProcess:
                 NEW_TARGETS,
                 log=self.log,
             )
-            if hasattr(instance, "get_artifacts"):
+            artifacts = (
+                instance.get_artifacts() if hasattr(instance, "get_artifacts") else None
+            )
+            if artifacts is not None:
                 from src.process.MatheuristicResults import write_artifacts
 
-                write_artifacts(
-                    self.output, data, instance.get_artifacts(), self.task_context
-                )
+                write_artifacts(self.output, data, artifacts, self.task_context)
             self.log.debug("Resultados gerados.")
             self.isFinished = True
         finally:

@@ -37,6 +37,10 @@ def arc_items(values):
     return ((tuple(key), float(array[tuple(key)])) for key in np.argwhere(array != 0))
 
 
+# Errors of ``routes_from_z`` after which the arcs cannot be read at all.
+UNUSABLE_ARC_ERRORS = ("Dimensões de Z inválidas", "Índice de arco inválido")
+
+
 def routes_from_z(z, tolerance=1e-6, shape=None):
     """Read dense output or a sparse {(v,i,k,t):value} snapshot."""
     shape = shape if isinstance(z, dict) else np.asarray(z).shape
@@ -313,14 +317,20 @@ def validate_variables(problem, variables, allowed_arcs=None, tolerance=1e-6):
             return {"feasible": False, "violations": [f"{name}: dimensões inválidas"]}
         if not np.all(np.isfinite(array)) or np.any(array < -tolerance):
             violations.append(f"{name}: valor não finito ou negativo")
+    arc_shape = (problem.v, problem.i, problem.k, problem.t)
     try:
-        routes = routes_from_z(
-            variables["Z"],
-            tolerance,
-            shape=(problem.v, problem.i, problem.k, problem.t),
-        )
+        routes = routes_from_z(variables["Z"], tolerance, shape=arc_shape)
     except ValueError as error:
-        return {"feasible": False, "violations": violations + [str(error)]}
+        # A route defect (cycle, degree, non-binary arc) does not stop the audit: the
+        # remaining checks do not need the routes and may report further violations.
+        z_value = variables["Z"]
+        unusable = str(error) in UNUSABLE_ARC_ERRORS or (
+            not isinstance(z_value, dict) and np.shape(z_value) != arc_shape
+        )
+        if unusable:
+            return {"feasible": False, "violations": violations + [str(error)]}
+        violations.append(str(error))
+        routes = None
     x, y, stock, q = (np.asarray(variables[k]) for k in ("X", "Y", "I", "Q"))
     if np.any(y > 1 + tolerance) or not np.allclose(
         y, np.rint(y), atol=tolerance, rtol=0
@@ -391,14 +401,14 @@ def validate_variables(problem, variables, allowed_arcs=None, tolerance=1e-6):
             violations.append("Capacidade/ligação carga-arco")
             break
     expected_eta = np.zeros((problem.v, problem.i, problem.t))
-    for t, period in enumerate(routes):
+    for t, period in enumerate(routes or ()):
         for v, route in enumerate(period):
             if route:
                 expected_eta[v, [0, *route], t] = 1
             unvisited = set(range(1, problem.i)) - set(route)
             if unvisited and np.any(q[:, v, sorted(unvisited), t] > tolerance):
                 violations.append("Entrega sem visita")
-    if "eta" in variables and (
+    if routes is not None and "eta" in variables and (
         np.asarray(variables["eta"]).shape != expected_eta.shape
         or not np.allclose(variables["eta"], expected_eta, atol=tolerance, rtol=0)
     ):

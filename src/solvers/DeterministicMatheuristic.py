@@ -228,6 +228,11 @@ class DeterministicMatheuristic:
             record["features"] = getattr(stage, "applied_features", {})
             telemetry = stage.get_telemetry()
             record["rounded_capacity"] = telemetry.get("rounded_capacity", {})
+            if has_incumbent and values is None:
+                # The rejected incumbent is not kept; its objective stays on record.
+                record["rejected_objective"] = stage._unscale(
+                    float(stage.model.objective_value)
+                )
             if values is not None:
                 costs = solution_components(self.problem, values)
                 record.update(
@@ -342,6 +347,14 @@ class DeterministicMatheuristic:
                     candidate_score = (
                         self._score(values)[0] if report["feasible"] else None
                     )
+                    if not report["feasible"]:
+                        self.log.warning(
+                            f"{use_as}: solução rejeitada na validação; mantida a do "
+                            f"estágio {self.selected_stage} "
+                            f"({self.data.get('file')} weight={self.data.get('weight')} "
+                            f"alpha={self.data.get('alpha')}): {report['violations']} "
+                            f"objective={result[7]} gap={result[8]}"
+                        )
                     if report["feasible"] and (
                         self.best is None
                         or candidate_score <= self._score(self.best)[0] + 1e-8

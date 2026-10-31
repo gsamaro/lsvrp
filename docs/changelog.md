@@ -6,8 +6,12 @@
 
 - The solution extracted from the unrestricted MIP no longer carries cycles among customers detached from the plant. The model has no constraint tying an arc to the plant, so a cycle without deliveries satisfies every constraint (with or without a circulating load), and CPLEX returns it when it is free under goal programming (F5 below its target). The route audit rejected those incumbents ("Rota desconectada da planta"), which discarded the MIP result in 318 of 900 `matheuristic_mip_polish` tasks of the first production run (all with this error; `pso_mip_polish` discarded 342 of 900 through the same audit, but its stage records were not kept to confirm the error). `get_snapshot` now drops these arcs and the load on them (`drop_disconnected_arcs`); the solution stays feasible and F5 only decreases. `getResults` reports the configured objective, deviations and `lambda` of the cleaned solution. The audit itself is unchanged.
 
+- `validate_variables` no longer returns at the first routing defect (cycle, degree, non-binary arc): it reports it and still runs the quantity, stock, flow, capacity and arc-order checks, so a rejection lists every violation. Defects that make the arcs unreadable (wrong dimensions, invalid index) still return at once.
+- A MIP result discarded in favour of the heuristic is no longer silent. `ParticleSwarmOptimization.getResults` logs a warning with the task (file, weight, alpha), the violations, the MIP objective and its gap when the validation rejects it, and an info line when it is valid but not better. `get_artifacts` writes an `exact` stage record (`has_solution`, `selected`, `objective`, `gap`, `bound`, `validation_errors`) through `write_artifacts`, and the telemetry carries `exact_validation_errors`. `DeterministicMatheuristic` logs a warning when the `exact_start`/`pso_start` result is rejected, and a rejected restricted-stage incumbent keeps its objective in `rejected_objective` of the stage record.
+
 ### Notes
 
+- Results (`*_fobs.xlsx`, `parquets/`, `union_results`) keep their columns; the new records are in `<instance>/matheuristic/*.stages.parquet`, which `pso_mip_polish` now also writes (one `exact` row per task). `InstanceProcess` skips `write_artifacts` when `get_artifacts` returns `None`.
 - A task whose MIP result was a rejected incumbent now returns that incumbent (cleaned), so its objective can be lower than before and the gap is filled in; no model constraint, variable or CPLEX parameter changed.
 
 ## 2026-10-20
