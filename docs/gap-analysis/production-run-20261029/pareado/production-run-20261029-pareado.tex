@@ -1,7 +1,7 @@
 % Versão didática e pareada do relatório da execução de produção de 29/10/2026 (DATA_PRP_20C).
 % Só entram as tarefas que podem ser pareadas entre os três métodos.
-% Tabelas e figuras: docs/gap-analysis/generate_production_run_paired_report.py
-%   (gera generated/production-run-pareado/*.tex e figures/production-run-pareado-*.pdf).
+% Tabelas e figuras: docs/gap-analysis/production-run-20261029/pareado/generate_report.py
+%   (gera generated/*.tex e figures/production-run-pareado-*.pdf).
 
 \documentclass[11pt,a4paper]{article}
 
@@ -20,9 +20,9 @@
 \hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue}
 \setlength{\parskip}{0.4em}
 
-\input{generated/production-run-pareado/numbers.tex}
-\input{generated/production-run-pareado/numbers_bound.tex}
-\input{generated/production-run-pareado/numbers_ganho.tex}
+\input{generated/numbers.tex}
+\input{generated/numbers_bound.tex}
+\input{generated/numbers_ganho.tex}
 
 \newcommand{\FO}{\mathrm{FO}}
 
@@ -97,7 +97,7 @@ tarefa e o modelo sem índice de veículo):
 \begin{table}[H]
   \centering
   \small
-  \input{generated/production-run-pareado/tab_execucao.tex}
+  \input{generated/tab_execucao.tex}
   \caption{Tarefas com resultado e tarefas analisadas em cada método.}
   \label{tab:execucao}
 \end{table}
@@ -128,7 +128,7 @@ demais tarefas está sendo investigada à parte.
 \begin{table}[H]
   \centering
   \small
-  \input{generated/production-run-pareado/tab_fo_dist.tex}
+  \input{generated/tab_fo_dist.tex}
   \caption{FO por método nas \nPaired{} tarefas analisadas (menor é melhor).}
   \label{tab:fo-dist}
 \end{table}
@@ -162,12 +162,12 @@ a diferença relativa do primeiro método em relação ao segundo. Se $d$ é
 \emph{negativo}, o primeiro método é melhor naquela tarefa; se é positivo, é
 pior; $d = 0{,}01$ significa 1\% pior.
 
-\paragraph{Exemplo.} Na tarefa \input{generated/production-run-pareado/exemplo_tarefa.tex} os três métodos obtiveram:
+\paragraph{Exemplo.} Na tarefa \input{generated/exemplo_tarefa.tex} os três métodos obtiveram:
 
 \begin{table}[H]
   \centering
   \small
-  \input{generated/production-run-pareado/tab_exemplo.tex}
+  \input{generated/tab_exemplo.tex}
   \caption{Exemplo de uma tarefa. A coluna da direita é $d$ em relação ao método C.}
   \label{tab:exemplo}
 \end{table}
@@ -206,7 +206,7 @@ ainda é preciso julgar se é grande o bastante para importar).
 \begin{table}[H]
   \centering
   \scriptsize
-  \input{generated/production-run-pareado/tab_pareada.tex}
+  \input{generated/tab_pareada.tex}
   \caption{Comparação pareada da FO nas \nPaired{} tarefas analisadas.}
   \label{tab:pareada}
 \end{table}
@@ -259,7 +259,7 @@ preta marca $d=0$: \emph{à esquerda}, o primeiro método é melhor; \emph{à di
 \begin{table}[H]
   \centering
   \small
-  \input{generated/production-run-pareado/tab_fig_leitura.tex}
+  \input{generated/tab_fig_leitura.tex}
   \caption{Leitura numérica das curvas da Figura~\ref{fig:fo-diff} em $x=-5\%$, $0$, $+5\%$ e
   $+10\%$ (fração acumulada de tarefas). A coluna $x\le 0$ inclui empates.}
   \label{tab:fig-leitura}
@@ -278,7 +278,7 @@ um ou outro ganha por alguns pontos percentuais.
 \begin{table}[H]
   \centering
   \small
-  \input{generated/production-run-pareado/tab_fo_peso.tex}
+  \input{generated/tab_fo_peso.tex}
   \caption{FO média por vetor de pesos e por método, nas tarefas analisadas.}
   \label{tab:fo-peso}
 \end{table}
@@ -299,7 +299,7 @@ a confirmar, não como um efeito estabelecido.
 \begin{table}[H]
   \centering
   \small
-  \input{generated/production-run-pareado/tab_fo_classe.tex}
+  \input{generated/tab_fo_classe.tex}
   \caption{FO média por classe de instância e por método, nas tarefas analisadas.}
   \label{tab:fo-classe}
 \end{table}
@@ -314,7 +314,7 @@ cada classe a diferença entre métodos é pequena (no máximo cerca de 1,8\%).
 \begin{table}[H]
   \centering
   \small
-  \input{generated/production-run-pareado/tab_componentes.tex}
+  \input{generated/tab_componentes.tex}
   \caption{Média dos totais de cada componente de custo nas tarefas analisadas.}
   \label{tab:componentes}
 \end{table}
@@ -338,7 +338,7 @@ compensam, e por isso a FO total não muda.
 \begin{table}[H]
   \centering
   \small
-  \input{generated/production-run-pareado/tab_ganho_mip.tex}
+  \input{generated/tab_ganho_mip.tex}
   \caption{Melhora relativa da FO do MIP sobre a solução do estágio restrito da
   matheurística (método B), por tarefa.}
   \label{tab:ganho-mip}
@@ -367,7 +367,7 @@ de B são ambos do MIP.
 \begin{table}[H]
   \centering
   \scriptsize
-  \resizebox{\textwidth}{!}{\input{generated/production-run-pareado/tab_gap_dist.tex}}
+  \resizebox{\textwidth}{!}{\input{generated/tab_gap_dist.tex}}
   \caption{Distribuição do gap nas tarefas analisadas.}
   \label{tab:gap-dist}
 \end{table}
@@ -415,7 +415,7 @@ gap de até 55\%.
 \begin{table}[H]
   \centering
   \scriptsize
-  \resizebox{\textwidth}{!}{\input{generated/production-run-pareado/tab_gap_pareado.tex}}
+  \resizebox{\textwidth}{!}{\input{generated/tab_gap_pareado.tex}}
   \caption{Diferença do gap entre A e B, tarefa a tarefa, em pontos percentuais (p.p.).}
   \label{tab:gap-pareado}
 \end{table}
@@ -433,7 +433,7 @@ contém o zero. Os dois métodos com MIP têm, portanto, o mesmo desempenho de g
 \begin{table}[H]
   \centering
   \small
-  \input{generated/production-run-pareado/tab_bound.tex}
+  \input{generated/tab_bound.tex}
   \caption{Limite inferior, incumbente e gap médios. O limite de A é derivado do gap
   reportado (incumbente $\times(1-\text{gap})$).}
   \label{tab:bound}
@@ -453,7 +453,7 @@ gap é preciso ou melhorar a incumbente ou melhorar a formulação (para elevar 
 \begin{table}[H]
   \centering
   \scriptsize
-  \resizebox{\textwidth}{!}{\input{generated/production-run-pareado/tab_gap_peso.tex}}
+  \resizebox{\textwidth}{!}{\input{generated/tab_gap_peso.tex}}
   \caption{Gap por vetor de pesos, nas tarefas analisadas.}
   \label{tab:gap-peso}
 \end{table}
@@ -470,7 +470,7 @@ objetivo que o limite já enxerga bem. A e B se comportam da mesma forma em todo
 \begin{table}[H]
   \centering
   \scriptsize
-  \resizebox{\textwidth}{!}{\input{generated/production-run-pareado/tab_gap_classe.tex}}
+  \resizebox{\textwidth}{!}{\input{generated/tab_gap_classe.tex}}
   \caption{Gap por classe de instância, nas tarefas analisadas.}
   \label{tab:gap-classe}
 \end{table}

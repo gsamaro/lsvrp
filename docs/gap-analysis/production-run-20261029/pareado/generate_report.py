@@ -7,10 +7,10 @@ that also exist in the matheuristic-only experiment (C). Everything else is disc
 
 Run from the repository root::
 
-    poetry run python docs/gap-analysis/generate_production_run_paired_report.py \
+    poetry run python docs/gap-analysis/production-run-20261029/pareado/generate_report.py \
         --input-dir /Users/gabamaro/repos/lsvrp/out
 
-Writes LaTeX fragments to ``generated/production-run-pareado/`` and figures to ``figures/``.
+Writes LaTeX fragments to ``generated/`` and figures to ``figures/``, next to this script.
 """
 
 from __future__ import annotations
@@ -28,9 +28,9 @@ import numpy as np
 import pandas as pd
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent))
 
-from generate_production_run_report import (  # noqa: E402
+from common import (  # noqa: E402
     COLORS,
     EXPERIMENTS,
     LABELS,
@@ -43,7 +43,7 @@ from generate_production_run_report import (  # noqa: E402
     weight_label,
 )
 
-OUT_DIR = HERE / "generated" / "production-run-pareado"
+OUT_DIR = HERE / "generated"
 PAIRED_COLORS = {"AC": COLORS["A"], "BC": COLORS["B"], "AB": "#7f3c8d"}
 
 
