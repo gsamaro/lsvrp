@@ -79,6 +79,7 @@ flowchart TD
 | PSO | Construir e avaliar partículas, com suporte a bounds relaxados | `src/solvers/ParticleSwarmOptimization.py`, `src/solvers/FeasibleParticleHeuristic.py`, `src/solvers/LotSizingRelaxation.py` |
 | Resultados | Escrever métricas por período e variáveis detalhadas | `src/process/ProcessResults.py` |
 | Pós-processamento | Unir planilhas e gerar targets | `src/process/PostProcessingProcess.py` |
+| Geração de targets | Ideal, nadir por face e targets pela relaxação linear, com estado e pasta `.stale-<timestamp>`; entrada `generate_targets.py` (`--plan` não executa) e `script_targets.sh`; bloco `target_generation` da config | `src/process/TargetGenerationProcess.py`, `src/helpers/FaceNadirTargets.py`, `generate_targets.py` |
 | Relatórios | Gerar figuras Plotly e tabelas LaTeX | `scripts/generate_reports.py`, `src/reports/*.py` |
 
 ## Convenções de código

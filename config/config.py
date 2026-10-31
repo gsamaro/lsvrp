@@ -66,6 +66,28 @@ class Config:
             "target_use_relaxation": True,
         },
         "postprocessing": {"build_target": False, "output": "./out/target/"},
+        "target_generation": {
+            "instance": {"files": ["DATA_PRP_5C", "DATA_PRP_10C", "DATA_PRP_20C"]},
+            "formulation": {
+                "aggregate_vehicles": True,
+                "symmetric_routes": True,
+                "strengthened_bounds": True,
+                "coelho_inequalities": False,
+                "symmetry_breaking_hc1": False,
+            },
+            "relaxation": {"target_use_relaxation": True},
+            "weights": [
+                [1, 0, 0, 0, 0],
+                [0, 1, 0, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 0, 1, 0],
+                [0, 0, 0, 0, 1],
+            ],
+            "factor": 0.3,
+            "nadir": {"method": "face", "epsilon": 1e-6},
+            "lp": {"algorithm": "dual"},
+            "output": "./out/target/",
+        },
     }
 
     @classmethod
@@ -451,6 +473,88 @@ class Config:
             postprocessing["build_target"], "config.postprocessing.build_target"
         )
         cls._validate_path(postprocessing["output"], "config.postprocessing.output")
+        cls._validate_target_generation(configured["target_generation"])
+
+    @classmethod
+    def _validate_target_generation(cls, generation):
+        prefix = "config.target_generation"
+        files = generation["instance"]["files"]
+        if (
+            not isinstance(files, list)
+            or not files
+            or not all(isinstance(value, str) and value.strip() for value in files)
+        ):
+            raise ValueError(
+                f"{prefix}.instance.files deve ser uma lista não vazia de strings"
+            )
+        formulation = generation["formulation"]
+        for key in (
+            "aggregate_vehicles",
+            "symmetric_routes",
+            "strengthened_bounds",
+            "coelho_inequalities",
+            "symmetry_breaking_hc1",
+        ):
+            cls._validate_bool(formulation[key], f"{prefix}.formulation.{key}")
+        if formulation["symmetric_routes"] and not formulation["aggregate_vehicles"]:
+            raise ValueError(
+                f"{prefix}.formulation.symmetric_routes exige "
+                f"{prefix}.formulation.aggregate_vehicles"
+            )
+        relaxation = generation["relaxation"]
+        cls._validate_bool(
+            relaxation["target_use_relaxation"],
+            f"{prefix}.relaxation.target_use_relaxation",
+        )
+        if not relaxation["target_use_relaxation"]:
+            raise ValueError(
+                f"{prefix}.relaxation.target_use_relaxation deve ser true: o ideal e "
+                "o nadir por face são calculados sobre o LP"
+            )
+
+        weights = generation["weights"]
+        valid = (
+            isinstance(weights, list)
+            and len(weights) == 5
+            and all(
+                isinstance(row, list)
+                and len(row) == 5
+                and all(
+                    not isinstance(v, bool) and isinstance(v, (int, float))
+                    for v in row
+                )
+                and sorted(row) == [0, 0, 0, 0, 1]
+                for row in weights
+            )
+        )
+        if valid:
+            valid = sorted(row.index(1) for row in weights) == [0, 1, 2, 3, 4]
+        if not valid:
+            raise ValueError(
+                f"{prefix}.weights deve ter 5 linhas unitárias, uma para cada objetivo"
+            )
+        factor = generation["factor"]
+        if (
+            isinstance(factor, bool)
+            or not isinstance(factor, (int, float))
+            or not math.isfinite(factor)
+            or not 0 <= factor <= 1
+        ):
+            raise ValueError(f"{prefix}.factor deve estar em [0, 1]")
+        nadir = generation["nadir"]
+        if nadir["method"] not in {"face", "runs_max"}:
+            raise ValueError(f"{prefix}.nadir.method deve ser face ou runs_max")
+        epsilon = nadir["epsilon"]
+        if (
+            isinstance(epsilon, bool)
+            or not isinstance(epsilon, (int, float))
+            or not math.isfinite(epsilon)
+            or not 0 < epsilon < 1e-2
+        ):
+            raise ValueError(f"{prefix}.nadir.epsilon deve estar em (0, 0.01)")
+        if generation["lp"]["algorithm"] not in {"dual", "primal"}:
+            raise ValueError(f"{prefix}.lp.algorithm deve ser dual ou primal")
+        cls._validate_path(generation["output"], f"{prefix}.output")
 
     @staticmethod
     def _validate_bool(value, path):

@@ -323,3 +323,54 @@ def test_production_config_declares_three_experiments_sharing_one_base():
     assert configured["solver"]["total_time_budget"] is True
     assert configured["solver"]["threadsLimit"] == 1
     assert configured["solver"]["aggregate_vehicles"] is True
+
+
+def _generation(**changes):
+    configured = Config.snapshot()
+    block = configured["target_generation"]
+    for path, value in changes.items():
+        node = block
+        keys = path.split(".")
+        for key in keys[:-1]:
+            node = node[key]
+        node[keys[-1]] = value
+    return configured
+
+
+def test_target_generation_defaults_cover_the_requested_scope_and_method():
+    block = Config.normalize({})["target_generation"]
+
+    assert block["instance"]["files"] == ["DATA_PRP_5C", "DATA_PRP_10C", "DATA_PRP_20C"]
+    assert block["formulation"]["symmetric_routes"] is True
+    assert block["formulation"]["aggregate_vehicles"] is True
+    assert block["factor"] == 0.3
+    assert block["nadir"] == {"method": "face", "epsilon": 1e-6}
+    assert block["lp"]["algorithm"] == "dual"
+    assert block["weights"] == [[1 if j == k else 0 for j in range(5)] for k in range(5)]
+    assert block["output"] == "./out/target/"
+
+
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        ({"instance.files": []}, "instance.files"),
+        ({"formulation.aggregate_vehicles": False}, "symmetric_routes exige"),
+        ({"formulation.coelho_inequalities": "sim"}, "booleano"),
+        ({"relaxation.target_use_relaxation": False}, "target_use_relaxation"),
+        ({"weights": [[1, 0, 0, 0, 0]] * 5}, "weights"),
+        ({"weights": [[0.5, 0.5, 0, 0, 0]] + [[0, 1, 0, 0, 0]] * 4}, "weights"),
+        ({"factor": 1.5}, "factor"),
+        ({"nadir.method": "ideal"}, "nadir.method"),
+        ({"nadir.epsilon": 0}, "nadir.epsilon"),
+        ({"lp.algorithm": "barrier"}, "lp.algorithm"),
+        ({"output": ""}, "output"),
+    ],
+)
+def test_target_generation_rejects_invalid_settings(change, message):
+    with pytest.raises(ValueError, match=message):
+        Config.normalize(_generation(**change))
+
+
+def test_target_generation_accepts_a_permutation_of_the_unit_weights():
+    rows = [[0, 0, 0, 0, 1], [0, 0, 0, 1, 0], [0, 0, 1, 0, 0], [0, 1, 0, 0, 0], [1, 0, 0, 0, 0]]
+    assert Config.normalize(_generation(weights=rows))["target_generation"]["weights"] == rows

@@ -230,6 +230,50 @@ class WorkerProcess:
                     )
         self.log.info(">> Fim do processamento paralelo.")
 
+    def run_callables(self, function, payloads, labels=None, executor=None):
+        """Run ``function(payload)`` for every payload, in MPI workers or sequentially.
+
+        ``function`` must be a module-level callable that returns a value and never
+        raises (as ``process_safely`` does). Returns ``[(index, result)]`` in
+        completion order, where ``result`` is the returned value or, if the task
+        itself failed to run, ``{"error": "<message>"}``. A shared ``executor`` is
+        not shut down here.
+        """
+        total = len(payloads)
+        labels = labels or [str(index) for index in range(total)]
+        results = []
+        if not total:
+            return results
+        if MPI_BOOL:
+            max_workers = self._resolve_num_workers(total)
+            self.log.info(
+                f">> Iniciando {total} tarefas com MPI usando {max_workers} workers."
+            )
+            pool_context = (
+                contextlib.nullcontext(executor)
+                if executor is not None
+                else MPIPoolExecutor(max_workers=max_workers)
+            )
+            with pool_context as pool:
+                futures = {
+                    pool.submit(function, payload): index
+                    for index, payload in enumerate(payloads)
+                }
+                for done, future in enumerate(as_completed(futures), 1):
+                    index = futures[future]
+                    try:
+                        result = future.result()
+                    except Exception as error:
+                        result = {"error": f"{type(error).__name__}: {error}"}
+                    results.append((index, result))
+                    self.log.info(f">> [{done}/{total}] {labels[index]}")
+        else:
+            self.log.warning("mpi4py indisponível; executando tarefas sequencialmente.")
+            for done, (index, payload) in enumerate(enumerate(payloads), 1):
+                results.append((index, function(payload)))
+                self.log.info(f">> [{done}/{total}] {labels[index]}")
+        return results
+
 
 _applied_config_hash = None
 

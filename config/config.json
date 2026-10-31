@@ -128,6 +128,41 @@
     "build_target": false,
     "output": "./out/target/"
   },
+  "target_generation": {
+    "instance": {
+      "files": [
+        "DATA_PRP_5C",
+        "DATA_PRP_10C",
+        "DATA_PRP_20C"
+      ]
+    },
+    "formulation": {
+      "aggregate_vehicles": true,
+      "symmetric_routes": true,
+      "strengthened_bounds": true,
+      "coelho_inequalities": false,
+      "symmetry_breaking_hc1": false
+    },
+    "relaxation": {
+      "target_use_relaxation": true
+    },
+    "weights": [
+      [1, 0, 0, 0, 0],
+      [0, 1, 0, 0, 0],
+      [0, 0, 1, 0, 0],
+      [0, 0, 0, 1, 0],
+      [0, 0, 0, 0, 1]
+    ],
+    "factor": 0.3,
+    "nadir": {
+      "method": "face",
+      "epsilon": 1e-06
+    },
+    "lp": {
+      "algorithm": "dual"
+    },
+    "output": "./out/target/"
+  },
   "experiments": [
     {
       "name": "pso_mip_polish",

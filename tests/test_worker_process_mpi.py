@@ -323,3 +323,53 @@ class WorkerProcessMPITestCase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RunCallablesTestCase(unittest.TestCase):
+    def test_sequential_fallback_runs_every_payload_and_keeps_the_index(self):
+        worker = WorkerProcess(numWorkers=1, log=DummyLogger())
+
+        with patch("src.process.WorkerProcess.MPI_BOOL", False):
+            results = worker.run_callables(
+                lambda payload: payload * 2, [1, 2, 3], labels=["a", "b", "c"]
+            )
+
+        self.assertEqual(sorted(results), [(0, 2), (1, 4), (2, 6)])
+
+    def test_mpi_path_submits_one_task_per_payload_and_reports_failed_futures(self):
+        class Future:
+            def __init__(self, value=None, error=None):
+                self.value, self.error = value, error
+
+            def result(self):
+                if self.error:
+                    raise self.error
+                return self.value
+
+        class Executor(FakeExecutor):
+            def submit(self, fn, *args, **kwargs):
+                FakeExecutor.submitted.append((fn, args, kwargs))
+                if args[0] == "boom":
+                    return Future(error=RuntimeError("worker caiu"))
+                return Future(value=fn(*args))
+
+        worker = WorkerProcess(numWorkers=2, log=DummyLogger())
+        FakeExecutor.max_workers_used = []
+        FakeExecutor.submitted = []
+
+        with patch("src.process.WorkerProcess.MPI_BOOL", True), patch(
+            "src.process.WorkerProcess.MPIPoolExecutor", Executor, create=True
+        ), patch("src.process.WorkerProcess.as_completed", lambda futures: list(futures)):
+            results = dict(
+                worker.run_callables(str.upper, ["x", "boom", "y"], labels=list("abc"))
+            )
+
+        self.assertEqual(results[0], "X")
+        self.assertEqual(results[2], "Y")
+        self.assertIn("worker caiu", results[1]["error"])
+        self.assertEqual(FakeExecutor.max_workers_used, [2])
+        self.assertEqual(len(FakeExecutor.submitted), 3)
+
+    def test_empty_payload_list_does_nothing(self):
+        worker = WorkerProcess(numWorkers=1, log=DummyLogger())
+        self.assertEqual(worker.run_callables(len, []), [])

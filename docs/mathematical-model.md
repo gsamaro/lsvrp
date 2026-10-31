@@ -187,6 +187,38 @@ Observado no código:
 
 Isso não está presente na formulação LaTeX como processo computacional, apenas como parâmetros `b_t^j` e `\overline{b}_t^j`.
 
+### Geração de targets por face ótima (`target_generation`)
+
+`generate_targets.py` (em cluster, `script_targets.sh`) gera `out/target/targets.xlsx` a partir do bloco `target_generation` de `config/config.json`; a lógica está em `src/process/TargetGenerationProcess.py` e `src/helpers/FaceNadirTargets.py`. O `build_target` antigo de `PostProcessingProcess` continua disponível e não foi alterado.
+
+**Modelo.** O LP é o da construção de targets (`postprocessing.build_target` com relaxação): o próprio `solver()` monta e relaxa o modelo, com `solver.aggregate_vehicles = true` e `solver.symmetric_routes = true` (ver "Rotas não direcionadas"). As cinco execuções monoobjetivo usam `weights` (padrão: vetores unitários de `constants.WEIGHTS_TARGET`) e minimizam `\sum_t f_t^k`; a função `f_t^j` é reconstruída sobre as variáveis do modelo relaxado e o ótimo de `f^k` precisa coincidir com o valor relaxado devolvido pelo solver, senão a geração falha. `optimize_f1` não vale aqui: `f^1` tem sua própria execução e seu `f1_target`.
+
+**Ideal.** `\underline{f}_t^j = \min_k f_t^j(x^{k})`, onde `x^{k}` é o vértice devolvido ao minimizar `f^k`: o mínimo por período entre as cinco execuções (definição do método). Esse valor depende do vértice, por isso o algoritmo do LP é fixado em `lp.algorithm` (padrão: simplex dual, `threads = 1`) e a versão do CPLEX é registrada. Em 5C e 10C, trocar dual por primal mudou o ideal de algum período em 22% a 42%; repetir a mesma configuração no mesmo ambiente devolveu o mesmo ideal bit a bit. O ideal é reproduzível dado o ambiente, não é único.
+
+**Nadir** (`nadir.method`):
+
+- `face` (padrão): para cada objetivo `k` calcula-se o ótimo isolado `z_k` e a face ótima `F_k = \{ x : \sum_t f_t^k(x) \le z_k (1+\varepsilon) + \varepsilon \}` com `\varepsilon =` `nadir.epsilon` (padrão `10^{-6}`). Então `\overline{f}_t^j = \max\big(\underline{f}_t^j,\ \max_{k \ne j} \min_{x \in F_k} f_t^j(x)\big)`. São `5 + 20T` LPs por instância. O mínimo de um LP tem valor único: o termo da face não depende do vértice nem do algoritmo (diferença de ordem `10^{-10}` entre dual e primal), e não há ordem de prioridade entre objetivos. O nadir final herda a dependência do ideal nos pares em que o `\max` escolhe o ideal (17% a 20% dos pares em 5C/10C testadas).
+- `runs_max`: máximo por período entre os mesmos cinco vértices, como o `build_target` antigo; resolve apenas 5 LPs.
+
+**Target.** `b_t^j = \underline{f}_t^j + \text{factor}\,(\overline{f}_t^j - \underline{f}_t^j)`, com `factor = 0{,}3` (de outro artigo que aplicou esta metodologia; não é fixo e a justificativa por análise de sensibilidade está pendente).
+
+**Sensibilidade a `\varepsilon`.** O nadir por face depende de `\varepsilon`: a folga em `f^k` compra redução em outro objetivo. Medido em `PRP10_C5_P3_V1_T6_S1`, `PRP10_C10_P5_V2_T6_S1` e `PRP10_C20_P8_V5_T12_S1` (nadir com `\varepsilon` alterado contra `10^{-6}`, diferença relativa por (objetivo, período)):
+
+| `\varepsilon` | mediana | máximo (5C / 10C / 20C) |
+| --- | --- | --- |
+| `10^{-7}` | `10^{-5}` | 5,2% / 2,2% / 18,5% |
+| `10^{-5}` | `10^{-4}` | 17,9% / 9,4% / 11,4% |
+| `10^{-4}` | — | 69,6% / 18,6% / — |
+| `10^{-8}` | — | 5,7% / 2,5% / — |
+
+Quase todas as células são estáveis; poucas mudam muito. `10^{-8}` fica abaixo da tolerância de viabilidade do CPLEX (`10^{-6}`) e não define uma face numericamente distinta de `10^{-7}`. `\varepsilon` é parâmetro do experimento, fica na configuração registrada em `targets_state.json`. Uma instância 20C leva cerca de 314 s (um processo, 1 thread, `5 + 20T = 245` LPs); 5C leva 0,3 s e 10C 1,3 s.
+
+**Saídas e proveniência.** `targets.xlsx` tem apenas `file`, `time`, `f{j}_ideal`, `f{j}_nadir` e `f{j}_target`, as colunas usadas pelo pipeline. A proveniência não entra no xlsx: `targets_state.json`, na mesma pasta, guarda a configuração resolvida, o fingerprint (sha256 sem `workers` e `logging`), o commit git, as instâncias, as tarefas esperadas e encontradas e o sha256 do `targets.xlsx`. Os resultados por instância ficam em `work/`. Se a pasta não tem estado, ou tem outro fingerprint, ela é movida para `<pasta>.stale-<timestamp>` e nada é apagado; com o mesmo fingerprint uma execução interrompida continua do que já está em `work/`.
+
+**Escopo.** `instance.files` do bloco (padrão: 5C, 10C e 20C) com `PRP` de 1 a 30 (`is_supported_prp_file`): 451 instâncias. As linhas de 30C e de `PRP` acima de 30 do `targets.xlsx` anterior não são regeradas; elas ficam apenas na pasta `.stale-<timestamp>`.
+
+Consequências que permanecem: a soma dos targets de `f^1` e `f^4` fica abaixo do mínimo atingível (o ideal por período é um ponto utópico) e impõe um piso a `\lambda`, igual na solução e no limite; targets iguais a zero continuam tratados por `\overline{b}_t^j` (ver "Ajuste de targets nulos"). Mudar o nadir, o fator ou o modelo de rotas altera a escala da FO: resultados com targets diferentes não são comparáveis entre si.
+
 # 6. Variáveis de Decisão
 
 | Variável | Domínio no LaTeX | Domínio observado no código | Significado | Arquivo onde é criada |
