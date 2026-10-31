@@ -25,6 +25,7 @@ from src.log.Logger import Logger
 from src.solvers._routing_common import (
     ZeroArcDict,
     aggregate_vehicle_axis,
+    drop_disconnected_arcs,
     expand_aggregated_vehicles,
     ordered_arcs,
 )
@@ -35,6 +36,7 @@ from src.solvers._solver_common import (
     compute_delivery_upper_bounds,
     compute_inventory_upper_bounds,
     compute_production_upper_bounds,
+    evaluate_configured_objective,
     goal_start_values,
 )
 from src.solvers.RoundedCapacitySeparation import (
@@ -108,6 +110,8 @@ class MultProductProdctionRoutingProblem:
         self.objective_scale = 1.0
         self.nodeCount = 0
         self.nodesRemaining = 0
+        # Arcs of cycles detached from the plant dropped from the extracted solution.
+        self.disconnected_arcs_removed = 0
         self.start = start
         self.routing_profile = routing_profile
         self.fixed_plan = fixed_plan
@@ -842,21 +846,33 @@ class MultProductProdctionRoutingProblem:
             return build_results_from_variables(
                 ProblemData.from_map(self.data), {}, 0, self.time, solution_count=0
             )
+        problem = ProblemData.from_map(self.data)
+        objective = self._unscale(float(self.model.objective_value))
+        if self.disconnected_arcs_removed:
+            # The model objective still charges the dropped cycles: report the
+            # configured objective of the solution that is actually returned.
+            objective = evaluate_configured_objective(
+                problem, values, Config.snapshot()
+            )
         result = list(
             build_results_from_variables(
-                ProblemData.from_map(self.data),
+                problem,
                 values,
-                self._unscale(float(self.model.objective_value)),
+                objective,
                 self.time,
                 config=config,
             )
         )
         result[8] = self.model.solve_details.mip_relative_gap
-        result[6] = [
-            [self.model.solution.get_value(self.positive[j, t]) for j in range(self.j)]
-            for t in range(self.t)
-        ]
-        result[10] = self.model.solution.get_value(self.lambda_)
+        if not (self.disconnected_arcs_removed and config["solver"]["multiobjective"]):
+            result[6] = [
+                [
+                    self.model.solution.get_value(self.positive[j, t])
+                    for j in range(self.j)
+                ]
+                for t in range(self.t)
+            ]
+            result[10] = self.model.solution.get_value(self.lambda_)
         if self._relaxation_replaced:
             # Target generation still exports fractional arc/setup values.
             result[0] = values["Z"].transpose(3, 0, 1, 2).tolist()
@@ -899,6 +915,19 @@ class MultProductProdctionRoutingProblem:
             values["eta"] = np.zeros((self.v, self.i, self.t), dtype=float)
             for key, variable in self.eta.items():
                 values["eta"][key] = solution.get_value(variable)
+        if not self.eta:
+            # The model allows cycles among customers without delivery, detached
+            # from the plant. They carry nothing and only add F5: drop them here,
+            # before the route audit, which rejects any arc outside a plant route.
+            values["Z"], values["R"], dropped = drop_disconnected_arcs(
+                values["Z"], values["R"]
+            )
+            self.disconnected_arcs_removed = len(dropped)
+            if dropped:
+                self.log.warning(
+                    f">> {len(dropped)} arcos de ciclos desconectados da planta "
+                    "removidos da solução do MIP."
+                )
         if self.aggregate_vehicles:
             # Output keeps one slice per vehicle: split the fleet-wide routes.
             values = expand_aggregated_vehicles(values, self.v)

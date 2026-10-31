@@ -651,6 +651,20 @@ Fecha o balanço global de fluxo do produto em relação à planta e contribui p
 
 `createEliminationSubroutes` em `src/solvers/MultProductProdctionRoutingProblem.py`.
 
+### Ciclos desconectados da planta
+
+As restrições de grau (`EQ_11`), visita única (`EQ_12`) e fluxo (`EQ_7`, `EQ_8`) não eliminam todas as subrotas. Um ciclo entre clientes, sem arco para a planta, satisfaz todas elas quando nenhum cliente do ciclo recebe entrega, com ou sem carga circulando nos arcos `r`:
+
+- grau: cada nó do ciclo tem entrada e saída iguais a um (`EQ_11`) e entrada no máximo um (`EQ_12`);
+- fluxo: (`EQ_7`) `Σ_i r_{pikt} − Σ_l r_{pklt} = q_{pkt}` vale com `q = 0`, e o fluxo pode ser zero ou circular;
+- capacidade e visita: `Σ_p r ≤ C z` (`EQ_9`) vale com `r` nulo ou circular até `C`, e `q ≤ C·visita` vale com `q = 0`.
+
+Já um cliente com `q_{pkt} > 0` nunca está em um ciclo desconectado. Somando o balanço `EQ_7` sobre os nós do ciclo, os fluxos internos se cancelam e sobra `Σ q = 0`, pois `EQ_12` não deixa nenhum arco de fora entrar no ciclo. Cada componente de `z` é, portanto, um ciclo pela planta ou um ciclo isolado sem entregas.
+
+Esse ciclo nunca reduz custo: só soma distância a `f5`. Com metas, porém, o objetivo penaliza apenas `max(F − meta, 0)`, e o ciclo não custa nada enquanto `f5` está abaixo da meta. As heurísticas do CPLEX e o *solution polishing* devolvem a solução com o ciclo, e a auditoria de rotas (`routes_from_z`) a rejeita com "Rota desconectada da planta". O mesmo vale para o modelo indexado por veículo.
+
+Em vez de proibir o ciclo no modelo, `get_snapshot` o remove da solução extraída (`drop_disconnected_arcs` em `src/solvers/_routing_common.py`): descarta os arcos `z` que nenhum caminho a partir da planta alcança, e o fluxo `r` neles. A solução continua viável (`EQ_7` e `EQ_11` passam a `0 = 0` no ciclo, e as entregas dos nós do ciclo já eram zero) e `f5` só diminui; as demais componentes e `X, Y, I, Q` não mudam. `getResults` informa então o objetivo configurado, os desvios positivos e `lambda` recalculados da solução limpa, e não os do modelo, que ainda cobram o ciclo. O gap continua sendo o reportado pelo CPLEX, um limite superior do gap real, já que o objetivo da solução limpa é menor ou igual ao do incumbente. A auditoria de transmissão (`validate_variables`) continua rejeitando qualquer solução com ciclo desconectado. Não se aplica aos perfis de rotas com `eta`, cuja auditoria compara `eta` com os graus.
+
 ## Restrição 15: Capacidade do veículo
 
 ### Equação
@@ -818,7 +832,7 @@ O modelo não decide qual veículo atende qual cliente, porque a escolha não al
 
 1. cada arco `(0,k)` com `z = 1` inicia uma rota, seguida pelos sucessores até a planta;
 2. as rotas recebem os rótulos `v = 0, 1, …` ordenadas pelo menor cliente que atendem (a ordem canônica de VC/HC1);
-3. `Q`, `R` e `Z` passam para o veículo da rota; arcos fora de qualquer caminho da planta (ciclos sem entrega) ficam no veículo 0 e são rejeitados pela auditoria de rotas, como no modelo indexado.
+3. `Q`, `R` e `Z` passam para o veículo da rota. Antes da divisão, `get_snapshot` remove os ciclos sem entrega desconectados da planta (ver *Ciclos desconectados da planta*); se algum chegasse aqui, ficaria no veículo 0 e seria rejeitado pela auditoria de rotas, como no modelo indexado.
 
 `get_snapshot` já devolve os valores expandidos, de modo que `getResults`, `ProcessResults` e os Parquets mantêm o contrato com índice de veículo.
 
@@ -1156,7 +1170,8 @@ para os demais. Fluxos e capacidades excluem subtours: em um componente
 sem depósito, somar os balanços de produto obrigaria todas as entregas a zero,
 contradizendo a entrega positiva de seus clientes. Períodos sem entregas não
 criam arcos. O modelo original pode admitir ciclos desconectados com entregas
-zero; a auditoria de transmissão rejeita esses ciclos.
+zero; o MIP completo os remove da solução extraída (*Ciclos desconectados da
+planta*) e a auditoria de transmissão rejeita os que restarem.
 
 A escolha final compara a função configurada entre etapas, usando `F4+F5`
 como desempate. No modo multiobjetivo, a avaliação usa os desvios positivos

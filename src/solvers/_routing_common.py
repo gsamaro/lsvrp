@@ -91,6 +91,58 @@ def routes_from_z(z, tolerance=1e-6, shape=None):
     return result
 
 
+def drop_disconnected_arcs(z, r, threshold=0.5):
+    """Remove arcs that no route from the plant reaches (cycles among customers).
+
+    The MIP has degree balance (EQ_11), flow balance (EQ_7, EQ_8) and
+    at most one entry per customer (EQ_12), but no constraint that ties an arc to
+    the plant. A cycle among customers with no delivery therefore satisfies every
+    constraint, with or without a circulating load on its arcs, and CPLEX heuristics
+    return it whenever the cycle costs nothing (goal programming only charges
+    deviations above the targets). A customer on such a cycle cannot receive
+    anything: summing EQ_7 over the cycle gives ``sum(Q) = 0``, because EQ_12 leaves
+    no arc entering the cycle from outside.
+
+    Dropping the cycle arcs and the load ``R`` they carry keeps the solution
+    feasible (EQ_7 and EQ_11 read ``0 = 0`` on the cycle; the VISIT bounds only
+    involve zero deliveries) and removes the cycle cost from F5, so no cost
+    increases. Arcs are taken per ``(v, t)`` slice of a sparse snapshot; values
+    that are not close to 0/1 are left for the route audit to report.
+
+    Returns ``(z, r, dropped)`` where ``dropped`` is the set of removed
+    ``(v, i, k, t)`` arcs.
+    """
+    used = {}
+    for (v, i, k, t), value in z.items():
+        if value > threshold:
+            used.setdefault((v, t), {}).setdefault(i, []).append(k)
+    dropped = set()
+    for (v, t), successors in used.items():
+        reached, pending = {0}, [0]
+        while pending:
+            for k in successors.get(pending.pop(), ()):
+                if k not in reached:
+                    reached.add(k)
+                    pending.append(k)
+        dropped.update(
+            (v, i, k, t)
+            for i, targets in successors.items()
+            if i not in reached
+            for k in targets
+        )
+    if not dropped:
+        return z, r, dropped
+    return (
+        {key: value for key, value in z.items() if key not in dropped},
+        {
+            (p, v, i, k, t): value
+            for (p, v, i, k, t), value in r.items()
+            if (v, i, k, t) not in dropped
+        },
+        dropped,
+    )
+
+
 def aggregate_vehicle_axis(name, values):
     """Sum a vehicle-indexed start value over the vehicle axis.
 

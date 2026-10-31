@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-31
+
+### Fixes
+
+- The solution extracted from the unrestricted MIP no longer carries cycles among customers detached from the plant. The model has no constraint tying an arc to the plant, so a cycle without deliveries satisfies every constraint (with or without a circulating load), and CPLEX returns it when it is free under goal programming (F5 below its target). The route audit rejected those incumbents ("Rota desconectada da planta"), which discarded the MIP result in 318 of 900 `matheuristic_mip_polish` tasks of the first production run (all with this error; `pso_mip_polish` discarded 342 of 900 through the same audit, but its stage records were not kept to confirm the error). `get_snapshot` now drops these arcs and the load on them (`drop_disconnected_arcs`); the solution stays feasible and F5 only decreases. `getResults` reports the configured objective, deviations and `lambda` of the cleaned solution. The audit itself is unchanged.
+
+### Notes
+
+- A task whose MIP result was a rejected incumbent now returns that incumbent (cleaned), so its objective can be lower than before and the gap is filled in; no model constraint, variable or CPLEX parameter changed.
+
 ## 2026-10-20
 
 ### New

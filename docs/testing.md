@@ -10,6 +10,7 @@
 | `tests/test_time_budget_polishing.py` | Unitário | Orçamento total por tarefa (`TimeBudget`, `timeLimit` limitado ao restante) e `solver.polishing.after_seconds` (só no MIP completo, relógio do CPLEX, mínimo de 1 s) |
 | `tests/test_objective_scale.py` | Unitário e integração CPLEX (`cplex_integration`) | Fator `solver.objective_scale`: padrão neutro, coeficientes escalados no CPLEX, ramos sem escala (objetivo único), `_unscale` e igualdade de `FO`, limite, gap e desvios entre os modelos com e sem escala |
 | `tests/test_vehicle_aggregation.py` | Unitário e integração CPLEX (`cplex_integration`) | Formulação sem índice de veículo: configuração, precedência da opção, forma do modelo, divisão de rotas por veículo, MIP start e igualdade do ótimo com o modelo indexado |
+| `tests/test_disconnected_cycles.py` | Unitário e integração CPLEX (`cplex_integration`) | Remoção de ciclos desconectados da planta na solução extraída do MIP (`drop_disconnected_arcs`): arcos e carga removidos, rotas da planta e períodos/slots vizinhos intactos, valores não binários deixados à auditoria, solução limpa aprovada pela auditoria e sem custo maior, leitura de um incumbente falso em `get_snapshot` e `getResults` (objetivo, desvios e `lambda` recalculados); o modelo admite o ciclo sem entrega (agregado e indexado, mono e multiobjetivo, com e sem carga circulante) e rejeita o ciclo com entrega |
 
 Os testes usam mocks para não depender de CPLEX ou MPI real. Os testes de persistência usam arquivos Excel e Parquet reais em diretórios temporários. Execute a suíte com:
 
