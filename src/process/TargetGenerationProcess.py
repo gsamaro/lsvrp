@@ -203,6 +203,7 @@ def solve_instance_task(payload):
             "z": result["z"].tolist(),
             "vertex": result["vertex"].tolist(),
             "face_minima": _nan_to_none(result["face_minima"]),
+            "retried_lps": result["retried_lps"],
             "features": result["features"],
             "seconds": result["seconds"],
             "build_seconds": result["build_seconds"],
@@ -349,6 +350,12 @@ def run_target_generation(config=Config):
         _say(f"executando ({reason}).")
 
     os.makedirs(os.path.join(output, WORK_DIR), exist_ok=True)
+    previous_logs = os.path.join(output, "logs")
+    if os.path.isdir(previous_logs):
+        # A resumed run keeps the log of the interrupted one (create_run_logger wipes it).
+        os.replace(
+            previous_logs, f"{previous_logs}.prev-{time.strftime('%Y%m%d-%H%M%S')}"
+        )
     log = create_run_logger(output)
     provenance = git_state()
     provenance["generated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -419,6 +426,7 @@ def run_target_generation(config=Config):
         targets_path=os.path.abspath(targets_path),
         targets_sha256=file_sha256(targets_path),
         rows=len(frame),
+        retried_lps=sum(len(cache.get("retried_lps", [])) for cache in caches.values()),
         versions={
             **library_versions(),
             "workers_cplex": sorted(

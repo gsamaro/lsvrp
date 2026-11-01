@@ -12,6 +12,7 @@ from src.helpers.FaceNadirTargets import (
     instance_targets,
     nadir_from_face_minima,
     nadir_from_vertices,
+    solve_lp,
     target_from_ideal_nadir,
     target_rows,
     validate_target_rows,
@@ -123,6 +124,78 @@ def test_validate_rejects_nan_missing_period_and_inverted_range():
     inverted.loc[1, "f1_nadir"] = 0.0
     with pytest.raises(ValueError):
         validate_target_rows(inverted, 2)
+
+
+class FakeLpModel:
+    """Model whose successive solves return the given statuses (None = no solution)."""
+
+    def __init__(self, statuses):
+        from types import SimpleNamespace
+
+        self.statuses = list(statuses)
+        self.solved_with = []
+        self.solve_details = SimpleNamespace(status="")
+        simplex = SimpleNamespace(tolerances=SimpleNamespace(feasibility=1e-6))
+        self.context = SimpleNamespace(
+            cplex_parameters=SimpleNamespace(
+                lpmethod=2, emphasis=SimpleNamespace(numerical=0), simplex=simplex
+            )
+        )
+
+    def minimize(self, expression):
+        pass
+
+    def solve(self):
+        from types import SimpleNamespace
+
+        status = self.statuses.pop(0)
+        parameters = self.context.cplex_parameters
+        self.solved_with.append(
+            (parameters.lpmethod, parameters.emphasis.numerical,
+             parameters.simplex.tolerances.feasibility)
+        )
+        self.solve_details.status = status
+        if status.startswith("optimal") and "infeasib" not in status or status == "x":
+            return SimpleNamespace(objective_value=7.5)
+        return None
+
+
+def test_a_clean_optimal_lp_is_not_retried():
+    model = FakeLpModel(["optimal"])
+    retries = []
+
+    assert solve_lp(model, None, "l", 2, retries) == 7.5
+    assert retries == [] and len(model.solved_with) == 1
+
+
+def test_numerical_status_retries_with_other_settings_and_restores_them():
+    model = FakeLpModel(["optimal with unscaled infeasibilities", "optimal with unscaled infeasibilities", "optimal"])
+    retries = []
+
+    assert solve_lp(model, None, "face f1 -> f2 t3", 2, retries) == 7.5
+
+    assert model.solved_with == [(2, 0, 1e-6), (2, 1, 1e-9), (1, 1, 1e-9)]
+    assert retries == [
+        {
+            "lp": "face f1 -> f2 t3",
+            "step": "primal+numerical",
+            "first": "optimal with unscaled infeasibilities",
+        }
+    ]
+    parameters = model.context.cplex_parameters
+    assert parameters.lpmethod == 2
+    assert parameters.emphasis.numerical == 0
+    assert parameters.simplex.tolerances.feasibility == 1e-6
+
+
+def test_base_lps_and_exhausted_retries_raise_with_the_status_trail():
+    with pytest.raises(RuntimeError, match="unscaled"):
+        solve_lp(FakeLpModel(["optimal with unscaled infeasibilities"]), None, "base f1", 2)
+
+    model = FakeLpModel(["infeasible"] * 4)
+    with pytest.raises(RuntimeError, match="barrier\\+numerical: infeasible"):
+        solve_lp(model, None, "face", 2, [])
+    assert model.context.cplex_parameters.lpmethod == 2
 
 
 # --- LP real (CPLEX) -------------------------------------------------------------

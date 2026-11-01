@@ -34,6 +34,16 @@ TARGET_COLUMNS = (
 BASE_COLUMNS = ["file", "time"]
 
 
+# Retries for a face LP the configured algorithm leaves with a numerical status (the
+# face is a row with a slack of ~1e-6 over costs of ~1e5). The minimum of an LP is
+# unique, so any algorithm that ends "optimal" returns the same value.
+RETRY_STEPS = (
+    ("dual+numerical", {"lpmethod": 2, "numerical": 1, "feasibility": 1e-9}),
+    ("primal+numerical", {"lpmethod": 1, "numerical": 1, "feasibility": 1e-9}),
+    ("barrier+numerical", {"lpmethod": 4, "numerical": 1, "feasibility": 1e-9}),
+)
+
+
 class _NullLog:
     def __getattr__(self, name):
         return lambda *args, **kwargs: None
@@ -165,6 +175,50 @@ def period_expressions(problem):
     return f
 
 
+def _lp_status(model):
+    return str(getattr(model.solve_details, "status", "")).lower()
+
+
+def _is_clean_optimal(solution, status):
+    return solution is not None and status.startswith("optimal") and (
+        "infeasib" not in status
+    )
+
+
+def solve_lp(model, expression, label, base_lpmethod, retries=None, steps=RETRY_STEPS):
+    """Minimize ``expression``; with ``retries`` (a list) try ``steps`` if not optimal.
+
+    Without ``retries`` a status other than a clean ``optimal`` raises. With it, each
+    step changes the LP algorithm and numerical settings, and the settings of the run
+    (``base_lpmethod``, default numerics) are restored afterwards; a step that worked
+    is appended to ``retries``.
+    """
+    model.minimize(expression)
+    solution = model.solve()
+    status = _lp_status(model)
+    if _is_clean_optimal(solution, status):
+        return float(solution.objective_value)
+    trail = [status]
+    if retries is not None:
+        parameters = model.context.cplex_parameters
+        try:
+            for name, settings in steps:
+                parameters.lpmethod = settings["lpmethod"]
+                parameters.emphasis.numerical = settings["numerical"]
+                parameters.simplex.tolerances.feasibility = settings["feasibility"]
+                solution = model.solve()
+                status = _lp_status(model)
+                trail.append(f"{name}: {status}")
+                if _is_clean_optimal(solution, status):
+                    retries.append({"lp": label, "step": name, "first": trail[0]})
+                    return float(solution.objective_value)
+        finally:
+            parameters.lpmethod = base_lpmethod
+            parameters.emphasis.numerical = 0
+            parameters.simplex.tolerances.feasibility = 1e-6
+    raise RuntimeError(f"LP sem solução ótima ({label}): {'; '.join(trail)}")
+
+
 def compute_instance_lps(
     instance,
     weights,
@@ -214,19 +268,22 @@ def compute_instance_lps(
     model.context.cplex_parameters.lpmethod = LP_ALGORITHMS[lp_algorithm]
     f = period_expressions(problem)
 
-    def minimize(expression):
-        model.minimize(expression)
-        solution = model.solve()
-        status = str(getattr(model.solve_details, "status", "")).lower()
-        if solution is None or "optimal" not in status:
-            raise RuntimeError(f"LP sem solução ótima em {instance} ({status})")
-        return float(solution.objective_value)
+    retries = []
+    base_lpmethod = LP_ALGORITHMS[lp_algorithm]
+
+    def minimize(expression, label, face=False):
+        try:
+            return solve_lp(
+                model, expression, label, base_lpmethod, retries if face else None
+            )
+        except RuntimeError as error:
+            raise RuntimeError(f"{instance}: {error}") from error
 
     z = np.zeros(OBJECTIVES)
     vertex = np.zeros((OBJECTIVES, OBJECTIVES, periods))
     for row in range(OBJECTIVES):
         k = objective_of_row[row]
-        z[k] = minimize(model.sum(f[k]))
+        z[k] = minimize(model.sum(f[k]), f"base f{k + 1}")
         for j in range(OBJECTIVES):
             for t in range(periods):
                 vertex[k, j, t] = f[j][t].solution_value
@@ -248,7 +305,9 @@ def compute_instance_lps(
                 if j == k:
                     continue
                 for t in range(periods):
-                    face_minima[k, j, t] = minimize(f[j][t])
+                    face_minima[k, j, t] = minimize(
+                        f[j][t], f"face f{k + 1} -> f{j + 1} t{t}", face=True
+                    )
             model.remove_constraint(face)
 
     features = dict(getattr(problem, "applied_features", {}))
@@ -258,6 +317,7 @@ def compute_instance_lps(
         "vertex": vertex,
         "face_minima": face_minima,
         "periods": periods,
+        "retried_lps": retries,
         "features": features,
         "seconds": time.time() - started,
         "build_seconds": build_seconds,

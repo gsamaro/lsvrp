@@ -35,6 +35,7 @@ def fake_compute(instance, weights, nadir_method="face", epsilon=1e-6,
         "vertex": vertex,
         "face_minima": face,
         "periods": PERIODS,
+        "retried_lps": FakeLP.retried,
         "features": {"symmetric_routes": True},
         "seconds": 0.1,
         "build_seconds": 0.05,
@@ -42,6 +43,7 @@ def fake_compute(instance, weights, nadir_method="face", epsilon=1e-6,
 
 
 class FakeLP:
+    retried = []
     calls = []
     fail_on = set()
 
@@ -122,6 +124,17 @@ def test_targets_keep_the_columns_the_loader_and_union_results_use(job):
     assert np.allclose(target, ideal + 0.3 * (nadir - ideal))
 
 
+def test_retried_lps_are_counted_in_the_state(job):
+    FakeLP.retried = [{"lp": "face f1 -> f2 t0", "step": "primal+numerical", "first": "x"}]
+    try:
+        state = generation.run_target_generation(Config)
+    finally:
+        FakeLP.retried = []
+
+    assert state["retried_lps"] == 3
+    assert generation.read_state(str(job))["retried_lps"] == 3
+
+
 def test_same_configuration_is_skipped_without_solving_again(job):
     generation.run_target_generation(Config)
     calls = len(FakeLP.calls)
@@ -180,12 +193,17 @@ def test_interrupted_run_resumes_from_the_computed_instances(job):
     assert not (job / "targets.xlsx").exists()
     assert generation.read_state(str(job))["status"] == "incomplete"
 
+    interrupted_log = (job / "logs" / "Worker_0.log").read_text()
+    assert "Falha em" in interrupted_log
+
     FakeLP.fail_on = set()
     FakeLP.calls = []
     state = generation.run_target_generation(Config)
 
     assert state["status"] == "complete"
     assert [os.path.basename(call) for call in FakeLP.calls] == [failing]
+    kept = list(job.glob("logs.prev-*/Worker_0.log"))
+    assert len(kept) == 1 and kept[0].read_text() == interrupted_log
     assert not list(job.parent.glob("target.stale-*"))
 
 
