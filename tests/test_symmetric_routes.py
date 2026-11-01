@@ -122,8 +122,8 @@ def test_symmetric_routes_needs_aggregated_vehicles_and_booleans():
 def test_shipped_config_declares_both_flags():
     path = Path(__file__).resolve().parents[1] / "config" / "config.json"
     solver = json.loads(path.read_text(encoding="utf-8"))["solver"]
-    assert solver["symmetric_routes"] is False
-    assert solver["goal_programming"]["optimize_f1"] is True
+    assert isinstance(solver["symmetric_routes"], bool)
+    assert isinstance(solver["goal_programming"]["optimize_f1"], bool)
 
 
 # ----------------------------------------------------------------- flag resolution

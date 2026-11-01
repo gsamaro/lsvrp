@@ -6,7 +6,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha1, sha256
 
+import re
+
 from config import Config
+from src.helpers.TargetsLoader import (
+    load_targets_by_file,
+    normalize_instance_file_key,
+)
 from src.log.Logger import Logger
 
 
@@ -90,6 +96,39 @@ def validate_runtime_context(context, log):
     if context.build_target and context.multiobjective:
         log.error("Build target not supported for multiobjective.")
         raise RuntimeError("Build target not supported for multiobjective.")
+
+
+def validate_targets(log=None):
+    """Fail before any queue time is spent when the goal targets are unusable.
+
+    The multiobjective model needs one target row per period of every instance. A
+    missing ``targets.xlsx`` is only a warning of the loader, so every task would
+    start and then fail. Does nothing outside the multiobjective run.
+    """
+    if not Config.get_nested("solver", "multiobjective", default=False):
+        return
+    if Config.get_nested("postprocessing", "build_target", default=False):
+        return
+    output = Config.get_nested("postprocessing", "output")
+    path = os.path.join(output, "targets.xlsx") if output else ""
+    targets = load_targets_by_file(path, log=log) if path else {}
+    if not targets:
+        raise RuntimeError(f"targets.xlsx ausente ou vazio: {path or 'sem pasta'}")
+    instance_dir = Config.get_nested("instance", "dir")
+    incomplete = []
+    for data, name in list_instance_files(
+        instance_dir, Config.get_nested("instance", "files")
+    ):
+        key = normalize_instance_file_key(f"{instance_dir}{data}/{name}")
+        periods = re.search(r"_T(\d+)_", name)
+        rows = targets.get(key, [])
+        if not rows or (periods and len(rows) != int(periods.group(1))):
+            incomplete.append(name)
+    if incomplete:
+        raise RuntimeError(
+            f"{path} não cobre {len(incomplete)} instância(s) com todos os períodos: "
+            f"{', '.join(incomplete[:5])}"
+        )
 
 
 def is_supported_prp_file(file_name):

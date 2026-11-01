@@ -319,10 +319,18 @@ def test_production_config_declares_three_experiments_sharing_one_base():
     configured = Config.normalize(_valid_config())
 
     names = [item["name"] for item in configured["experiments"]]
-    assert names == ["pso_mip_polish", "matheuristic_mip_polish", "matheuristic"]
+    assert names == [
+        "pso_mip_polish_sym_nof1",
+        "matheuristic_mip_polish_sym_nof1",
+        "matheuristic_nof1",
+    ]
     assert configured["solver"]["total_time_budget"] is True
     assert configured["solver"]["threadsLimit"] == 1
     assert configured["solver"]["aggregate_vehicles"] is True
+    # Second production run: undirected routes, f1 out of the goal criterion.
+    assert configured["solver"]["symmetric_routes"] is True
+    assert configured["solver"]["goal_programming"]["optimize_f1"] is False
+    assert configured["instance"]["files"] == ["DATA_PRP_20C"]
 
 
 def _generation(**changes):

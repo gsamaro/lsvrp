@@ -29,6 +29,7 @@ from src.process.RuntimeContext import (
     finalize_postprocessing,
     list_instance_files,
     validate_runtime_context,
+    validate_targets,
 )
 from src.process.WorkerProcess import WorkerProcess
 
@@ -233,6 +234,9 @@ def run_experiments():
     failed = []
     executor = None
     try:
+        for _, config in experiments:
+            Config.replace(config)
+            validate_targets()  # a missing target file would fail every task
         largest = _max_tasks(experiments)
         executor = WorkerProcess(base_workers, None).create_executor(largest)
         for name, config in experiments:

@@ -9,6 +9,7 @@ from src.process.RuntimeContext import (
     create_run_logger,
     finalize_postprocessing,
     validate_runtime_context,
+    validate_targets,
 )
 from src.process.WorkerProcess import WorkerProcess
 
@@ -19,6 +20,7 @@ def run_single():
     log = create_run_logger(context.output)
     log.info(f"Iniciando job run_tag={context.run_tag}.")
     validate_runtime_context(context, log)
+    validate_targets(log)
 
     instances = build_instances(
         context.instance_dir,

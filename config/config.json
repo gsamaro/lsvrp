@@ -6,7 +6,7 @@
     "multiobjective": true,
     "strengthened_bounds": true,
     "aggregate_vehicles": true,
-    "symmetric_routes": false,
+    "symmetric_routes": true,
     "objective_scale": 100000.0,
     "total_time_budget": true,
     "polishing": {
@@ -14,7 +14,7 @@
     },
     "goal_programming": {
       "positive_only_deviations": true,
-      "optimize_f1": true
+      "optimize_f1": false
     },
     "symmetry_breaking": {
       "hc1": false
@@ -165,7 +165,7 @@
   },
   "experiments": [
     {
-      "name": "pso_mip_polish",
+      "name": "pso_mip_polish_sym_nof1",
       "overrides": {
         "solver": {
           "polishing": {
@@ -175,7 +175,7 @@
       }
     },
     {
-      "name": "matheuristic_mip_polish",
+      "name": "matheuristic_mip_polish_sym_nof1",
       "overrides": {
         "solver": {
           "method": "GUROBY",
@@ -200,7 +200,7 @@
       }
     },
     {
-      "name": "matheuristic",
+      "name": "matheuristic_nof1",
       "overrides": {
         "solver": {
           "matheuristic": {

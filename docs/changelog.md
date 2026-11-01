@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-01
+
+### New
+
+- Second production run of the 20-customer instances: `config/config.json` now sets `solver.symmetric_routes: true` and `solver.goal_programming.optimize_f1: false` in the base configuration, and the three experiments are renamed `pso_mip_polish_sym_nof1`, `matheuristic_mip_polish_sym_nof1` and `matheuristic_nof1` (same overrides as before: PSO plus MIP with polishing after 3000 s, matheuristic with an exact-start MIP, matheuristic alone). The new names keep the first run in `out/pso_mip_polish/`, `out/matheuristic_mip_polish/` and `out/matheuristic/` untouched. The targets are the ones generated from the symmetric relaxation (`out/target/targets.xlsx`). In `matheuristic_nof1` the restricted stages keep directed arcs, so only the f1 switch applies.
+- `validate_targets` (`src/process/RuntimeContext.py`) runs before a multiobjective job (single run or every experiment): `targets.xlsx` must exist and hold one row per period for every instance of `instance.files`. A missing file used to be only a loader warning, so every task started and then failed.
+
 ## 2026-10-31
 
 ### New
