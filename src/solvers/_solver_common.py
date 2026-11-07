@@ -229,6 +229,28 @@ def minimum_production_totals(problem: ProblemData):
     return np.maximum(0.0, need - initial[:, 0])
 
 
+def first_need_periods(problem: ProblemData, tolerance=1e-9):
+    """First period in which each product must already have been produced.
+
+    A customer can only consume its initial stock; the rest of the demand
+    accumulated up to period ``l`` has to be delivered, and the plant covers part of
+    it with its own initial stock. When what is left, ``R[p, l]``, is positive some
+    production, and therefore a setup, happened at or before ``l``. Returns an
+    integer array with the first such ``l`` per product, ``-1`` for a product that
+    never needs production.
+    """
+    demand = np.asarray(problem.d_p_i_t, dtype=float)
+    initial = np.asarray(problem.I_p_i_0, dtype=float)
+    first = np.full(problem.p, -1, dtype=int)
+    for p in range(problem.p):
+        accumulated = np.cumsum(demand[p], axis=1)  # customer x period
+        need = np.maximum(0.0, accumulated - initial[p, 1:, None]).sum(axis=0) - initial[p, 0]
+        positive = np.flatnonzero(need > tolerance)
+        if positive.size:
+            first[p] = int(positive[0])
+    return first
+
+
 def trim_surplus(problem: ProblemData, variables, tolerance=1e-9):
     """Remove the stock left at the end of the horizon from a feasible plan.
 

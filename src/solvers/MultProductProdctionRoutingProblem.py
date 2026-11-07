@@ -40,6 +40,7 @@ from src.solvers._solver_common import (
     compute_production_upper_bounds,
     effective_goal_weights,
     evaluate_configured_objective,
+    first_need_periods,
     goal_start_values,
     minimum_production_totals,
     optimize_f1_enabled,
@@ -136,6 +137,12 @@ class MultProductProdctionRoutingProblem:
         self.v_model = 1 if fleet_wide else self.v
         self.departure_limit = self.v if fleet_wide else 1
         self.optimize_f1 = self._resolve_optimize_f1()
+        requested = map.get("first_need_setup_cuts")
+        if requested is None:
+            requested = Config.get_nested(
+                "solver", "first_need_setup_cuts", default=True
+            )
+        self.first_need_setup_cuts = bool(requested)
         self.goal_weight = [
             float(w) for w in effective_goal_weights(self.weight, self.optimize_f1)
         ]
@@ -467,6 +474,28 @@ class MultProductProdctionRoutingProblem:
                     self.model.Ue_i_k_t[i, k, t] >= -half * self.model.Xe_i_k_t[i, k, t],
                     ctname=f"SYM_CAP_DOWN_i_{i}_k_{k}_t_{t}",
                 )
+
+    def createFirstNeedSetups(self):
+        """At least one setup of each product up to the period it is first needed.
+
+        Customers consume their initial stock first and the plant covers part of the
+        rest with its own, so a positive requirement ``R[p, l]`` forces production,
+        hence a setup, at or before ``l`` (``first_need_periods``). The linear
+        relaxation otherwise pays ``x / ub`` of a setup there, a small fraction;
+        the inequality makes it pay a whole one. It is valid for every integer
+        solution and skipped when the setups are already fixed by a plan.
+        """
+        if not self.first_need_setup_cuts or self.fixed_plan is not None:
+            return False
+        first = first_need_periods(ProblemData.from_map(self.data))
+        for p in range(self.p):
+            if first[p] < 0:
+                continue
+            self.model.add_constraint(
+                self.model.sum(self.model.Y_p_t[p, t] for t in range(first[p] + 1)) >= 1,
+                ctname=f"FIRST_NEED_SETUP_p_{p}_l_{first[p]}",
+            )
+        return True
 
     def createMinimumProduction(self):
         """Fix each product's total production at the least that serves the demand.
@@ -1905,6 +1934,7 @@ class MultProductProdctionRoutingProblem:
         if self.applied_features["coelho_inequalities"]:
             self.log.debug("Desigualdades lógicas de Coelho (15)-(17) criadas")
         self.applied_features["minimum_production"] = self.createMinimumProduction()
+        self.applied_features["first_need_setup_cuts"] = self.createFirstNeedSetups()
         self.applied_features["hc1"] = self.createVehicleSymmetryBreaking()
         if self.applied_features["hc1"]:
             self.log.debug("Quebra de simetria VC + HC1 criada")

@@ -937,6 +937,35 @@ Na instância de 20 clientes, 8 produtos e 12 períodos o modelo agregado direci
 - Exige `a_{ik}` simétrica (senão lança `ValueError`). Os cortes de capacidade arredondada por callback (`rounded_capacity_inequalities`) são ignorados com um aviso. HC1/VC já eram dispensados.
 - Valores ótimos: iguais ao modelo direcionado nos testes automáticos e em três instâncias de produção resolvidas até a otimalidade (`PRP1_C5`, `PRP21_C5`, multiobjetivo em `PRP1_C5`); em `PRP1_C10` os dois modelos terminaram o limite de 120 s com o mesmo incumbente, sem fechar o gap. O limite inferior do LP e o tempo de prova podem diferir entre os modelos (em `PRP1_C10` o limite do direcionado ficou acima em 120 s); a opção é `false` por padrão até a comparação no cluster.
 
+## Desigualdades de primeira necessidade (`solver.first_need_setup_cuts`)
+
+### Motivação
+
+No LP o setup é fracionário: a restrição de lote só exige `y_{pt} \ge x_{pt}/ub_{pt}`, de modo que um produto que precisa de poucas unidades no primeiro período paga uma fração pequena do setup, e o custo de setup do LP se espalha em frações pelo horizonte. Nas instâncias de 20 clientes o LP só de f2 custa cerca de 0,9 vezes um setup por produto, e o MIP, cerca de 1,3 vezes. Isso faz o ideal de f2 usado nos targets ficar abaixo do que qualquer solução inteira consegue.
+
+### Desigualdade
+
+Cada cliente só consome o estoque que já tem; o restante da demanda acumulada até o período $\ell$ precisa ser entregue, e a planta cobre parte dele com o estoque inicial dela. A necessidade de produção do produto $p$ até $\ell$ é
+
+$$R_{p\ell} = \max\Bigl\{0,\; \sum_{i=1}^{n} \max\Bigl(0,\; \sum_{\tau \le \ell} d_{pi\tau} - I^{0}_{pi}\Bigr) - I^{0}_{p0}\Bigr\}.$$
+
+Se $R_{p\ell} > 0$, a produção acumulada até $\ell$ é positiva e, como $x_{pt} \le ub_{pt}\,y_{pt}$ com $y_{pt}$ binária, algum setup já aconteceu:
+
+$$\sum_{t \le \ell} y_{pt} \ge 1.$$
+
+As desigualdades de $\ell$ maiores estão contidas na do primeiro período $\ell^*_p = \min\{\ell : R_{p\ell} > 0\}$, então o modelo cria uma por produto (`createFirstNeedSetups`, nome `FIRST_NEED_SETUP_p_<p>_l_<l>`):
+
+$$\sum_{t \le \ell^*_p} y_{pt} \ge 1 \qquad \text{para todo } p \text{ com } \ell^*_p \text{ definido.}$$
+
+Um produto que nunca precisa produzir não recebe a desigualdade. A restrição "ao menos um setup no horizonte", $\sum_t y_{pt} \ge 1$, é o caso $\ell = T$ e é mais fraca: deixa o setup se espalhar.
+
+### Validade e efeito
+
+- Vale para toda solução inteira, então o ótimo do MIP não muda (testado em instâncias pequenas, objetivo único e multiobjetivo). Só corta soluções fracionárias.
+- Não é criada quando o plano de produção já está fixo (`fixed_plan`, a etapa de melhoria da matheurística), porque os setups já são dados.
+- No LP só de f2, em `PRP1_C20_P8_V5_T12_S1` e `PRP22_C20_P8_V5_T12_S3`, o custo de setup passou de 3.995 e 3.494 para 5.382 e 4.874, contra 5.600 e 5.100 do MIP (a diferença para o MIP caiu de cerca de 30% para cerca de 4%).
+- Atua no MIP completo, nas etapas restritas da matheurística e na relaxação usada para os targets (`target_generation.formulation.first_need_setup_cuts`). O padrão é ligado.
+
 ## Chave `optimize_f1`
 
 Com `solver.goal_programming.optimize_f1 = false` e `solver.multiobjective = true`, o custo de produção `f^1` sai do critério. Sem atraso, a produção total de cada produto não pode ficar abaixo de

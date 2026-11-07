@@ -39,6 +39,7 @@ class Config:
             "strengthened_bounds": True,
             "aggregate_vehicles": False,
             "symmetric_routes": False,
+            "first_need_setup_cuts": True,
             "objective_scale": 1.0,
             "total_time_budget": False,
             "polishing": {"after_seconds": None},
@@ -74,6 +75,7 @@ class Config:
                 "strengthened_bounds": True,
                 "coelho_inequalities": False,
                 "symmetry_breaking_hc1": False,
+                "first_need_setup_cuts": True,
             },
             "relaxation": {"target_use_relaxation": True},
             "weights": [
@@ -258,6 +260,9 @@ class Config:
         )
         cls._validate_bool(
             solver["symmetric_routes"], "config.solver.symmetric_routes"
+        )
+        cls._validate_bool(
+            solver["first_need_setup_cuts"], "config.solver.first_need_setup_cuts"
         )
         if solver["symmetric_routes"] and not solver["aggregate_vehicles"]:
             raise ValueError(
@@ -494,6 +499,7 @@ class Config:
             "strengthened_bounds",
             "coelho_inequalities",
             "symmetry_breaking_hc1",
+            "first_need_setup_cuts",
         ):
             cls._validate_bool(formulation[key], f"{prefix}.formulation.{key}")
         if formulation["symmetric_routes"] and not formulation["aggregate_vehicles"]:

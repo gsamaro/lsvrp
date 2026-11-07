@@ -7,6 +7,7 @@
     "strengthened_bounds": true,
     "aggregate_vehicles": true,
     "symmetric_routes": true,
+    "first_need_setup_cuts": true,
     "objective_scale": 100000.0,
     "total_time_budget": true,
     "polishing": {
@@ -141,7 +142,8 @@
       "symmetric_routes": true,
       "strengthened_bounds": true,
       "coelho_inequalities": false,
-      "symmetry_breaking_hc1": false
+      "symmetry_breaking_hc1": false,
+      "first_need_setup_cuts": true
     },
     "relaxation": {
       "target_use_relaxation": true

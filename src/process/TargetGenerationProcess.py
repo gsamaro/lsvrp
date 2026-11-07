@@ -79,6 +79,7 @@ def effective_config(settings):
                 "symmetric_routes": formulation["symmetric_routes"],
                 "strengthened_bounds": formulation["strengthened_bounds"],
                 "coelho_inequalities": formulation["coelho_inequalities"],
+                "first_need_setup_cuts": formulation["first_need_setup_cuts"],
                 "symmetry_breaking": {"hc1": formulation["symmetry_breaking_hc1"]},
             },
             "relaxed_solution": {
