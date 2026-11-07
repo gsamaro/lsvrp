@@ -9,6 +9,11 @@ Every experiment folder keeps an ``experiment_state.json`` that records the exac
 ``union_results`` file written, the configuration fingerprint and the expected
 number of tasks. A resubmission skips an experiment only after opening that file and
 checking the experiment name, the fingerprint and the task count.
+
+When the goals come from ``targets.xlsx`` (multiobjective run that does not build
+them), the SHA-256 of that file is part of the fingerprint and is kept in the state,
+so regenerating the targets never lets a resubmission skip results computed with
+the old ones.
 """
 
 import json
@@ -44,9 +49,37 @@ def _say(message):
     print(f"[experimentos] {message}", flush=True)
 
 
-def experiment_fingerprint(config):
-    """Stable hash of an experiment configuration (workers and logging excluded)."""
+def targets_path(config):
+    """``targets.xlsx`` the experiment reads, or ``None`` when it uses no targets file."""
+    solver = config.get("solver") or {}
+    post = config.get("postprocessing") or {}
+    if not solver.get("multiobjective") or post.get("build_target"):
+        return None
+    output = post.get("output")
+    return os.path.join(output, "targets.xlsx") if output else None
+
+
+def targets_sha256(config):
+    """SHA-256 of the targets file in use; ``None`` when there is none to read."""
+    path = targets_path(config)
+    if not path or not os.path.isfile(path):
+        return None
+    digest = sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def experiment_fingerprint(config, targets_hash=None):
+    """Stable hash of an experiment configuration (workers and logging excluded).
+
+    ``targets_hash`` adds the content of the targets file; without it the result is
+    the hash of the configuration alone.
+    """
     payload = {k: v for k, v in config.items() if k not in ("workers", "logging")}
+    if targets_hash is not None:
+        payload = {**payload, "targets_sha256": targets_hash}
     text = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return sha256(text.encode("utf-8")).hexdigest()
 
@@ -140,7 +173,8 @@ def expected_task_count(worker):
 
 def run_experiment(name, config, executor, managed=True):
     """Run one experiment already installed in ``Config``; returns its final state."""
-    fingerprint = experiment_fingerprint(config)
+    targets_hash = targets_sha256(config)
+    fingerprint = experiment_fingerprint(config, targets_hash)
     context = build_runtime_context()
     worker = WorkerProcess(
         context.workers,
@@ -166,10 +200,13 @@ def run_experiment(name, config, executor, managed=True):
     log = create_run_logger(context.output)
     worker.log = log
     log.info(f"Iniciando experimento {name} run_tag={context.run_tag}.")
+    if targets_hash:
+        log.info(f"targets.xlsx em uso: sha256={targets_hash}")
     validate_runtime_context(context, log)
     state = {
         "experiment": name,
         "fingerprint": fingerprint,
+        "targets_sha256": targets_hash,
         "status": "running",
         "run_tag": context.run_tag,
         "expected_tasks": expected,

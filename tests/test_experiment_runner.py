@@ -62,7 +62,7 @@ def job(tmp_path, monkeypatch):
         frame.to_excel(path, index=False)
         return path
 
-    def configure(overrides_by_name):
+    def configure(overrides_by_name, multiobjective=False):
         experiments = [{"name": n, "overrides": o} for n, o in overrides_by_name.items()]
         monkeypatch.setattr(
             Config,
@@ -74,7 +74,7 @@ def job(tmp_path, monkeypatch):
                         "output": f"{tmp_path}/out/",
                         "files": ["DATA_PRP_5C"],
                     },
-                    "solver": {"method": "PSO", "multiobjective": False},
+                    "solver": {"method": "PSO", "multiobjective": multiobjective},
                     "postprocessing": {"output": f"{tmp_path}/targets/"},
                     "experiments": experiments,
                 }
@@ -233,6 +233,63 @@ def test_fingerprint_ignores_workers_and_logging_but_not_the_solver(job):
 
     assert runner.experiment_fingerprint(changed_runtime) == runner.experiment_fingerprint(config)
     assert runner.experiment_fingerprint(changed_solver) != runner.experiment_fingerprint(config)
+
+
+# ----------------------------------------------------------------- targets hash
+
+
+def _write_targets(job, content):
+    folder = job.root / "targets"
+    folder.mkdir(exist_ok=True)
+    (folder / "targets.xlsx").write_bytes(content)
+
+
+def test_targets_hash_only_applies_when_the_run_reads_a_targets_file(job):
+    job.configure({"only": {}}, multiobjective=True)
+    _, config = Config.experiments()[0]
+    assert runner.targets_sha256(config) is None  # no file yet
+
+    _write_targets(job, b"one")
+    expected = __import__("hashlib").sha256(b"one").hexdigest()
+    assert runner.targets_sha256(config) == expected
+
+    building = {**config, "postprocessing": {**config["postprocessing"], "build_target": True}}
+    assert runner.targets_sha256(building) is None
+    single = {**config, "solver": {**config["solver"], "multiobjective": False}}
+    assert runner.targets_sha256(single) is None
+
+
+def test_fingerprint_follows_the_targets_content_only_when_given(job):
+    job.configure({"only": {}})
+    _, config = Config.experiments()[0]
+
+    assert runner.experiment_fingerprint(config, None) == runner.experiment_fingerprint(config)
+    assert runner.experiment_fingerprint(config, "a") != runner.experiment_fingerprint(config)
+    assert runner.experiment_fingerprint(config, "a") != runner.experiment_fingerprint(config, "b")
+
+
+def test_new_targets_move_the_folder_aside_instead_of_skipping(job):
+    _write_targets(job, b"old targets")
+    job.configure({"only": {}}, multiobjective=True)
+    with patch.object(runner, "validate_targets"):
+        runner.run_experiments()
+        first = _state(job, "only")
+        assert first["targets_sha256"]
+        FakeWorker.runs = []
+
+        runner.run_experiments()  # same targets: skipped
+        assert FakeWorker.runs == []
+
+        _write_targets(job, b"regenerated targets")
+        runner.run_experiments()  # same configuration, different targets
+
+    assert [run[0] for run in FakeWorker.runs] == ["only"]
+    stale = [p for p in os.listdir(f"{job.root}/out") if p.startswith("only.stale-")]
+    assert len(stale) == 1
+    second = _state(job, "only")
+    assert second["status"] == "complete"
+    assert second["targets_sha256"] != first["targets_sha256"]
+    assert second["fingerprint"] != first["fingerprint"]
 
 
 # ------------------------------------------------------------------ pairing keys
