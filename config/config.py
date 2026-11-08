@@ -87,7 +87,7 @@ class Config:
             ],
             "factor": 0.3,
             "nadir": {"method": "face", "epsilon": 1e-6},
-            "lp": {"algorithm": "dual"},
+            "lp": {"algorithm": "dual", "time_limit": 1800},
             "output": "./out/target/",
         },
     }
@@ -560,6 +560,14 @@ class Config:
             raise ValueError(f"{prefix}.nadir.epsilon deve estar em (0, 0.01)")
         if generation["lp"]["algorithm"] not in {"dual", "primal"}:
             raise ValueError(f"{prefix}.lp.algorithm deve ser dual ou primal")
+        limit = generation["lp"]["time_limit"]
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, (int, float))
+            or not math.isfinite(limit)
+            or limit <= 0
+        ):
+            raise ValueError(f"{prefix}.lp.time_limit deve ser um número positivo (segundos)")
         cls._validate_path(generation["output"], f"{prefix}.output")
 
     @staticmethod

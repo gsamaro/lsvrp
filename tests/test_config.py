@@ -353,7 +353,7 @@ def test_target_generation_defaults_cover_the_requested_scope_and_method():
     assert block["formulation"]["aggregate_vehicles"] is True
     assert block["factor"] == 0.3
     assert block["nadir"] == {"method": "face", "epsilon": 1e-6}
-    assert block["lp"]["algorithm"] == "dual"
+    assert block["lp"] == {"algorithm": "dual", "time_limit": 1800}
     assert block["weights"] == [[1 if j == k else 0 for j in range(5)] for k in range(5)]
     assert block["output"] == "./out/target/"
 
@@ -371,6 +371,11 @@ def test_target_generation_defaults_cover_the_requested_scope_and_method():
         ({"nadir.method": "ideal"}, "nadir.method"),
         ({"nadir.epsilon": 0}, "nadir.epsilon"),
         ({"lp.algorithm": "barrier"}, "lp.algorithm"),
+        ({"lp.time_limit": 0}, "lp.time_limit"),
+        ({"lp.time_limit": -5}, "lp.time_limit"),
+        ({"lp.time_limit": "30"}, "lp.time_limit"),
+        ({"lp.time_limit": True}, "lp.time_limit"),
+        ({"lp.time_limit": None}, "lp.time_limit"),
         ({"output": ""}, "output"),
     ],
 )

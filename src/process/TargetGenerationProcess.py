@@ -196,6 +196,7 @@ def solve_instance_task(payload):
             nadir_method=payload["nadir_method"],
             epsilon=payload["epsilon"],
             lp_algorithm=payload["lp_algorithm"],
+            time_limit=payload.get("lp_time_limit"),
         )
         record = {
             "instance": payload["instance"],
@@ -384,6 +385,7 @@ def run_target_generation(config=Config):
             "nadir_method": settings["nadir"]["method"],
             "epsilon": settings["nadir"]["epsilon"],
             "lp_algorithm": settings["lp"]["algorithm"],
+            "lp_time_limit": settings["lp"]["time_limit"],
             "cache_path": cache_path(output, instance),
         }
         for instance in pending

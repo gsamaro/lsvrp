@@ -179,6 +179,10 @@ def _lp_status(model):
     return str(getattr(model.solve_details, "status", "")).lower()
 
 
+def _hit_time_limit(status):
+    return "time limit" in status
+
+
 def _is_clean_optimal(solution, status):
     return solution is not None and status.startswith("optimal") and (
         "infeasib" not in status
@@ -198,6 +202,9 @@ def solve_lp(model, expression, label, base_lpmethod, retries=None, steps=RETRY_
     status = _lp_status(model)
     if _is_clean_optimal(solution, status):
         return float(solution.objective_value)
+    if _hit_time_limit(status):
+        # Another algorithm would only spend the whole limit again.
+        raise RuntimeError(f"LP excedeu o limite de tempo ({label}): {status}")
     trail = [status]
     if retries is not None:
         parameters = model.context.cplex_parameters
@@ -212,6 +219,10 @@ def solve_lp(model, expression, label, base_lpmethod, retries=None, steps=RETRY_
                 if _is_clean_optimal(solution, status):
                     retries.append({"lp": label, "step": name, "first": trail[0]})
                     return float(solution.objective_value)
+                if _hit_time_limit(status):
+                    raise RuntimeError(
+                        f"LP excedeu o limite de tempo ({label}): {'; '.join(trail)}"
+                    )
         finally:
             parameters.lpmethod = base_lpmethod
             parameters.emphasis.numerical = 0
@@ -226,6 +237,7 @@ def compute_instance_lps(
     epsilon=FACE_EPSILON,
     lp_algorithm="dual",
     alpha=0.99,
+    time_limit=None,
 ):
     """Resolve os LPs de uma instância com a ``Config`` já instalada. Exige CPLEX.
 
@@ -256,15 +268,21 @@ def compute_instance_lps(
     problem = MultProductProdctionRoutingProblem(
         map=data, dir="", log=log, start={"start": False}
     )
-    problem.solver(numThreads=1)
+    problem.solver(numThreads=1, timeLimit=time_limit)
     if not problem._relaxation_replaced:
         raise RuntimeError(f"{instance}: relaxação não substituiu o modelo")
     model = problem.model
+    if _hit_time_limit(_lp_status(model)):
+        raise RuntimeError(
+            f"{instance}: LP inicial excedeu o limite de tempo ({time_limit} s)"
+        )
     periods = problem.t
     first_solve_value = float(problem.relaxedModelObjVal)
     build_seconds = time.time() - started
 
     model.context.cplex_parameters.threads = 1
+    if time_limit is not None:
+        model.context.cplex_parameters.timelimit = float(time_limit)
     model.context.cplex_parameters.lpmethod = LP_ALGORITHMS[lp_algorithm]
     f = period_expressions(problem)
 

@@ -17,8 +17,9 @@ PERIODS = 3
 
 
 def fake_compute(instance, weights, nadir_method="face", epsilon=1e-6,
-                 lp_algorithm="dual", alpha=0.99):
+                 lp_algorithm="dual", alpha=0.99, time_limit=None):
     """LP stand-in: values depend only on the instance name and the settings."""
+    FakeLP.limits.append(time_limit)
     if instance in FakeLP.fail_on:
         raise RuntimeError("falha simulada")
     FakeLP.calls.append(instance)
@@ -45,6 +46,7 @@ def fake_compute(instance, weights, nadir_method="face", epsilon=1e-6,
 class FakeLP:
     retried = []
     calls = []
+    limits = []
     fail_on = set()
 
 
@@ -64,6 +66,7 @@ def job(tmp_path, monkeypatch):
         generation, "git_state", lambda: {"commit": "c" * 40, "dirty": False}
     )
     FakeLP.calls = []
+    FakeLP.limits = []
     FakeLP.fail_on = set()
 
     saved = Config.snapshot()
@@ -87,6 +90,18 @@ def _change(path, value):
         node = node[key]
     node[path[-1]] = value
     Config.replace(snapshot)
+
+
+def test_the_lp_time_limit_reaches_every_instance_and_changes_the_fingerprint(job):
+    state = generation.run_target_generation(Config)
+    assert state["status"] == "complete"
+    assert FakeLP.limits == [1800] * 3  # the configured default
+
+    _change(("target_generation", "lp", "time_limit"), 600)
+    FakeLP.limits = []
+    generation.run_target_generation(Config)  # other fingerprint: nothing is reused
+
+    assert FakeLP.limits == [600] * 3
 
 
 def test_run_writes_the_targets_file_without_provenance_columns_and_the_state(job):
@@ -269,6 +284,7 @@ def test_a_task_failure_is_reported_instead_of_raised(job, monkeypatch):
             "nadir_method": "face",
             "epsilon": 1e-6,
             "lp_algorithm": "dual",
+            "lp_time_limit": 60,
             "cache_path": str(job / "work" / "x.json"),
         }
     )

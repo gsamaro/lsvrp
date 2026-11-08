@@ -160,6 +160,20 @@ class FakeLpModel:
         return None
 
 
+def test_an_lp_that_hits_the_time_limit_fails_without_trying_other_algorithms():
+    model = FakeLpModel(["time limit exceeded", "optimal"])
+    with pytest.raises(RuntimeError, match="limite de tempo.*face f1 -> f2 t3"):
+        solve_lp(model, None, "face f1 -> f2 t3", 2, [])
+    assert len(model.solved_with) == 1  # no retry would fit another full limit
+
+    model = FakeLpModel(["optimal with unscaled infeasibilities", "time limit exceeded", "optimal"])
+    with pytest.raises(RuntimeError, match="limite de tempo"):
+        solve_lp(model, None, "face", 2, [])
+    assert len(model.solved_with) == 2
+    parameters = model.context.cplex_parameters
+    assert parameters.lpmethod == 2 and parameters.emphasis.numerical == 0  # restored
+
+
 def test_a_clean_optimal_lp_is_not_retried():
     model = FakeLpModel(["optimal"])
     retries = []
